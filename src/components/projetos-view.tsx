@@ -138,7 +138,7 @@ export function ProjetosView({ initialProjects, initialTasks }: { initialProject
           <section className="panel list-panel">
             <div className="toolbar">
               <div className="search"><Search size={16} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por projeto ou cliente" aria-label="Buscar projetos" /></div>
-              <span style={{ color: "var(--muted)", fontSize: 12 }}>{visibleProjects.length} {visibleProjects.length === 1 ? "resultado" : "resultados"}</span>
+              <span style={{ color: "var(--muted-text)", fontSize: 12 }}>{visibleProjects.length} {visibleProjects.length === 1 ? "resultado" : "resultados"}</span>
             </div>
             {visibleProjects.length ? (
               <ul className="project-list">

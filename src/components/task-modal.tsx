@@ -173,7 +173,7 @@ export function TaskModal({
               <label htmlFor="task-drive">Link (Drive)</label>
               <input id="task-drive" type="url" value={draft.driveLink} onChange={(e) => update("driveLink", e.target.value)} placeholder="https://drive.google.com/..." />
               {draft.driveLink ? (
-                <a href={draft.driveLink} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--accent-strong)", fontSize: 11 }}>
+                <a href={draft.driveLink} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--brand-strong)", fontSize: 11 }}>
                   <ExternalLink size={12} /> Abrir link
                 </a>
               ) : null}
@@ -197,7 +197,7 @@ export function TaskModal({
                   ))}
                 </ul>
               ) : (
-                <p style={{ margin: 0, color: "var(--muted)", fontSize: 11 }}>Nenhum comentário ainda.</p>
+                <p style={{ margin: 0, color: "var(--muted-text)", fontSize: 11 }}>Nenhum comentário ainda.</p>
               )}
               <form className="comment-form" onSubmit={sendComment} style={{ marginTop: 10 }}>
                 <input
