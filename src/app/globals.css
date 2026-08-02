@@ -189,12 +189,12 @@ h1 { margin-bottom: 10px; font-size: clamp(30px, 4.4vw, 48px); line-height: 1.05
 /* ---------- Badges de status/formato ---------- */
 .status { display: inline-flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 730; text-transform: uppercase; }
 .status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #aeb5ae; }
-.status.a_fazer { color: #707770; }
-.status.a_fazer::before { background: #aeb5ae; }
-.status.em_andamento { color: #665917; }
+.status.nao_iniciada { color: #707770; }
+.status.nao_iniciada::before { background: #aeb5ae; }
+.status.em_andamento { color: #8a6d16; }
 .status.em_andamento::before { background: #e3c23c; }
-.status.concluida { color: #4b6715; }
-.status.concluida::before { background: var(--approved); }
+.status.feita { color: #4b6715; }
+.status.feita::before { background: var(--approved); }
 .status.atrasada { color: #9c3c20; }
 .status.atrasada::before { background: #e56a3c; }
 
@@ -243,7 +243,7 @@ h1 { margin-bottom: 10px; font-size: clamp(30px, 4.4vw, 48px); line-height: 1.05
 .calendar-cards { display: grid; gap: 5px; margin-top: 6px; }
 .task-card { width: 100%; min-width: 0; padding: 7px 8px; display: block; border: 1px solid #dacdfa; border-left: 3px solid var(--brand); background: #f6f1ff; color: var(--dark); text-align: left; cursor: pointer; }
 .task-card:hover { border-color: #b99bea; background: #f0e7ff; }
-.task-card.concluida { border-left-color: var(--approved); background: #f4f9eb; }
+.task-card.feita { border-left-color: var(--approved); background: #f4f9eb; }
 .task-card.em_andamento { border-left-color: #e3c23c; background: #fefbf0; }
 .task-card.atrasada { border-left-color: #e56a3c; background: #fff4ee; }
 .task-card > strong, .task-card > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -268,10 +268,33 @@ h1 { margin-bottom: 10px; font-size: clamp(30px, 4.4vw, 48px); line-height: 1.05
 .modal-backdrop { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; background: #0e0b13b8; cursor: default; }
 .modal { position: relative; width: min(640px, 100%); max-height: min(860px, calc(100vh - 48px)); display: flex; flex-direction: column; background: #fff; border: 1px solid #d8d2df; box-shadow: 0 28px 90px #0005; }
 .modal-head { flex: none; min-height: 78px; padding: 18px 22px; display: flex; align-items: center; justify-content: space-between; gap: 20px; border-bottom: 1px solid var(--line); }
-.modal-head h2 { margin: 0; font-size: 20px; }
+.modal-head h2, .modal-title { margin: 0; font-size: 20px; font-weight: 690; }
 .modal-head button { width: 36px; height: 36px; flex: none; padding: 0; display: grid; place-items: center; border: 1px solid var(--line); background: #fff; color: #555d55; cursor: pointer; }
-.modal-body { min-height: 0; padding: 20px 22px 24px; overflow-y: auto; display: grid; gap: 16px; }
+.modal-body { flex: 1; min-height: 0; padding: 20px 22px 24px; overflow-y: auto; display: grid; gap: 16px; align-content: start; }
 .modal-actions { flex: none; min-height: 69px; padding: 13px 22px; display: flex; align-items: center; justify-content: space-between; gap: 9px; border-top: 1px solid var(--line); background: #fafbf9; }
+
+/* ---------- Controle de status ---------- */
+.status-control { display: flex; align-items: center; gap: 8px; }
+.select-full { width: 100%; }
+.status-select-trigger { width: 100%; height: 44px !important; justify-content: space-between; border: 1px solid var(--line) !important; background: #fafbf9 !important; }
+.status-timing { margin-top: 14px; padding: 14px; border: 1px solid var(--line); background: #fafbf9; }
+.status-timing-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); }
+.status-timing-row { display: flex; justify-content: space-between; align-items: center; padding: 7px 10px; background: #fff; font-size: 11px; }
+.status-timing-row span:first-child { color: var(--muted-text); }
+.status-timing-row.current { background: #f6f1ff; }
+.status-timing-row.current span:first-child { color: var(--brand-strong); font-weight: 650; }
+.status-timing-value { display: inline-flex; align-items: center; gap: 5px; font-weight: 650; }
+.status-timing-live { display: inline-flex; color: var(--brand-strong); cursor: help; }
+
+/* ---------- Seletor de etiquetas ---------- */
+.tag-picker { display: grid; gap: 8px; }
+.tag-picker-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag-chip { display: inline-flex; align-items: center; gap: 5px; }
+.tag-chip-remove { display: inline-flex; align-items: center; justify-content: center; border: 0; background: transparent; color: inherit; cursor: pointer; padding: 0; opacity: .7; }
+.tag-chip-remove:hover { opacity: 1; }
+.tag-picker-trigger { justify-content: flex-start; gap: 6px; width: fit-content; }
+.tag-picker-content { width: 260px; padding: 0; }
+.tag-check { display: inline-flex; width: 16px; align-items: center; justify-content: center; color: var(--brand-strong); }
 
 /* ---------- Comentários ---------- */
 .comment-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; max-height: 220px; overflow-y: auto; }

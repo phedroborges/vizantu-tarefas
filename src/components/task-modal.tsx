@@ -1,51 +1,64 @@
 "use client";
 
-import { ExternalLink, Send, Trash2, X } from "lucide-react";
+import { ExternalLink, Send, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { formatDateTime } from "@/lib/dates";
-import { CHANNEL_SUGGESTIONS, TASK_FORMATS, TASK_STATUSES } from "@/lib/types";
-import type { Project, Task, TaskFormat, TaskStatus } from "@/lib/types";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { TagPicker } from "@/components/tag-picker";
+import { TaskStatusControl } from "@/components/task-status-control";
+import { formatDateTime, isOverdue } from "@/lib/dates";
+import type { Member, Project, Tag, TagKind, Task, TaskStatus } from "@/lib/types";
 
 type Draft = {
   projectId: string;
   name: string;
   dueDate: string;
-  assignee: string;
+  assigneeId: string;
   description: string;
   driveLink: string;
-  format: TaskFormat | "";
-  channel: string;
+  formatTagIds: string[];
+  channelTagIds: string[];
   status: TaskStatus;
 };
+
+const NO_ASSIGNEE = "none";
 
 function draftFromTask(task: Task | null, defaultProjectId: string): Draft {
   return {
     projectId: task?.projectId || defaultProjectId,
     name: task?.name || "",
     dueDate: task?.dueDate || "",
-    assignee: task?.assignee || "",
+    assigneeId: task?.assigneeId || NO_ASSIGNEE,
     description: task?.description || "",
     driveLink: task?.driveLink || "",
-    format: task?.format || "",
-    channel: task?.channel || "",
-    status: task?.status || "a_fazer",
+    formatTagIds: task?.formatTagIds || [],
+    channelTagIds: task?.channelTagIds || [],
+    status: task?.status || "rascunho",
   };
 }
 
 export function TaskModal({
   task,
   projects,
+  members,
+  formatTags,
+  channelTags,
   defaultProjectId,
   onClose,
   onSaved,
   onDeleted,
+  onTagCreated,
 }: {
   task: Task | null;
   projects: Project[];
+  members: Member[];
+  formatTags: Tag[];
+  channelTags: Tag[];
   defaultProjectId: string;
   onClose: () => void;
   onSaved: (task: Task) => void;
   onDeleted: (id: string) => void;
+  onTagCreated: (tag: Tag) => void;
 }) {
   const [draft, setDraft] = useState<Draft>(() => draftFromTask(task, defaultProjectId));
   const [commentAuthor, setCommentAuthor] = useState("");
@@ -56,9 +69,14 @@ export function TaskModal({
   const [error, setError] = useState("");
 
   const isEditing = Boolean(task);
+  const dateLocked = isEditing && isOverdue(task!.dueDate, task!.status);
 
   function update<K extends keyof Draft>(key: K, value: Draft[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  function catalogFor(kind: TagKind): Tag[] {
+    return kind === "formato" ? formatTags : channelTags;
   }
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
@@ -71,11 +89,11 @@ export function TaskModal({
       projectId: draft.projectId,
       name: draft.name,
       dueDate: draft.dueDate || undefined,
-      assignee: draft.assignee,
+      assigneeId: draft.assigneeId === NO_ASSIGNEE ? undefined : draft.assigneeId,
       description: draft.description,
       driveLink: draft.driveLink,
-      format: draft.format || undefined,
-      channel: draft.channel,
+      formatTagIds: draft.formatTagIds,
+      channelTagIds: draft.channelTagIds,
       status: draft.status,
     };
     const response = await fetch(isEditing ? `/api/tasks/${task!.id}` : "/api/tasks", {
@@ -113,14 +131,25 @@ export function TaskModal({
     setCommentText("");
   }
 
+  const assigneeOptions = members.filter((member) => member.active);
+  const currentInactiveAssignee =
+    task?.assigneeId && !assigneeOptions.some((member) => member.id === task.assigneeId)
+      ? members.find((member) => member.id === task.assigneeId)
+      : undefined;
+  // Base UI's <Select.Value> só resolve o rótulo se o Root receber esse mapa —
+  // sem isso ele exibe o value bruto (o id do membro) em vez do nome.
+  const assigneeLabels: Record<string, string> = {
+    [NO_ASSIGNEE]: "Sem responsável",
+    ...Object.fromEntries(assigneeOptions.map((member) => [member.id, member.name])),
+    ...(currentInactiveAssignee ? { [currentInactiveAssignee.id]: `${currentInactiveAssignee.name} (inativo)` } : {}),
+  };
+
   return (
-    <div className="modal-layer">
-      <button className="modal-backdrop" type="button" aria-label="Fechar" onClick={onClose} />
-      <section className="modal" role="dialog" aria-modal="true" aria-labelledby="task-modal-title">
-        <header className="modal-head">
-          <h2 id="task-modal-title">{isEditing ? "Editar tarefa" : "Nova tarefa"}</h2>
-          <button type="button" aria-label="Fechar" onClick={onClose}><X size={18} /></button>
-        </header>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-[640px] w-[calc(100%-2rem)] max-h-[min(860px,calc(100vh-3rem))] flex flex-col gap-0 overflow-hidden p-0" showCloseButton>
+        <DialogHeader className="modal-head">
+          <DialogTitle className="modal-title">{isEditing ? "Editar tarefa" : "Nova tarefa"}</DialogTitle>
+        </DialogHeader>
         <div className="modal-body">
           {error ? <div className="form-message">{error}</div> : null}
           <form id="task-fields-form" onSubmit={save}>
@@ -137,38 +166,61 @@ export function TaskModal({
                 </select>
               </div>
               <div className="field">
-                <label htmlFor="task-status">Status</label>
-                <select id="task-status" value={draft.status} onChange={(e) => update("status", e.target.value as TaskStatus)}>
-                  {TASK_STATUSES.map((status) => <option value={status.value} key={status.value}>{status.label}</option>)}
-                </select>
-              </div>
-            </div>
-            <div className="field-row">
-              <div className="field">
-                <label htmlFor="task-due">Data de entrega</label>
-                <input id="task-due" type="date" value={draft.dueDate} onChange={(e) => update("dueDate", e.target.value)} />
-              </div>
-              <div className="field">
                 <label htmlFor="task-assignee">Responsável</label>
-                <input id="task-assignee" value={draft.assignee} onChange={(e) => update("assignee", e.target.value)} placeholder="Ex.: Phedro" maxLength={80} />
+                <Select items={assigneeLabels} value={draft.assigneeId} onValueChange={(value) => update("assigneeId", value ?? NO_ASSIGNEE)}>
+                  <SelectTrigger id="task-assignee" className="select-full">
+                    <SelectValue placeholder="Sem responsável" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_ASSIGNEE}>Sem responsável</SelectItem>
+                    {assigneeOptions.map((member) => (
+                      <SelectItem key={member.id} value={member.id}>{member.name}</SelectItem>
+                    ))}
+                    {currentInactiveAssignee ? (
+                      <SelectItem value={currentInactiveAssignee.id}>{currentInactiveAssignee.name} (inativo)</SelectItem>
+                    ) : null}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
+
+            <TaskStatusControl status={draft.status} statusHistory={task?.statusHistory ?? []} onChange={(value) => update("status", value)} />
+
+            <div className="field">
+              <label htmlFor="task-due">Data de entrega</label>
+              <input
+                id="task-due"
+                type="date"
+                value={draft.dueDate}
+                disabled={dateLocked}
+                onChange={(e) => update("dueDate", e.target.value)}
+              />
+              {dateLocked ? (
+                <p className="form-message">
+                  Esta tarefa está atrasada — a data não pode ser alterada. Mude o status para &quot;Aprovado&quot;, &quot;Problema&quot; ou &quot;Finalizado&quot; se o atraso não depender mais dela.
+                </p>
+              ) : null}
+            </div>
+
             <div className="field-row">
-              <div className="field">
-                <label htmlFor="task-format">Formato</label>
-                <select id="task-format" value={draft.format} onChange={(e) => update("format", e.target.value as TaskFormat)}>
-                  <option value="">Não definido</option>
-                  {TASK_FORMATS.map((format) => <option value={format.value} key={format.value}>{format.label}</option>)}
-                </select>
-              </div>
-              <div className="field">
-                <label htmlFor="task-channel">Canal</label>
-                <input id="task-channel" list="channel-suggestions" value={draft.channel} onChange={(e) => update("channel", e.target.value)} placeholder="Ex.: Instagram" maxLength={60} />
-                <datalist id="channel-suggestions">
-                  {CHANNEL_SUGGESTIONS.map((channel) => <option value={channel} key={channel} />)}
-                </datalist>
-              </div>
+              <TagPicker
+                kind="formato"
+                label="Formato"
+                catalog={catalogFor("formato")}
+                selectedIds={draft.formatTagIds}
+                onChange={(ids) => update("formatTagIds", ids)}
+                onCatalogUpdate={onTagCreated}
+              />
+              <TagPicker
+                kind="canal"
+                label="Canal"
+                catalog={catalogFor("canal")}
+                selectedIds={draft.channelTagIds}
+                onChange={(ids) => update("channelTagIds", ids)}
+                onCatalogUpdate={onTagCreated}
+              />
             </div>
+
             <div className="field">
               <label htmlFor="task-drive">Link (Drive)</label>
               <input id="task-drive" type="url" value={draft.driveLink} onChange={(e) => update("driveLink", e.target.value)} placeholder="https://drive.google.com/..." />
@@ -222,7 +274,7 @@ export function TaskModal({
             <button type="submit" form="task-fields-form" className="primary-button" disabled={isSaving}>{isSaving ? "Salvando..." : "Salvar"}</button>
           </div>
         </footer>
-      </section>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

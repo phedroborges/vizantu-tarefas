@@ -2,37 +2,45 @@ import { AlertTriangle, CheckCircle2, Clock3, ListTodo } from "lucide-react";
 import Link from "next/link";
 import { AdminShell } from "@/components/admin-shell";
 import { formatDueDate, isOverdue } from "@/lib/dates";
-import { listProjects, listTasks } from "@/lib/storage";
+import { listMembers, listProjects, listTasks } from "@/lib/storage";
+import { TASK_STATUSES } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
+function groupOf(status: string) {
+  return TASK_STATUSES.find((item) => item.value === status)?.group;
+}
+
 export default async function Home() {
-  const [tasks, projects] = await Promise.all([listTasks(), listProjects()]);
+  const [tasks, projects, members] = await Promise.all([listTasks(), listProjects(), listMembers()]);
+  const memberById = new Map(members.map((member) => [member.id, member]));
 
   const total = tasks.length;
-  const done = tasks.filter((task) => task.status === "concluida").length;
-  const inProgress = tasks.filter((task) => task.status === "em_andamento").length;
+  // "Finalizado" é o verdadeiro estado de conclusão (quando a peça foi publicada).
+  const done = tasks.filter((task) => task.status === "finalizado").length;
+  const inProgress = tasks.filter((task) => groupOf(task.status) === "em_andamento").length;
   const overdue = tasks.filter((task) => isOverdue(task.dueDate, task.status)).length;
 
   const upcoming = tasks
-    .filter((task) => task.status !== "concluida" && task.dueDate)
+    .filter((task) => task.status !== "finalizado" && task.dueDate)
     .sort((a, b) => (a.dueDate! < b.dueDate! ? -1 : 1))
     .slice(0, 8);
 
   const assigneeCounts = new Map<string, number>();
   tasks.forEach((task) => {
-    if (!task.assignee) return;
-    assigneeCounts.set(task.assignee, (assigneeCounts.get(task.assignee) || 0) + 1);
+    if (!task.assigneeId) return;
+    assigneeCounts.set(task.assigneeId, (assigneeCounts.get(task.assigneeId) || 0) + 1);
   });
   const ranking = Array.from(assigneeCounts.entries())
-    .sort((a, b) => b[1] - a[1])
+    .map(([assigneeId, count]) => ({ name: memberById.get(assigneeId)?.name || "Ex-membro", count }))
+    .sort((a, b) => b.count - a.count)
     .slice(0, 6);
-  const maxCount = ranking[0]?.[1] || 1;
+  const maxCount = ranking[0]?.count || 1;
 
   const projectById = new Map(projects.map((project) => [project.id, project]));
   const projectOverview = projects.map((project) => {
     const projectTasks = tasks.filter((task) => task.projectId === project.id);
-    const projectDone = projectTasks.filter((task) => task.status === "concluida").length;
+    const projectDone = projectTasks.filter((task) => task.status === "finalizado").length;
     const rate = projectTasks.length ? Math.round((projectDone / projectTasks.length) * 100) : 0;
     return { project, total: projectTasks.length, done: projectDone, rate };
   });
@@ -57,7 +65,7 @@ export default async function Home() {
           </div>
           <div className="metric-card">
             <div className="metric-icon green"><CheckCircle2 size={18} /></div>
-            <span>Concluídas</span>
+            <span>Finalizadas</span>
             <strong>{done}</strong>
             <small>{total ? Math.round((done / total) * 100) : 0}% do total</small>
           </div>
@@ -93,7 +101,7 @@ export default async function Home() {
                   {projectOverview.map(({ project, total: projectTotal, done: projectDone, rate }) => (
                     <tr key={project.id}>
                       <td><strong>{project.name}</strong><span>{project.client || "Sem cliente definido"}</span></td>
-                      <td><strong>{projectDone}/{projectTotal}</strong><span>concluídas</span></td>
+                      <td><strong>{projectDone}/{projectTotal}</strong><span>finalizadas</span></td>
                       <td>
                         <div className="project-progress-label"><strong>{rate}%</strong></div>
                         <div className="project-progress"><span style={{ width: `${rate}%` }} /></div>
@@ -120,7 +128,7 @@ export default async function Home() {
                   const overdueTask = isOverdue(task.dueDate, task.status);
                   return (
                     <li className="upcoming-item" key={task.id}>
-                      <div><strong>{task.name}</strong><span>{projectById.get(task.projectId)?.name || "Sem projeto"} · {task.assignee || "Sem responsável"}</span></div>
+                      <div><strong>{task.name}</strong><span>{projectById.get(task.projectId)?.name || "Sem projeto"} · {task.assigneeId ? memberById.get(task.assigneeId)?.name || "Ex-membro" : "Sem responsável"}</span></div>
                       <span className={`upcoming-due ${overdueTask ? "overdue" : ""}`}>{formatDueDate(task.dueDate)}{overdueTask ? " · atrasada" : ""}</span>
                     </li>
                   );
@@ -137,11 +145,11 @@ export default async function Home() {
             </div>
             {ranking.length ? (
               <ul className="ranking-list">
-                {ranking.map(([assignee, count], index) => (
-                  <li key={assignee}>
+                {ranking.map(({ name, count }, index) => (
+                  <li key={name}>
                     <span className="ranking-number">{String(index + 1).padStart(2, "0")}</span>
                     <div>
-                      <strong>{assignee}</strong>
+                      <strong>{name}</strong>
                       <div className="project-progress" style={{ marginTop: 6 }}><span style={{ width: `${(count / maxCount) * 100}%` }} /></div>
                     </div>
                     <span>{count} {count === 1 ? "tarefa" : "tarefas"}</span>

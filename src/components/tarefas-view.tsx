@@ -11,14 +11,18 @@ import {
   monthLabel,
   moveMonth,
 } from "@/lib/dates";
-import { TASK_FORMATS, TASK_STATUSES } from "@/lib/types";
-import type { Project, Task } from "@/lib/types";
+import { STATUS_GROUPS, TASK_COLUMNS, TASK_STATUSES } from "@/lib/types";
+import type { Member, Project, Tag, Task, TaskColumnKey } from "@/lib/types";
 import { TaskModal } from "@/components/task-modal";
+import { TaskColumnPicker } from "@/components/task-column-picker";
+import { useTaskColumns } from "@/lib/use-task-columns";
 
 const WEEKDAYS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 
+// Cor do badge = grupo (3 cores + atrasada) — mais legível que 12 tons distintos.
 function statusOf(task: Task): string {
-  return isOverdue(task.dueDate, task.status) ? "atrasada" : task.status;
+  if (isOverdue(task.dueDate, task.status)) return "atrasada";
+  return TASK_STATUSES.find((status) => status.value === task.status)?.group || "nao_iniciada";
 }
 
 function statusLabel(task: Task): string {
@@ -26,12 +30,27 @@ function statusLabel(task: Task): string {
   return TASK_STATUSES.find((status) => status.value === task.status)?.label || task.status;
 }
 
-function formatLabel(task: Task): string {
-  return TASK_FORMATS.find((format) => format.value === task.format)?.label || "";
+// Filtro = status exato (dos 12) ou "atrasada" — mais preciso que filtrar só por grupo.
+function statusFilterValue(task: Task): string {
+  return isOverdue(task.dueDate, task.status) ? "atrasada" : task.status;
 }
 
-export function TarefasView({ initialTasks, initialProjects }: { initialTasks: Task[]; initialProjects: Project[] }) {
+export function TarefasView({
+  initialTasks,
+  initialProjects,
+  initialMembers,
+  initialFormatTags,
+  initialChannelTags,
+}: {
+  initialTasks: Task[];
+  initialProjects: Project[];
+  initialMembers: Member[];
+  initialFormatTags: Tag[];
+  initialChannelTags: Tag[];
+}) {
   const [tasks, setTasks] = useState(initialTasks);
+  const [formatTags, setFormatTags] = useState(initialFormatTags);
+  const [channelTags, setChannelTags] = useState(initialChannelTags);
   const [view, setView] = useState<"lista" | "calendario">("lista");
   const [query, setQuery] = useState("");
   const [projectFilter, setProjectFilter] = useState("");
@@ -43,23 +62,28 @@ export function TarefasView({ initialTasks, initialProjects }: { initialTasks: T
   });
   const [selectedTask, setSelectedTask] = useState<Task | "new" | null>(null);
   const [toast, setToast] = useState("");
+  const { visible: visibleColumns, toggle: toggleColumn } = useTaskColumns();
 
   const projectById = useMemo(() => new Map(initialProjects.map((project) => [project.id, project])), [initialProjects]);
-  const assignees = useMemo(
-    () => Array.from(new Set(tasks.map((task) => task.assignee).filter(Boolean))) as string[],
-    [tasks],
-  );
+  const memberById = useMemo(() => new Map(initialMembers.map((member) => [member.id, member])), [initialMembers]);
+  const formatTagById = useMemo(() => new Map(formatTags.map((tag) => [tag.id, tag])), [formatTags]);
+  const channelTagById = useMemo(() => new Map(channelTags.map((tag) => [tag.id, tag])), [channelTags]);
+  const activeMembers = useMemo(() => initialMembers.filter((member) => member.active), [initialMembers]);
 
   const filteredTasks = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return tasks.filter((task) => {
       if (projectFilter && task.projectId !== projectFilter) return false;
-      if (assigneeFilter && task.assignee !== assigneeFilter) return false;
-      if (statusFilter && statusOf(task) !== statusFilter) return false;
-      if (normalized && !`${task.name} ${task.channel || ""} ${task.assignee || ""}`.toLowerCase().includes(normalized)) return false;
+      if (assigneeFilter && task.assigneeId !== assigneeFilter) return false;
+      if (statusFilter && statusFilterValue(task) !== statusFilter) return false;
+      if (normalized) {
+        const assigneeName = task.assigneeId ? memberById.get(task.assigneeId)?.name || "" : "";
+        const channelNames = task.channelTagIds.map((id) => channelTagById.get(id)?.label || "").join(" ");
+        if (!`${task.name} ${channelNames} ${assigneeName}`.toLowerCase().includes(normalized)) return false;
+      }
       return true;
     });
-  }, [tasks, query, projectFilter, assigneeFilter, statusFilter]);
+  }, [tasks, query, projectFilter, assigneeFilter, statusFilter, memberById, channelTagById]);
 
   function showToast(message: string) {
     setToast(message);
@@ -81,6 +105,11 @@ export function TarefasView({ initialTasks, initialProjects }: { initialTasks: T
     showToast("Tarefa excluída.");
   }
 
+  function handleTagCreated(tag: Tag) {
+    if (tag.kind === "formato") setFormatTags((current) => [...current, tag]);
+    else setChannelTags((current) => [...current, tag]);
+  }
+
   const monthTasks = useMemo(
     () => filteredTasks.filter((task) => task.dueDate && monthKeyFromDate(task.dueDate) === selectedMonth),
     [filteredTasks, selectedMonth],
@@ -94,6 +123,33 @@ export function TarefasView({ initialTasks, initialProjects }: { initialTasks: T
   }, [monthTasks]);
   const noDueTasks = useMemo(() => filteredTasks.filter((task) => !task.dueDate), [filteredTasks]);
   const calendarDays = useMemo(() => daysInCalendarMonth(selectedMonth), [selectedMonth]);
+
+  function renderColumn(key: TaskColumnKey, task: Task) {
+    switch (key) {
+      case "formatTags":
+        return task.formatTagIds.length
+          ? task.formatTagIds.map((id) => <span className="badge format" key={id}>{formatTagById.get(id)?.label}</span>)
+          : "—";
+      case "channelTags":
+        return task.channelTagIds.length
+          ? task.channelTagIds.map((id) => <span className="badge channel" key={id}>{channelTagById.get(id)?.label}</span>)
+          : "—";
+      case "assignee":
+        return task.assigneeId ? memberById.get(task.assigneeId)?.name || "—" : "—";
+      case "dueDate":
+        return formatDueDate(task.dueDate);
+      case "status":
+        return <span className={`status ${statusOf(task)}`}>{statusLabel(task)}</span>;
+      case "driveLink":
+        return task.driveLink ? (
+          <a href={task.driveLink} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
+            Abrir
+          </a>
+        ) : "—";
+      default:
+        return null;
+    }
+  }
 
   return (
     <>
@@ -122,13 +178,20 @@ export function TarefasView({ initialTasks, initialProjects }: { initialTasks: T
               </select>
               <select value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value)} aria-label="Filtrar por responsável">
                 <option value="">Todos os responsáveis</option>
-                {assignees.map((assignee) => <option value={assignee} key={assignee}>{assignee}</option>)}
+                {activeMembers.map((member) => <option value={member.id} key={member.id}>{member.name}</option>)}
               </select>
               <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label="Filtrar por status">
                 <option value="">Todos os status</option>
-                {TASK_STATUSES.map((status) => <option value={status.value} key={status.value}>{status.label}</option>)}
+                {STATUS_GROUPS.map((group) => (
+                  <optgroup label={group.label} key={group.value}>
+                    {TASK_STATUSES.filter((status) => status.group === group.value).map((status) => (
+                      <option value={status.value} key={status.value}>{status.label}</option>
+                    ))}
+                  </optgroup>
+                ))}
                 <option value="atrasada">Atrasada</option>
               </select>
+              {view === "lista" ? <TaskColumnPicker visible={visibleColumns} onToggle={toggleColumn} /> : null}
               <div className="view-toggle" role="tablist" aria-label="Alternar visualização">
                 <button type="button" role="tab" aria-selected={view === "lista"} className={view === "lista" ? "active" : ""} onClick={() => setView("lista")}><List size={14} /> Lista</button>
                 <button type="button" role="tab" aria-selected={view === "calendario"} className={view === "calendario" ? "active" : ""} onClick={() => setView("calendario")}><CalendarDays size={14} /> Calendário</button>
@@ -143,11 +206,9 @@ export function TarefasView({ initialTasks, initialProjects }: { initialTasks: T
                   <thead>
                     <tr>
                       <th>Tarefa</th>
-                      <th>Formato</th>
-                      <th>Canal</th>
-                      <th>Responsável</th>
-                      <th>Prazo</th>
-                      <th>Status</th>
+                      {TASK_COLUMNS.filter((column) => visibleColumns.includes(column.key)).map((column) => (
+                        <th key={column.key}>{column.label}</th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
@@ -157,11 +218,9 @@ export function TarefasView({ initialTasks, initialProjects }: { initialTasks: T
                           <span className="task-name">{task.name}</span>
                           <span className="task-project">{projectById.get(task.projectId)?.name || "Sem projeto"}</span>
                         </td>
-                        <td>{task.format ? <span className="badge format">{formatLabel(task)}</span> : "—"}</td>
-                        <td>{task.channel ? <span className="badge channel">{task.channel}</span> : "—"}</td>
-                        <td>{task.assignee || "—"}</td>
-                        <td>{formatDueDate(task.dueDate)}</td>
-                        <td><span className={`status ${statusOf(task)}`}>{statusLabel(task)}</span></td>
+                        {TASK_COLUMNS.filter((column) => visibleColumns.includes(column.key)).map((column) => (
+                          <td key={column.key}>{renderColumn(column.key, task)}</td>
+                        ))}
                       </tr>
                     ))}
                   </tbody>
@@ -232,10 +291,14 @@ export function TarefasView({ initialTasks, initialProjects }: { initialTasks: T
         <TaskModal
           task={selectedTask === "new" ? null : selectedTask}
           projects={initialProjects}
+          members={initialMembers}
+          formatTags={formatTags}
+          channelTags={channelTags}
           defaultProjectId={projectFilter || initialProjects[0]?.id || ""}
           onClose={() => setSelectedTask(null)}
           onSaved={handleSaved}
           onDeleted={handleDeleted}
+          onTagCreated={handleTagCreated}
         />
       ) : null}
       {toast ? <div className="toast">{toast}</div> : null}

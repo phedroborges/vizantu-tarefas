@@ -1,4 +1,7 @@
+import { DONE_STATUSES, type StatusHistoryEntry, type TaskStatus } from "./types";
+
 const TZ = "America/Sao_Paulo";
+const DONE_SET = new Set<TaskStatus>(DONE_STATUSES);
 
 export function todayIso(): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -56,7 +59,33 @@ export function formatDateTime(iso: string): string {
   }).format(new Date(iso));
 }
 
-export function isOverdue(dueDate: string | undefined, status: string): boolean {
-  if (!dueDate || status === "concluida") return false;
+export function isOverdue(dueDate: string | undefined, status: TaskStatus): boolean {
+  if (!dueDate || DONE_SET.has(status)) return false;
   return dueDate < todayIso();
+}
+
+export type StatusDuration = { status: TaskStatus; totalMs: number; visits: number };
+
+// Soma a duração de cada status em TODAS as visitas (não só a última), pra dar o
+// tempo cumulativo mesmo quando a tarefa vai e volta entre status.
+export function summarizeStatusDurations(history: StatusHistoryEntry[], nowMs: number = Date.now()): StatusDuration[] {
+  const totals = new Map<TaskStatus, StatusDuration>();
+  for (const entry of history) {
+    const start = new Date(entry.enteredAt).getTime();
+    const end = entry.exitedAt ? new Date(entry.exitedAt).getTime() : nowMs;
+    const current = totals.get(entry.status) ?? { status: entry.status, totalMs: 0, visits: 0 };
+    current.totalMs += Math.max(0, end - start);
+    current.visits += 1;
+    totals.set(entry.status, current);
+  }
+  return Array.from(totals.values());
+}
+
+export function formatDuration(ms: number): string {
+  const minutes = Math.floor(ms / 60000);
+  if (minutes < 1) return "menos de 1min";
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  const mins = minutes % 60;
+  return [days ? `${days}d` : "", hours ? `${hours}h` : "", !days && mins ? `${mins}min` : ""].filter(Boolean).join(" ");
 }

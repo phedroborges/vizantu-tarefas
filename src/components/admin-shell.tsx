@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, CheckSquare, Folders, Menu, X } from "lucide-react";
+import { BarChart3, CheckSquare, Folders, Menu, Users, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
@@ -9,7 +9,7 @@ export function AdminShell({
   active,
   children,
 }: {
-  active: "dashboard" | "projetos" | "tarefas";
+  active: "dashboard" | "projetos" | "tarefas" | "membros";
   children: React.ReactNode;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -43,6 +43,10 @@ export function AdminShell({
           <Link className={active === "tarefas" ? "active" : ""} href="/tarefas" onClick={() => setMenuOpen(false)}>
             <CheckSquare size={18} />
             <span>Tarefas</span>
+          </Link>
+          <Link className={active === "membros" ? "active" : ""} href="/membros" onClick={() => setMenuOpen(false)}>
+            <Users size={18} />
+            <span>Membros</span>
           </Link>
         </nav>
         <p className="admin-sidebar-note">Acompanhe prazos, responsáveis e entregas em um só lugar.</p>

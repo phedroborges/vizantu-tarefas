@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createTask, listTasks } from "@/lib/storage";
+import { TASK_STATUSES } from "@/lib/types";
 
 export async function GET() {
   const tasks = await listTasks();
@@ -14,15 +15,18 @@ export async function POST(request: NextRequest) {
   if (!body?.projectId || typeof body.projectId !== "string") {
     return NextResponse.json({ error: "Selecione um projeto." }, { status: 400 });
   }
+  if (body.status !== undefined && !TASK_STATUSES.some((status) => status.value === body.status)) {
+    return NextResponse.json({ error: "Status inválido." }, { status: 400 });
+  }
   const task = await createTask({
     projectId: body.projectId,
     name: body.name,
     dueDate: body.dueDate,
-    assignee: body.assignee,
+    assigneeId: body.assigneeId,
     description: body.description,
     driveLink: body.driveLink,
-    format: body.format,
-    channel: body.channel,
+    formatTagIds: body.formatTagIds,
+    channelTagIds: body.channelTagIds,
     status: body.status,
   });
   return NextResponse.json({ task }, { status: 201 });

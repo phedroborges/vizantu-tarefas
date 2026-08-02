@@ -1,8 +1,9 @@
 import { promises as fs } from "fs";
 import path from "path";
-import type { Project, Task } from "./types";
+import { isOverdue } from "./dates";
+import type { Member, Project, StatusHistoryEntry, Tag, TagKind, Task, TaskStatus } from "./types";
 
-type Db = { projects: Project[]; tasks: Task[] };
+type Db = { projects: Project[]; tasks: Task[]; members: Member[]; tags: Tag[] };
 
 const DB_PATH = path.join(process.cwd(), "data", "db.json");
 
@@ -28,9 +29,15 @@ function nowIso() {
 async function readDb(): Promise<Db> {
   try {
     const raw = await fs.readFile(DB_PATH, "utf-8");
-    return JSON.parse(raw) as Db;
+    const parsed = JSON.parse(raw) as Partial<Db>;
+    return {
+      projects: parsed.projects ?? [],
+      tasks: parsed.tasks ?? [],
+      members: parsed.members ?? [],
+      tags: parsed.tags ?? [],
+    };
   } catch {
-    const empty: Db = { projects: [], tasks: [] };
+    const empty: Db = { projects: [], tasks: [], members: [], tags: [] };
     await fs.mkdir(path.dirname(DB_PATH), { recursive: true });
     await fs.writeFile(DB_PATH, JSON.stringify(empty, null, 2));
     return empty;
@@ -100,19 +107,114 @@ export async function deleteProject(id: string): Promise<boolean> {
   });
 }
 
+// ---------- Membros ----------
+
+export async function listMembers(): Promise<Member[]> {
+  const db = await readDb();
+  return [...db.members].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+}
+
+export async function createMember(input: { name: string }): Promise<Member> {
+  return withWriteLock(async () => {
+    const db = await readDb();
+    const now = nowIso();
+    const member: Member = { id: newId(), name: input.name.trim(), active: true, createdAt: now, updatedAt: now };
+    db.members.push(member);
+    await writeDb(db);
+    return member;
+  });
+}
+
+export async function updateMember(
+  id: string,
+  patch: Partial<Pick<Member, "name" | "active">>,
+): Promise<Member | undefined> {
+  return withWriteLock(async () => {
+    const db = await readDb();
+    const member = db.members.find((item) => item.id === id);
+    if (!member) return undefined;
+    if (patch.name !== undefined) member.name = patch.name.trim();
+    if (patch.active !== undefined) member.active = patch.active;
+    member.updatedAt = nowIso();
+    await writeDb(db);
+    return member;
+  });
+}
+
+// Sem deleteMember — desativação é o único caminho, pra tarefas antigas
+// continuarem resolvendo o nome do responsável.
+
+// ---------- Etiquetas (Formato / Canal) ----------
+
+function normalizeTagLabel(label: string): string {
+  return label.trim().replace(/\s+/g, " ");
+}
+
+export async function listTags(kind?: TagKind): Promise<Tag[]> {
+  const db = await readDb();
+  const tags = kind ? db.tags.filter((tag) => tag.kind === kind) : db.tags;
+  return [...tags].sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
+}
+
+export async function createTag(input: { kind: TagKind; label: string }): Promise<Tag> {
+  return withWriteLock(async () => {
+    const db = await readDb();
+    const label = normalizeTagLabel(input.label);
+    // Dedupe por kind + label (case-insensitive): o TagPicker chama "criar" toda
+    // vez que o texto digitado não bate exatamente com o cache local, então sem
+    // isso duplicaríamos a etiqueta a cada uso.
+    const existing = db.tags.find(
+      (tag) => tag.kind === input.kind && tag.label.localeCompare(label, "pt-BR", { sensitivity: "base" }) === 0,
+    );
+    if (existing) return existing;
+    const tag: Tag = { id: newId(), kind: input.kind, label, createdAt: nowIso() };
+    db.tags.push(tag);
+    await writeDb(db);
+    return tag;
+  });
+}
+
+// Sem updateTag/deleteTag — fora do escopo desta fase (só criar e listar).
+
 // ---------- Tarefas ----------
+
+export class DueDateLockedError extends Error {
+  constructor() {
+    super("A tarefa está atrasada; a data de entrega não pode ser alterada.");
+  }
+}
 
 export type TaskInput = {
   projectId: string;
   name: string;
   dueDate?: string;
-  assignee?: string;
+  assigneeId?: string;
   description?: string;
   driveLink?: string;
-  format?: Task["format"];
-  channel?: string;
-  status?: Task["status"];
+  formatTagIds?: string[];
+  channelTagIds?: string[];
+  status?: TaskStatus;
 };
+
+function dedupeIds(ids: string[]): string[] {
+  return Array.from(new Set(ids.filter(Boolean)));
+}
+
+function openStatusHistory(status: TaskStatus, at: string): StatusHistoryEntry[] {
+  return [{ status, enteredAt: at, exitedAt: null }];
+}
+
+// Fecha a entrada aberta (exitedAt === null) e cria uma nova entrada aberta pro
+// próximo status. Funciona tanto pra avançar quanto pra voltar, e revisitar um
+// status já visto vira uma entrada nova — assim a soma por status (ver
+// summarizeStatusDurations em lib/dates.ts) acumula o tempo de todas as visitas.
+function transitionStatusHistory(history: StatusHistoryEntry[], next: TaskStatus, at: string): StatusHistoryEntry[] {
+  const copy = [...history];
+  const openIndex = copy.findIndex((entry) => entry.exitedAt === null);
+  if (openIndex !== -1) copy[openIndex] = { ...copy[openIndex], exitedAt: at };
+  copy.push({ status: next, enteredAt: at, exitedAt: null });
+  return copy;
+}
 
 export async function listTasks(): Promise<Task[]> {
   const db = await readDb();
@@ -128,17 +230,19 @@ export async function createTask(input: TaskInput): Promise<Task> {
   return withWriteLock(async () => {
     const db = await readDb();
     const now = nowIso();
+    const status = input.status || "rascunho";
     const task: Task = {
       id: newId(),
       projectId: input.projectId,
       name: input.name.trim(),
       dueDate: input.dueDate || undefined,
-      assignee: input.assignee?.trim() || undefined,
+      assigneeId: input.assigneeId || undefined,
       description: input.description?.trim() || undefined,
       driveLink: input.driveLink?.trim() || undefined,
-      format: input.format,
-      channel: input.channel?.trim() || undefined,
-      status: input.status || "a_fazer",
+      formatTagIds: dedupeIds(input.formatTagIds ?? []),
+      channelTagIds: dedupeIds(input.channelTagIds ?? []),
+      status,
+      statusHistory: openStatusHistory(status, now),
       comments: [],
       createdAt: now,
       updatedAt: now,
@@ -154,15 +258,31 @@ export async function updateTask(id: string, patch: Partial<TaskInput>): Promise
     const db = await readDb();
     const task = db.tasks.find((item) => item.id === id);
     if (!task) return undefined;
+
+    // Trava de data (item 8): checar ANTES de qualquer mutação, contra o status
+    // EFETIVO deste request (patch.status, se vier, senão o status atual) — assim
+    // um único PATCH que muda o status pra "Aprovado" e corrige a data ao mesmo
+    // tempo funciona em uma chamada só.
+    if (patch.dueDate !== undefined && patch.dueDate !== task.dueDate) {
+      const effectiveStatus = patch.status ?? task.status;
+      if (isOverdue(task.dueDate, effectiveStatus)) throw new DueDateLockedError();
+    }
+
     if (patch.projectId !== undefined) task.projectId = patch.projectId;
     if (patch.name !== undefined) task.name = patch.name.trim();
     if (patch.dueDate !== undefined) task.dueDate = patch.dueDate || undefined;
-    if (patch.assignee !== undefined) task.assignee = patch.assignee.trim() || undefined;
+    if (patch.assigneeId !== undefined) task.assigneeId = patch.assigneeId || undefined;
     if (patch.description !== undefined) task.description = patch.description.trim() || undefined;
     if (patch.driveLink !== undefined) task.driveLink = patch.driveLink.trim() || undefined;
-    if (patch.format !== undefined) task.format = patch.format;
-    if (patch.channel !== undefined) task.channel = patch.channel.trim() || undefined;
-    if (patch.status !== undefined) task.status = patch.status;
+    if (patch.formatTagIds !== undefined) task.formatTagIds = dedupeIds(patch.formatTagIds);
+    if (patch.channelTagIds !== undefined) task.channelTagIds = dedupeIds(patch.channelTagIds);
+
+    if (patch.status !== undefined && patch.status !== task.status) {
+      const now = nowIso();
+      task.statusHistory = transitionStatusHistory(task.statusHistory, patch.status, now);
+      task.status = patch.status;
+    }
+
     task.updatedAt = nowIso();
     await writeDb(db);
     return task;

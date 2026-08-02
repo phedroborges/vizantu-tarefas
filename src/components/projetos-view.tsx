@@ -25,7 +25,7 @@ export function ProjetosView({ initialProjects, initialTasks }: { initialProject
     initialTasks.forEach((task) => {
       const current = map.get(task.projectId) || { total: 0, done: 0 };
       current.total += 1;
-      if (task.status === "concluida") current.done += 1;
+      if (task.status === "finalizado") current.done += 1;
       map.set(task.projectId, current);
     });
     return map;
@@ -156,7 +156,7 @@ export function ProjetosView({ initialProjects, initialTasks }: { initialProject
                         <div className="project-progress"><span style={{ width: `${rate}%` }} /></div>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-end" }}>
-                        <span className={`status ${project.status === "concluido" ? "concluida" : project.status === "pausado" ? "atrasada" : "em_andamento"}`}>{statusLabel(project.status)}</span>
+                        <span className={`status ${project.status === "concluido" ? "feita" : project.status === "pausado" ? "atrasada" : "em_andamento"}`}>{statusLabel(project.status)}</span>
                         <button className="icon-button" type="button" onClick={() => startEdit(project)} title="Editar" aria-label={`Editar ${project.name}`}><Pencil size={14} /></button>
                         <button className="icon-button" type="button" onClick={() => remove(project)} title="Excluir" aria-label={`Excluir ${project.name}`}><Trash2 size={14} /></button>
                       </div>
