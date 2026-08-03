@@ -104,16 +104,12 @@ export async function POST(request: NextRequest) {
     const userMessage = { id: crypto.randomUUID(), role: "user" as const, text: userText, images: incomingImages, pendingConfirmation: null };
     await appendAssistantMessages(conversationId, [userMessage]);
     const historySlice = [...conversation.messages, userMessage].slice(-MAX_HISTORY);
-    incoming = await Promise.all(
-      historySlice.map(async (m) => ({ role: m.role, content: await buildMessageContent(m.text, m.images) }) as ChatCompletionMessageParam),
-    );
+    incoming = historySlice.map((m) => ({ role: m.role, content: buildMessageContent(m.text, m.images) }) as ChatCompletionMessageParam);
   } else {
     // Modo legado, usado pelo widget pequeno: ephemeral, sem persistir nada.
     type LegacyIncoming = { role: "user" | "assistant"; content: string; images?: string[] };
     const legacyMessages: LegacyIncoming[] = (body.messages ?? []).slice(-MAX_HISTORY);
-    incoming = await Promise.all(
-      legacyMessages.map(async (m) => ({ role: m.role, content: await buildMessageContent(m.content, m.images) }) as ChatCompletionMessageParam),
-    );
+    incoming = legacyMessages.map((m) => ({ role: m.role, content: buildMessageContent(m.content, m.images) }) as ChatCompletionMessageParam);
   }
 
   const messages: ChatCompletionMessageParam[] = [{ role: "system", content: systemPrompt(knowledgeDocCount, pageContext) }, ...incoming];

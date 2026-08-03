@@ -9,11 +9,12 @@
   "scripts": {
     "dev": "next dev -p 31111",
     "build": "next build",
-    "start": "next start -p 31111",
+    "start": "next start -p ${PORT:-31111}",
     "lint": "eslint"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
+    "@supabase/supabase-js": "^2.111.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",

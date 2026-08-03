@@ -1,8 +1,6 @@
-import { promises as fs } from "fs";
-import path from "path";
 import { NextRequest, NextResponse } from "next/server";
+import { getSupabase, getSupabaseStorageBucket } from "@/lib/supabase-client";
 
-const UPLOADS_DIR = path.join(process.cwd(), "public", "uploads");
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
 const EXTENSION_BY_MIME: Record<string, string> = {
@@ -26,10 +24,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Imagem muito grande (máximo 8MB)." }, { status: 400 });
   }
 
-  await fs.mkdir(UPLOADS_DIR, { recursive: true });
   const filename = `${crypto.randomUUID()}.${extension}`;
-  const buffer = Buffer.from(await file.arrayBuffer());
-  await fs.writeFile(path.join(UPLOADS_DIR, filename), buffer);
+  const bucket = getSupabaseStorageBucket();
+  const { error } = await getSupabase()
+    .storage.from(bucket)
+    .upload(filename, file, { contentType: file.type, cacheControl: "31536000" });
+  if (error) return NextResponse.json({ error: `Falha ao enviar imagem: ${error.message}` }, { status: 500 });
 
-  return NextResponse.json({ url: `/uploads/${filename}` }, { status: 201 });
+  const { data } = getSupabase().storage.from(bucket).getPublicUrl(filename);
+  return NextResponse.json({ url: data.publicUrl }, { status: 201 });
 }
