@@ -310,6 +310,24 @@ h1 { margin-bottom: 10px; font-size: clamp(30px, 4.4vw, 48px); line-height: 1.05
 .status-timing-value { display: inline-flex; align-items: center; gap: 5px; font-weight: 650; }
 .status-timing-live { display: inline-flex; color: var(--brand-strong); cursor: help; }
 
+/* ---------- Assistente de IA ---------- */
+.ai-widget-button { position: fixed; z-index: 70; right: 22px; bottom: 22px; width: 46px; height: 46px; border: 0; border-radius: 50%; display: grid; place-items: center; background: var(--brand); color: #fff; box-shadow: 0 10px 26px #6435e766; cursor: pointer; }
+.ai-widget-button:hover { background: var(--brand-strong); }
+.ai-widget-panel { position: fixed; z-index: 70; right: 22px; bottom: 78px; width: 340px; max-height: min(480px, calc(100vh - 120px)); display: flex; flex-direction: column; background: #fff; border: 1px solid var(--line); box-shadow: 0 20px 50px #00000022; }
+.ai-widget-header { flex: none; display: flex; align-items: center; gap: 7px; min-height: 42px; padding: 0 14px; background: var(--dark); color: #fff; font-size: 12px; font-weight: 650; }
+.ai-widget-header svg { color: #a970ff; }
+.ai-widget-body { flex: 1; min-height: 0; overflow-y: auto; padding: 12px; display: grid; gap: 8px; align-content: start; }
+.ai-chat-message { max-width: 88%; padding: 8px 10px; font-size: 12px; line-height: 1.5; }
+.ai-chat-message p { margin: 0; white-space: pre-wrap; }
+.ai-chat-message.assistant { justify-self: start; background: #f0f2ee; color: var(--dark); }
+.ai-chat-message.user { justify-self: end; background: var(--brand); color: #fff; }
+.ai-confirm-button { display: inline-flex; align-items: center; gap: 5px; margin-top: 7px; height: 26px; padding: 0 9px; border: 1px solid var(--danger); background: #fff0ef; color: var(--danger); font-size: 10.5px; font-weight: 650; cursor: pointer; }
+.ai-confirm-button:hover { background: var(--danger); color: #fff; }
+.ai-widget-footer { flex: none; display: flex; gap: 6px; padding: 10px; border-top: 1px solid var(--line); }
+.ai-widget-footer input { flex: 1; height: 32px; border: 1px solid var(--line); background: #fafbf9; padding: 0 10px; font-size: 12px; }
+.ai-spin { animation: ai-spin .8s linear infinite; color: var(--muted-text); }
+@keyframes ai-spin { to { transform: rotate(360deg); } }
+
 /* ---------- Criação rápida na lista ---------- */
 .task-quick-add { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--line); background: #fafbf9; }
 .task-quick-add input { flex: 1; height: 32px; border: 1px dashed #c7ccc6; background: white; padding: 0 10px; font-size: 12px; }

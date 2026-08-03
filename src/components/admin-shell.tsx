@@ -4,6 +4,7 @@ import { BarChart3, CheckSquare, Folders, Menu, Users, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
+import { AiAssistant } from "@/components/ai-assistant";
 
 export function AdminShell({
   active,
@@ -59,6 +60,7 @@ export function AdminShell({
         </header>
         {children}
       </div>
+      <AiAssistant />
     </div>
   );
 }
