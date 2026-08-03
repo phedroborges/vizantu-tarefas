@@ -1,9 +1,16 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { isOverdue } from "./dates";
-import type { Member, Project, StatusHistoryEntry, Tag, TagKind, Task, TaskStatus } from "./types";
+import type { AssistantConversation, AssistantMessage, KnowledgeDoc, Member, Project, StatusHistoryEntry, Tag, TagKind, Task, TaskStatus } from "./types";
 
-type Db = { projects: Project[]; tasks: Task[]; members: Member[]; tags: Tag[] };
+type Db = {
+  projects: Project[];
+  tasks: Task[];
+  members: Member[];
+  tags: Tag[];
+  knowledgeDocs: KnowledgeDoc[];
+  assistantConversations: AssistantConversation[];
+};
 
 const DB_PATH = path.join(process.cwd(), "data", "db.json");
 
@@ -35,9 +42,11 @@ async function readDb(): Promise<Db> {
       tasks: parsed.tasks ?? [],
       members: parsed.members ?? [],
       tags: parsed.tags ?? [],
+      knowledgeDocs: parsed.knowledgeDocs ?? [],
+      assistantConversations: parsed.assistantConversations ?? [],
     };
   } catch {
-    const empty: Db = { projects: [], tasks: [], members: [], tags: [] };
+    const empty: Db = { projects: [], tasks: [], members: [], tags: [], knowledgeDocs: [], assistantConversations: [] };
     await fs.mkdir(path.dirname(DB_PATH), { recursive: true });
     await fs.writeFile(DB_PATH, JSON.stringify(empty, null, 2));
     return empty;
@@ -253,7 +262,10 @@ export async function createTask(input: TaskInput): Promise<Task> {
   });
 }
 
-export async function updateTask(id: string, patch: Partial<TaskInput>): Promise<Task | undefined> {
+export async function updateTask(
+  id: string,
+  patch: Partial<Omit<TaskInput, "assigneeId">> & { assigneeId?: string | null },
+): Promise<Task | undefined> {
   return withWriteLock(async () => {
     const db = await readDb();
     const task = db.tasks.find((item) => item.id === id);
@@ -313,5 +325,124 @@ export async function addComment(taskId: string, input: { author: string; text: 
     task.updatedAt = nowIso();
     await writeDb(db);
     return task;
+  });
+}
+
+// ---------- Base de conhecimento ----------
+
+export async function listKnowledgeDocs(): Promise<KnowledgeDoc[]> {
+  const db = await readDb();
+  return [...db.knowledgeDocs].sort((a, b) => a.title.localeCompare(b.title, "pt-BR"));
+}
+
+export async function getKnowledgeDoc(id: string): Promise<KnowledgeDoc | undefined> {
+  const db = await readDb();
+  return db.knowledgeDocs.find((doc) => doc.id === id);
+}
+
+export async function createKnowledgeDoc(input: { title: string; content?: string }): Promise<KnowledgeDoc> {
+  return withWriteLock(async () => {
+    const db = await readDb();
+    const now = nowIso();
+    const doc: KnowledgeDoc = {
+      id: newId(),
+      title: input.title.trim(),
+      content: input.content?.trim() || "",
+      createdAt: now,
+      updatedAt: now,
+    };
+    db.knowledgeDocs.push(doc);
+    await writeDb(db);
+    return doc;
+  });
+}
+
+export async function updateKnowledgeDoc(id: string, patch: Partial<Pick<KnowledgeDoc, "title" | "content">>): Promise<KnowledgeDoc | undefined> {
+  return withWriteLock(async () => {
+    const db = await readDb();
+    const doc = db.knowledgeDocs.find((item) => item.id === id);
+    if (!doc) return undefined;
+    if (patch.title !== undefined) doc.title = patch.title.trim();
+    if (patch.content !== undefined) doc.content = patch.content.trim();
+    doc.updatedAt = nowIso();
+    await writeDb(db);
+    return doc;
+  });
+}
+
+export async function deleteKnowledgeDoc(id: string): Promise<boolean> {
+  return withWriteLock(async () => {
+    const db = await readDb();
+    const before = db.knowledgeDocs.length;
+    db.knowledgeDocs = db.knowledgeDocs.filter((doc) => doc.id !== id);
+    await writeDb(db);
+    return db.knowledgeDocs.length < before;
+  });
+}
+
+// ---------- Conversas do assistente (chat em tela cheia) ----------
+
+const DEFAULT_CONVERSATION_TITLE = "Nova conversa";
+
+export async function listAssistantConversations(): Promise<AssistantConversation[]> {
+  const db = await readDb();
+  return [...db.assistantConversations].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+export async function getAssistantConversation(id: string): Promise<AssistantConversation | undefined> {
+  const db = await readDb();
+  return db.assistantConversations.find((conversation) => conversation.id === id);
+}
+
+export async function createAssistantConversation(): Promise<AssistantConversation> {
+  return withWriteLock(async () => {
+    const db = await readDb();
+    const now = nowIso();
+    const conversation: AssistantConversation = { id: newId(), title: DEFAULT_CONVERSATION_TITLE, messages: [], createdAt: now, updatedAt: now };
+    db.assistantConversations.unshift(conversation);
+    await writeDb(db);
+    return conversation;
+  });
+}
+
+export async function renameAssistantConversation(id: string, title: string): Promise<AssistantConversation | undefined> {
+  return withWriteLock(async () => {
+    const db = await readDb();
+    const conversation = db.assistantConversations.find((item) => item.id === id);
+    if (!conversation) return undefined;
+    conversation.title = title.trim() || DEFAULT_CONVERSATION_TITLE;
+    conversation.updatedAt = nowIso();
+    await writeDb(db);
+    return conversation;
+  });
+}
+
+export async function deleteAssistantConversation(id: string): Promise<boolean> {
+  return withWriteLock(async () => {
+    const db = await readDb();
+    const before = db.assistantConversations.length;
+    db.assistantConversations = db.assistantConversations.filter((conversation) => conversation.id !== id);
+    await writeDb(db);
+    return db.assistantConversations.length < before;
+  });
+}
+
+// Título automático (estilo ChatGPT): a primeira mensagem do usuário vira o
+// nome da conversa, enquanto ela ainda estiver com o título padrão — assim o
+// usuário só precisa renomear manualmente se quiser algo diferente disso.
+export async function appendAssistantMessages(id: string, newMessages: AssistantMessage[]): Promise<AssistantConversation | undefined> {
+  return withWriteLock(async () => {
+    const db = await readDb();
+    const conversation = db.assistantConversations.find((item) => item.id === id);
+    if (!conversation) return undefined;
+    const isFirstUserMessage = conversation.messages.length === 0 && newMessages[0]?.role === "user";
+    conversation.messages.push(...newMessages);
+    if (isFirstUserMessage && conversation.title === DEFAULT_CONVERSATION_TITLE) {
+      const firstText = newMessages[0].text.trim();
+      conversation.title = firstText.length > 48 ? `${firstText.slice(0, 48).trim()}…` : firstText;
+    }
+    conversation.updatedAt = nowIso();
+    await writeDb(db);
+    return conversation;
   });
 }

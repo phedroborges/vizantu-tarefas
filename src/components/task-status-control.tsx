@@ -1,9 +1,10 @@
 "use client";
 
-import { ChevronDown, Clock3 } from "lucide-react";
+import { ChevronDown, CircleDot, Clock3 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { MetaRow } from "@/components/meta-row";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { formatDuration, summarizeStatusDurations } from "@/lib/dates";
+import { formatDuration, isOverdue, summarizeStatusDurations } from "@/lib/dates";
 import { STATUS_GROUPS, TASK_STATUSES, type StatusHistoryEntry, type TaskStatus } from "@/lib/types";
 
 // Base UI's <Select.Value> só resolve o rótulo se o Root receber esse mapa —
@@ -13,10 +14,12 @@ const STATUS_LABELS: Record<string, string> = Object.fromEntries(TASK_STATUSES.m
 export function TaskStatusControl({
   status,
   statusHistory,
+  dueDate,
   onChange,
 }: {
   status: TaskStatus;
   statusHistory: StatusHistoryEntry[];
+  dueDate?: string;
   onChange: (next: TaskStatus) => void;
 }) {
   const [showTiming, setShowTiming] = useState(false);
@@ -32,14 +35,16 @@ export function TaskStatusControl({
   }, [statusHistory, hasHistory]);
 
   const currentEntry = hasHistory ? visitedDurations.find(({ def }) => def.value === status)?.entry : undefined;
+  const statusGroup = dueDate && isOverdue(dueDate, status) ? "atrasada" : TASK_STATUSES.find((item) => item.value === status)?.group;
 
   return (
-    <div className="meta-row">
-      <span className="meta-row-label">Status</span>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+    <MetaRow icon={<CircleDot size={13} />} label="Status">
+      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flexWrap: "wrap" }}>
         <Select items={STATUS_LABELS} value={status} onValueChange={(value) => onChange(value as TaskStatus)}>
           <SelectTrigger className="meta-trigger">
-            <SelectValue />
+            <span className={`status-inline ${statusGroup}`}>
+              <SelectValue />
+            </span>
           </SelectTrigger>
           <SelectContent>
             {STATUS_GROUPS.map((group) => (
@@ -66,7 +71,7 @@ export function TaskStatusControl({
         ) : null}
       </div>
       {showTiming && hasHistory ? (
-        <div className="status-timing" style={{ gridColumn: "1 / -1" }}>
+        <div className="status-timing">
           <ul className="status-timing-list">
             {visitedDurations.map(({ def, entry }) => (
               <li key={def.value} className={`status-timing-row ${def.value === status ? "current" : ""}`}>
@@ -77,6 +82,6 @@ export function TaskStatusControl({
           </ul>
         </div>
       ) : null}
-    </div>
+    </MetaRow>
   );
 }

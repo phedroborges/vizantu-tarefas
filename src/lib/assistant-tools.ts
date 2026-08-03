@@ -1,13 +1,17 @@
 import type { ChatCompletionTool } from "openai/resources/chat/completions";
 import { formatDuration, isOverdue, summarizeStatusDurations, todayIso } from "./dates";
 import {
+  addComment,
+  createKnowledgeDoc,
   createTag,
   createTask,
   getTask,
+  listKnowledgeDocs,
   listMembers,
   listProjects,
   listTags,
   listTasks,
+  updateKnowledgeDoc,
   updateTask,
   DueDateLockedError,
 } from "./storage";
@@ -87,17 +91,19 @@ async function loadContext() {
 
 // ---------- Implementações ----------
 
-async function toolListTasks(args: { projectName?: string; assigneeName?: string; status?: string; overdueOnly?: boolean }) {
+async function toolListTasks(args: { query?: string; projectName?: string; assigneeName?: string; status?: string; overdueOnly?: boolean }) {
   const { tasks, projects, members, projectById, memberById } = await loadContext();
   const projectId = await resolveProjectId(args.projectName, projects);
   const assigneeId = await resolveAssigneeId(args.assigneeName, members);
   const statusValue = TASK_STATUSES.find((item) => item.value === args.status || item.label.toLowerCase() === args.status?.toLowerCase())?.value;
+  const nameQuery = args.query?.trim().toLowerCase();
 
   const filtered = tasks.filter((task) => {
     if (projectId && task.projectId !== projectId) return false;
     if (assigneeId && task.assigneeId !== assigneeId) return false;
     if (statusValue && task.status !== statusValue) return false;
     if (args.overdueOnly && !isOverdue(task.dueDate, task.status)) return false;
+    if (nameQuery && !task.name.toLowerCase().includes(nameQuery)) return false;
     return true;
   });
 
@@ -158,22 +164,40 @@ async function toolCreateTask(args: {
   return { created: summarizeTask(task, projectById, memberById) };
 }
 
+const CLEAR_ASSIGNEE_WORDS = ["ninguém", "ninguem", "nenhum", "sem responsável", "sem responsavel", "remover responsável", "remover responsavel"];
+
 async function toolUpdateTask(args: {
   taskId: string;
   name?: string;
+  projectName?: string;
   assigneeName?: string;
   dueDate?: string;
   formatLabels?: string[];
   channelLabels?: string[];
   description?: string;
+  driveLink?: string;
   status?: string;
 }) {
-  const { members, projectById, memberById } = await loadContext();
+  const { projects, members, projectById, memberById } = await loadContext();
   const patch: Parameters<typeof updateTask>[1] = {};
   if (args.name !== undefined) patch.name = args.name;
   if (args.dueDate !== undefined) patch.dueDate = args.dueDate;
   if (args.description !== undefined) patch.description = args.description;
-  if (args.assigneeName !== undefined) patch.assigneeId = await resolveAssigneeId(args.assigneeName, members);
+  if (args.driveLink !== undefined) patch.driveLink = args.driveLink;
+  if (args.projectName !== undefined) {
+    const projectId = await resolveProjectId(args.projectName, projects);
+    if (!projectId) return { error: `Projeto "${args.projectName}" não encontrado. Projetos existentes: ${projects.map((p) => p.name).join(", ")}` };
+    patch.projectId = projectId;
+  }
+  if (args.assigneeName !== undefined) {
+    if (CLEAR_ASSIGNEE_WORDS.includes(args.assigneeName.trim().toLowerCase())) {
+      patch.assigneeId = null;
+    } else {
+      const assigneeId = await resolveAssigneeId(args.assigneeName, members);
+      if (!assigneeId) return { error: `Responsável "${args.assigneeName}" não encontrado. Membros ativos: ${members.filter((m) => m.active).map((m) => m.name).join(", ")}` };
+      patch.assigneeId = assigneeId;
+    }
+  }
   if (args.formatLabels !== undefined) patch.formatTagIds = await resolveTagIds(args.formatLabels, "formato");
   if (args.channelLabels !== undefined) patch.channelTagIds = await resolveTagIds(args.channelLabels, "canal");
   if (args.status !== undefined) {
@@ -196,6 +220,88 @@ async function toolDeleteTask(args: { taskId: string }) {
   const task = await getTask(args.taskId);
   if (!task) return { error: "Tarefa não encontrada." };
   return new PendingDeleteConfirmation(task.id, task.name);
+}
+
+async function toolAddComment(args: { taskId: string; text: string; author?: string }) {
+  const task = await addComment(args.taskId, { author: args.author || "IA Vizantu", text: args.text });
+  if (!task) return { error: "Tarefa não encontrada." };
+  return { ok: true, taskName: task.name, totalComments: task.comments.length };
+}
+
+async function toolListKnowledgeDocs() {
+  const docs = await listKnowledgeDocs();
+  return { docs: docs.map((doc) => ({ id: doc.id, title: doc.title, documented: Boolean(doc.content) })) };
+}
+
+// Recorta um trecho em volta da primeira ocorrência do termo — devolver o
+// documento inteiro pra "ver se é relevante" seria o oposto de economizar
+// tokens, que é exatamente o problema que essa ferramenta existe pra evitar.
+function snippetAround(content: string, term: string, radius = 90): string {
+  const idx = content.toLowerCase().indexOf(term.toLowerCase());
+  if (idx === -1) return content.slice(0, radius * 2).trim();
+  const start = Math.max(0, idx - radius);
+  const end = Math.min(content.length, idx + term.length + radius);
+  return `${start > 0 ? "…" : ""}${content.slice(start, end).trim()}${end < content.length ? "…" : ""}`;
+}
+
+// Busca local (sem custo de IA): pontua por palavra-chave no título (peso
+// maior) e no conteúdo (peso menor), devolvendo só um TRECHO de cada
+// documento relevante — nunca o conteúdo inteiro. Isso é o que permite a base
+// crescer com muitos documentos sem o modelo precisar abrir um por um "só pra
+// ver": ele vê os trechos, decide o que de fato importa, e só aí chama
+// get_knowledge_doc no(s) documento(s) certo(s).
+async function toolSearchKnowledgeDocs(args: { query: string }) {
+  const docs = await listKnowledgeDocs();
+  const terms = args.query.toLowerCase().split(/\s+/).filter((term) => term.length > 2);
+  if (!terms.length) return { results: [] };
+
+  const scored = docs
+    .map((doc) => {
+      const titleLower = doc.title.toLowerCase();
+      const contentLower = doc.content.toLowerCase();
+      let score = 0;
+      let firstMatch: string | undefined;
+      for (const term of terms) {
+        if (titleLower.includes(term)) score += 3;
+        if (contentLower.includes(term)) {
+          score += 1;
+          firstMatch ||= term;
+        }
+      }
+      return { doc, score, firstMatch };
+    })
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5);
+
+  if (!scored.length) {
+    return { results: [], hint: "Nenhum documento bateu com essas palavras-chave. Use list_knowledge_docs se quiser ver todos os títulos." };
+  }
+
+  return {
+    results: scored.map(({ doc, firstMatch }) => ({
+      title: doc.title,
+      snippet: doc.content ? snippetAround(doc.content, firstMatch || doc.title, 90) : "(documento ainda sem conteúdo)",
+    })),
+  };
+}
+
+async function toolGetKnowledgeDoc(args: { title: string }) {
+  const docs = await listKnowledgeDocs();
+  const doc = findByName(docs, args.title, (d) => d.title);
+  if (!doc) return { error: `Nenhum documento encontrado com o título "${args.title}". Use list_knowledge_docs para ver os títulos existentes.` };
+  return { id: doc.id, title: doc.title, content: doc.content || null };
+}
+
+async function toolUpsertKnowledgeDoc(args: { title: string; content: string }) {
+  const docs = await listKnowledgeDocs();
+  const existing = findByName(docs, args.title, (d) => d.title);
+  if (existing) {
+    const updated = await updateKnowledgeDoc(existing.id, { content: args.content });
+    return { saved: { id: updated!.id, title: updated!.title }, created: false };
+  }
+  const created = await createKnowledgeDoc({ title: args.title, content: args.content });
+  return { saved: { id: created.id, title: created.title }, created: true };
 }
 
 async function toolGetDeadlinesSummary(args: { withinDays?: number }) {
@@ -234,13 +340,19 @@ export const ASSISTANT_TOOLS: ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "list_tasks",
-      description: "Lista tarefas, opcionalmente filtradas por projeto, responsável, status ou apenas atrasadas.",
+      description:
+        "Lista tarefas, opcionalmente filtradas por trecho do nome/título, projeto, responsável, status ou apenas atrasadas. Combine filtros à vontade.",
       parameters: {
         type: "object",
         properties: {
+          query: {
+            type: "string",
+            description:
+              "Trecho do NOME/TÍTULO da tarefa (busca por substring, não precisa ser exato). Use isso quando o usuário descrever a tarefa por palavras do título dela — NÃO confunda com 'status': status é só um dos 12 valores do pipeline (Rascunho, Revisão, Aprovado etc.), nunca uma palavra que aparece dentro do título.",
+          },
           projectName: { type: "string", description: "Nome (ou parte do nome) do projeto." },
           assigneeName: { type: "string", description: "Nome do responsável." },
-          status: { type: "string", description: "Um dos status: " + TASK_STATUSES.map((s) => s.label).join(", ") },
+          status: { type: "string", description: "Um dos status do pipeline: " + TASK_STATUSES.map((s) => s.label).join(", ") },
           overdueOnly: { type: "boolean", description: "Se true, retorna só tarefas atrasadas." },
         },
       },
@@ -279,18 +391,21 @@ export const ASSISTANT_TOOLS: ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "update_task",
-      description: "Edita campos de uma tarefa existente (nome, responsável, prazo, formato, canal, descrição, status).",
+      description:
+        "Edita QUALQUER campo de uma tarefa existente: nome, projeto, responsável, prazo, formato, canal, link do drive, descrição/roteiro e status. Envie só os campos que devem mudar.",
       parameters: {
         type: "object",
         properties: {
           taskId: { type: "string" },
-          name: { type: "string" },
-          assigneeName: { type: "string" },
-          dueDate: { type: "string" },
-          formatLabels: { type: "array", items: { type: "string" } },
-          channelLabels: { type: "array", items: { type: "string" } },
-          description: { type: "string" },
-          status: { type: "string" },
+          name: { type: "string", description: "Novo nome da tarefa." },
+          projectName: { type: "string", description: "Nome do projeto para mover a tarefa para lá." },
+          assigneeName: { type: "string", description: "Nome do novo responsável, ou 'ninguém'/'sem responsável' para remover." },
+          dueDate: { type: "string", description: "Nova data de entrega no formato AAAA-MM-DD." },
+          formatLabels: { type: "array", items: { type: "string" }, description: "Substitui os formatos da tarefa por esta lista." },
+          channelLabels: { type: "array", items: { type: "string" }, description: "Substitui os canais da tarefa por esta lista." },
+          description: { type: "string", description: "Novo texto do briefing/roteiro da tarefa." },
+          driveLink: { type: "string", description: "Nova URL do arquivo no Drive." },
+          status: { type: "string", description: "Um dos: " + TASK_STATUSES.map((s) => s.label).join(", ") },
         },
         required: ["taskId"],
       },
@@ -302,6 +417,22 @@ export const ASSISTANT_TOOLS: ChatCompletionTool[] = [
       name: "delete_task",
       description: "Solicita a exclusão de uma tarefa. Isso NÃO apaga direto — o usuário precisa confirmar na interface antes.",
       parameters: { type: "object", properties: { taskId: { type: "string" } }, required: ["taskId"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "add_comment",
+      description: "Adiciona um comentário no histórico de uma tarefa.",
+      parameters: {
+        type: "object",
+        properties: {
+          taskId: { type: "string" },
+          text: { type: "string", description: "Texto do comentário." },
+          author: { type: "string", description: "Autor do comentário (opcional; padrão 'IA Vizantu')." },
+        },
+        required: ["taskId", "text"],
+      },
     },
   },
   {
@@ -320,6 +451,49 @@ export const ASSISTANT_TOOLS: ChatCompletionTool[] = [
     type: "function",
     function: { name: "list_members", description: "Lista os membros ativos do time.", parameters: { type: "object", properties: {} } },
   },
+  {
+    type: "function",
+    function: {
+      name: "search_knowledge_docs",
+      description:
+        "Busca por palavras-chave em título E conteúdo da base de conhecimento e devolve só um TRECHO de cada documento relevante — não o conteúdo inteiro. Use como alternativa a list_knowledge_docs quando os títulos sozinhos não deixarem claro qual documento responde à pergunta, ou quando a instrução do sistema disser para preferir busca em vez de listar tudo.",
+      parameters: { type: "object", properties: { query: { type: "string", description: "Palavras-chave da pergunta do usuário." } }, required: ["query"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_knowledge_docs",
+      description:
+        "Lista só os TÍTULOS de todos os documentos da base de conhecimento, sem conteúdo (barato). Use seu próprio entendimento do significado de cada título pra decidir qual abrir — não precisa bater palavra por palavra. A instrução do sistema diz quando preferir isso ou search_knowledge_docs, dependendo de quantos documentos existem.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_knowledge_doc",
+      description:
+        "Abre o conteúdo COMPLETO de um único documento pelo título exato. Só chame isso depois de search_knowledge_docs (ou list_knowledge_docs) confirmar qual documento é o certo — nunca abra vários documentos 'só para ver', isso gasta tokens à toa.",
+      parameters: { type: "object", properties: { title: { type: "string" } }, required: ["title"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "upsert_knowledge_doc",
+      description:
+        "Cria ou atualiza (se já existir um com título parecido) um documento da base de conhecimento com o conteúdo combinado com o usuário na conversa.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          content: { type: "string", description: "Conteúdo completo do documento (substitui o conteúdo anterior, se houver)." },
+        },
+        required: ["title", "content"],
+      },
+    },
+  },
 ];
 
 export async function executeTool(name: string, rawArgs: string): Promise<unknown> {
@@ -335,12 +509,22 @@ export async function executeTool(name: string, rawArgs: string): Promise<unknow
       return toolUpdateTask(args);
     case "delete_task":
       return toolDeleteTask(args);
+    case "add_comment":
+      return toolAddComment(args);
     case "get_deadlines_summary":
       return toolGetDeadlinesSummary(args);
     case "list_projects":
       return toolListProjects();
     case "list_members":
       return toolListMembers();
+    case "search_knowledge_docs":
+      return toolSearchKnowledgeDocs(args);
+    case "list_knowledge_docs":
+      return toolListKnowledgeDocs();
+    case "get_knowledge_doc":
+      return toolGetKnowledgeDoc(args);
+    case "upsert_knowledge_doc":
+      return toolUpsertKnowledgeDoc(args);
     default:
       return { error: `Ferramenta desconhecida: ${name}` };
   }

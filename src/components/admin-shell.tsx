@@ -1,21 +1,34 @@
 "use client";
 
-import { BarChart3, CheckSquare, Folders, Menu, Users, X } from "lucide-react";
+import { BarChart3, BookOpen, CheckSquare, Folders, Menu, Sparkles, Users, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import { AiAssistant } from "@/components/ai-assistant";
+import { PageContextProvider } from "@/lib/page-context";
+
+export type AdminShellActive = "dashboard" | "projetos" | "tarefas" | "membros" | "conhecimento" | "assistente";
+
+const PAGE_LABELS: Record<AdminShellActive, string> = {
+  dashboard: "Página atual: Dashboard (visão geral de métricas, prazos e ranking do time).",
+  projetos: "Página atual: Projetos.",
+  tarefas: "Página atual: Tarefas.",
+  membros: "Página atual: Membros.",
+  conhecimento: "Página atual: Base de conhecimento.",
+  assistente: "Página atual: Assistente (chat completo).",
+};
 
 export function AdminShell({
   active,
   children,
 }: {
-  active: "dashboard" | "projetos" | "tarefas" | "membros";
+  active: AdminShellActive;
   children: React.ReactNode;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
+    <PageContextProvider page={PAGE_LABELS[active]}>
     <div className="admin-shell">
       <button
         className={`admin-menu-backdrop ${menuOpen ? "visible" : ""}`}
@@ -49,6 +62,14 @@ export function AdminShell({
             <Users size={18} />
             <span>Membros</span>
           </Link>
+          <Link className={active === "conhecimento" ? "active" : ""} href="/conhecimento" onClick={() => setMenuOpen(false)}>
+            <BookOpen size={18} />
+            <span>Base de conhecimento</span>
+          </Link>
+          <Link className={active === "assistente" ? "active" : ""} href="/assistente" onClick={() => setMenuOpen(false)}>
+            <Sparkles size={18} />
+            <span>Assistente</span>
+          </Link>
         </nav>
         <p className="admin-sidebar-note">Acompanhe prazos, responsáveis e entregas em um só lugar.</p>
       </aside>
@@ -62,5 +83,6 @@ export function AdminShell({
       </div>
       <AiAssistant />
     </div>
+    </PageContextProvider>
   );
 }

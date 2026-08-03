@@ -1,9 +1,10 @@
 "use client";
 
-import { ExternalLink, Send, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { AlignLeft, CalendarDays, ExternalLink, Folder, Link2, Send, Trash2, User } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { MetaRow } from "@/components/meta-row";
 import { TagPicker } from "@/components/tag-picker";
 import { TaskStatusControl } from "@/components/task-status-control";
 import { formatDateTime, isOverdue } from "@/lib/dates";
@@ -68,6 +69,16 @@ export function TaskModal({
   const [isSaving, setIsSaving] = useState(false);
   const [isSendingComment, setIsSendingComment] = useState(false);
   const [error, setError] = useState("");
+  const [editingLink, setEditingLink] = useState(false);
+  const [editingDescription, setEditingDescription] = useState(false);
+  const titleRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const el = titleRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [draft.name]);
 
   const isEditing = Boolean(task);
   const dateLocked = isEditing && isOverdue(task!.dueDate, task!.status);
@@ -90,7 +101,7 @@ export function TaskModal({
       projectId: draft.projectId,
       name: draft.name,
       dueDate: draft.dueDate || undefined,
-      assigneeId: draft.assigneeId === NO_ASSIGNEE ? undefined : draft.assigneeId,
+      assigneeId: draft.assigneeId === NO_ASSIGNEE ? null : draft.assigneeId,
       description: draft.description,
       driveLink: draft.driveLink,
       formatTagIds: draft.formatTagIds,
@@ -148,25 +159,29 @@ export function TaskModal({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="!max-w-[560px] w-[calc(100%-2rem)] max-h-[min(820px,calc(100vh-3rem))] flex flex-col gap-0 overflow-hidden p-0" showCloseButton>
+      <DialogContent className="!max-w-[640px] w-[calc(100%-2rem)] max-h-[min(820px,calc(100vh-3rem))] flex flex-col gap-0 overflow-hidden p-0" showCloseButton>
         <DialogHeader className="modal-head">
           <DialogTitle className="modal-title">{isEditing ? "Editar tarefa" : "Nova tarefa"}</DialogTitle>
         </DialogHeader>
         <div className="modal-body">
           {error ? <div className="form-message">{error}</div> : null}
           <form id="task-fields-form" onSubmit={save}>
-            <input
+            <textarea
+              ref={titleRef}
               className="meta-title-input"
               value={draft.name}
               onChange={(e) => update("name", e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.preventDefault();
+              }}
               placeholder="Nome da tarefa"
+              rows={1}
               required
               maxLength={140}
             />
 
             <div className="meta-rows">
-              <div className="meta-row">
-                <span className="meta-row-label">Projeto</span>
+              <MetaRow icon={<Folder size={13} />} label="Projeto">
                 <Select items={projectLabels} value={draft.projectId || NO_PROJECT} onValueChange={(value) => update("projectId", value ?? NO_PROJECT)}>
                   <SelectTrigger className="meta-trigger">
                     <SelectValue placeholder="Selecione" />
@@ -177,10 +192,9 @@ export function TaskModal({
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
+              </MetaRow>
 
-              <div className="meta-row">
-                <span className="meta-row-label">Responsável</span>
+              <MetaRow icon={<User size={13} />} label="Responsável">
                 <Select items={assigneeLabels} value={draft.assigneeId} onValueChange={(value) => update("assigneeId", value ?? NO_ASSIGNEE)}>
                   <SelectTrigger className="meta-trigger">
                     <SelectValue placeholder="Sem responsável" />
@@ -195,12 +209,11 @@ export function TaskModal({
                     ) : null}
                   </SelectContent>
                 </Select>
-              </div>
+              </MetaRow>
 
-              <TaskStatusControl status={draft.status} statusHistory={task?.statusHistory ?? []} onChange={(value) => update("status", value)} />
+              <TaskStatusControl status={draft.status} statusHistory={task?.statusHistory ?? []} dueDate={draft.dueDate} onChange={(value) => update("status", value)} />
 
-              <div className="meta-row">
-                <span className="meta-row-label">Entrega</span>
+              <MetaRow icon={<CalendarDays size={13} />} label="Entrega">
                 <input
                   className="meta-date"
                   type="date"
@@ -208,43 +221,89 @@ export function TaskModal({
                   disabled={dateLocked}
                   onChange={(e) => update("dueDate", e.target.value)}
                 />
-              </div>
+              </MetaRow>
               {dateLocked ? (
                 <p className="form-message" style={{ marginTop: -4 }}>
                   Esta tarefa está atrasada — a data não pode ser alterada. Mude o status para &quot;Aprovado&quot;, &quot;Problema&quot; ou &quot;Finalizado&quot; se o atraso não depender mais dela.
                 </p>
               ) : null}
+
+              <TagPicker
+                kind="formato"
+                label="Formato"
+                catalog={catalogFor("formato")}
+                selectedIds={draft.formatTagIds}
+                onChange={(ids) => update("formatTagIds", ids)}
+                onCatalogUpdate={onTagCreated}
+              />
+              <TagPicker
+                kind="canal"
+                label="Canal"
+                catalog={catalogFor("canal")}
+                selectedIds={draft.channelTagIds}
+                onChange={(ids) => update("channelTagIds", ids)}
+                onCatalogUpdate={onTagCreated}
+              />
+
+              <MetaRow icon={<Link2 size={13} />} label="Link (Drive)">
+                {editingLink ? (
+                  <input
+                    className="meta-inline-input"
+                    autoFocus
+                    type="url"
+                    value={draft.driveLink}
+                    onChange={(e) => update("driveLink", e.target.value)}
+                    onBlur={() => setEditingLink(false)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        setEditingLink(false);
+                      }
+                      if (e.key === "Escape") {
+                        e.stopPropagation();
+                        setEditingLink(false);
+                      }
+                    }}
+                    placeholder="https://drive.google.com/..."
+                  />
+                ) : draft.driveLink ? (
+                  <span className="meta-link-value">
+                    <button type="button" className="meta-value-trigger" onClick={() => setEditingLink(true)}>{draft.driveLink}</button>
+                    <a href={draft.driveLink} target="_blank" rel="noreferrer" className="meta-link-open" aria-label="Abrir link">
+                      <ExternalLink size={13} />
+                    </a>
+                  </span>
+                ) : (
+                  <button type="button" className="meta-value-trigger" onClick={() => setEditingLink(true)}>
+                    <span className="meta-empty">Vazio</span>
+                  </button>
+                )}
+              </MetaRow>
             </div>
 
-            <TagPicker
-              kind="formato"
-              label="Formato"
-              catalog={catalogFor("formato")}
-              selectedIds={draft.formatTagIds}
-              onChange={(ids) => update("formatTagIds", ids)}
-              onCatalogUpdate={onTagCreated}
-            />
-            <TagPicker
-              kind="canal"
-              label="Canal"
-              catalog={catalogFor("canal")}
-              selectedIds={draft.channelTagIds}
-              onChange={(ids) => update("channelTagIds", ids)}
-              onCatalogUpdate={onTagCreated}
-            />
-
-            <div className="field">
-              <label htmlFor="task-drive">Link (Drive)</label>
-              <input id="task-drive" type="url" value={draft.driveLink} onChange={(e) => update("driveLink", e.target.value)} placeholder="https://drive.google.com/..." />
-              {draft.driveLink ? (
-                <a href={draft.driveLink} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--brand-strong)", fontSize: 11 }}>
-                  <ExternalLink size={12} /> Abrir link
-                </a>
-              ) : null}
-            </div>
-            <div className="field">
-              <label htmlFor="task-description">O que é para fazer</label>
-              <textarea id="task-description" value={draft.description} onChange={(e) => update("description", e.target.value)} placeholder="Descreva o briefing da tarefa" maxLength={2000} />
+            <div className="meta-block">
+              <span className="meta-row-label"><AlignLeft size={13} /> O que é para fazer</span>
+              {editingDescription ? (
+                <textarea
+                  autoFocus
+                  className="meta-block-textarea"
+                  value={draft.description}
+                  onChange={(e) => update("description", e.target.value)}
+                  onBlur={() => setEditingDescription(false)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") {
+                      e.stopPropagation();
+                      setEditingDescription(false);
+                    }
+                  }}
+                  placeholder="Descreva o briefing da tarefa"
+                  maxLength={2000}
+                />
+              ) : (
+                <button type="button" className="meta-block-display" onClick={() => setEditingDescription(true)}>
+                  {draft.description ? draft.description : <span className="meta-empty">Vazio — clique para escrever o briefing</span>}
+                </button>
+              )}
             </div>
           </form>
 

@@ -11,6 +11,7 @@ import {
   monthLabel,
   moveMonth,
 } from "@/lib/dates";
+import { useSetPageDetail } from "@/lib/page-context";
 import { STATUS_GROUPS, TASK_COLUMNS, TASK_STATUSES } from "@/lib/types";
 import type { Member, Project, Tag, Task, TaskColumnKey } from "@/lib/types";
 import { TaskModal } from "@/components/task-modal";
@@ -86,6 +87,24 @@ export function TarefasView({
       return true;
     });
   }, [tasks, query, projectFilter, assigneeFilter, statusFilter, memberById, channelTagById]);
+
+  const pageDetail = useMemo(() => {
+    if (selectedTask && selectedTask !== "new") {
+      const project = projectById.get(selectedTask.projectId);
+      const assignee = selectedTask.assigneeId ? memberById.get(selectedTask.assigneeId)?.name : null;
+      return `O usuário está com o modal de edição aberto na tarefa "${selectedTask.name}" (projeto ${project?.name || "sem projeto"}, responsável ${assignee || "sem responsável"}, status ${statusLabel(selectedTask)}, prazo ${selectedTask.dueDate || "sem prazo"}). Se a pergunta for curta ou usar "essa tarefa"/"ela"/"aqui", é sobre essa tarefa.`;
+    }
+    if (selectedTask === "new") {
+      return "O usuário está com o modal de criação de uma nova tarefa aberto, ainda sem nome definido.";
+    }
+    const filterParts: string[] = [];
+    if (projectFilter) filterParts.push(`projeto ${projectById.get(projectFilter)?.name || projectFilter}`);
+    if (assigneeFilter) filterParts.push(`responsável ${memberById.get(assigneeFilter)?.name || assigneeFilter}`);
+    if (statusFilter) filterParts.push(`status ${statusFilter}`);
+    const filterText = filterParts.length ? ` filtrada por ${filterParts.join(", ")}` : "";
+    return `O usuário está vendo a lista de tarefas${filterText}, na visão de ${view === "lista" ? "lista" : "calendário"}.`;
+  }, [selectedTask, projectFilter, assigneeFilter, statusFilter, view, projectById, memberById]);
+  useSetPageDetail(pageDetail);
 
   function showToast(message: string) {
     setToast(message);
