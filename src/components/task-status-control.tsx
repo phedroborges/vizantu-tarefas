@@ -1,22 +1,14 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, Clock3 } from "lucide-react";
-import { useMemo } from "react";
+import { ChevronDown, Clock3 } from "lucide-react";
+import { useMemo, useState } from "react";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatDuration, summarizeStatusDurations } from "@/lib/dates";
 import { STATUS_GROUPS, TASK_STATUSES, type StatusHistoryEntry, type TaskStatus } from "@/lib/types";
 
-const FLAT_STATUSES = TASK_STATUSES.map((status) => status.value);
 // Base UI's <Select.Value> só resolve o rótulo se o Root receber esse mapa —
 // sem isso ele exibe o value bruto (ex.: "em_criacao") em vez do label.
 const STATUS_LABELS: Record<string, string> = Object.fromEntries(TASK_STATUSES.map((status) => [status.value, status.label]));
-
-function step(current: TaskStatus, delta: 1 | -1): TaskStatus | null {
-  const index = FLAT_STATUSES.indexOf(current);
-  const next = index + delta;
-  return next >= 0 && next < FLAT_STATUSES.length ? FLAT_STATUSES[next] : null;
-}
 
 export function TaskStatusControl({
   status,
@@ -27,30 +19,26 @@ export function TaskStatusControl({
   statusHistory: StatusHistoryEntry[];
   onChange: (next: TaskStatus) => void;
 }) {
-  const previous = step(status, -1);
-  const next = step(status, 1);
+  const [showTiming, setShowTiming] = useState(false);
+  // Uma tarefa nova ainda não tem histórico — não faz sentido mostrar tempo
+  // de um status que ainda nem começou a contar.
+  const hasHistory = statusHistory.length > 0;
 
-  const durations = useMemo(() => {
+  const visitedDurations = useMemo(() => {
+    if (!hasHistory) return [];
     const summary = summarizeStatusDurations(statusHistory);
     const byStatus = new Map(summary.map((entry) => [entry.status, entry]));
-    return TASK_STATUSES.map((def) => ({ def, entry: byStatus.get(def.value) }));
-  }, [statusHistory]);
+    return TASK_STATUSES.filter((def) => byStatus.has(def.value)).map((def) => ({ def, entry: byStatus.get(def.value)! }));
+  }, [statusHistory, hasHistory]);
+
+  const currentEntry = hasHistory ? visitedDurations.find(({ def }) => def.value === status)?.entry : undefined;
 
   return (
-    <div className="field">
-      <label htmlFor="task-status-select">Status</label>
-      <div className="status-control">
-        <button
-          type="button"
-          className="icon-button"
-          disabled={!previous}
-          onClick={() => previous && onChange(previous)}
-          aria-label="Voltar status"
-        >
-          <ChevronLeft size={15} />
-        </button>
+    <div className="meta-row">
+      <span className="meta-row-label">Status</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
         <Select items={STATUS_LABELS} value={status} onValueChange={(value) => onChange(value as TaskStatus)}>
-          <SelectTrigger id="task-status-select" className="status-select-trigger">
+          <SelectTrigger className="meta-trigger">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -66,44 +54,29 @@ export function TaskStatusControl({
             ))}
           </SelectContent>
         </Select>
-        <button
-          type="button"
-          className="icon-button"
-          disabled={!next}
-          onClick={() => next && onChange(next)}
-          aria-label="Avançar status"
-        >
-          <ChevronRight size={15} />
-        </button>
+        {currentEntry ? (
+          <span style={{ color: "var(--muted-text)", fontSize: 10.5 }}>há {formatDuration(currentEntry.totalMs)}</span>
+        ) : null}
+        {hasHistory ? (
+          <button type="button" className="status-timing-toggle" onClick={() => setShowTiming((current) => !current)} style={{ marginTop: 0 }}>
+            <Clock3 size={10} />
+            Tempo por status
+            <ChevronDown size={10} style={{ transform: showTiming ? "rotate(180deg)" : undefined }} />
+          </button>
+        ) : null}
       </div>
-
-      <div className="status-timing">
-        <span className="eyebrow" style={{ marginBottom: 6 }}>
-          <Clock3 size={11} style={{ display: "inline", marginRight: 4, verticalAlign: -2 }} />
-          Tempo em cada status
-        </span>
-        <ul className="status-timing-list">
-          {durations.map(({ def, entry }) => {
-            const isCurrent = def.value === status;
-            return (
-              <li key={def.value} className={`status-timing-row ${isCurrent ? "current" : ""}`}>
+      {showTiming && hasHistory ? (
+        <div className="status-timing" style={{ gridColumn: "1 / -1" }}>
+          <ul className="status-timing-list">
+            {visitedDurations.map(({ def, entry }) => (
+              <li key={def.value} className={`status-timing-row ${def.value === status ? "current" : ""}`}>
                 <span>{def.label}</span>
-                <span className="status-timing-value">
-                  {entry ? formatDuration(entry.totalMs) : "—"}
-                  {isCurrent ? (
-                    <Tooltip>
-                      <TooltipTrigger render={<span className="status-timing-live" />}>
-                        <Clock3 size={10} />
-                      </TooltipTrigger>
-                      <TooltipContent>Status atual — ainda contando.</TooltipContent>
-                    </Tooltip>
-                  ) : null}
-                </span>
+                <span className="status-timing-value">{formatDuration(entry.totalMs)}</span>
               </li>
-            );
-          })}
-        </ul>
-      </div>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -1,10 +1,7 @@
 "use client";
 
-import { Plus, X } from "lucide-react";
-import { useMemo, useState } from "react";
-import { Badge } from "@/components/ui/badge";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Check, Plus } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
 import type { Tag, TagKind } from "@/lib/types";
 
 export function TagPicker({
@@ -22,86 +19,86 @@ export function TagPicker({
   onChange: (ids: string[]) => void;
   onCatalogUpdate: (tag: Tag) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
+  const [isAdding, setIsAdding] = useState(false);
+  const [newLabel, setNewLabel] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const options = useMemo(() => catalog.filter((tag) => tag.kind === kind), [catalog, kind]);
-  const selectedTags = useMemo(() => options.filter((tag) => selectedIds.includes(tag.id)), [options, selectedIds]);
-  const normalizedQuery = query.trim().toLowerCase();
-  const visibleOptions = useMemo(
-    () => options.filter((tag) => !normalizedQuery || tag.label.toLowerCase().includes(normalizedQuery)),
-    [options, normalizedQuery],
-  );
-  const exactMatch = options.some((tag) => tag.label.toLowerCase() === normalizedQuery);
 
   function toggle(id: string) {
     onChange(selectedIds.includes(id) ? selectedIds.filter((item) => item !== id) : [...selectedIds, id]);
   }
 
-  function remove(id: string) {
-    onChange(selectedIds.filter((item) => item !== id));
+  function cancelAdd() {
+    setIsAdding(false);
+    setNewLabel("");
   }
 
-  async function createAndSelect() {
-    if (!query.trim() || isCreating) return;
+  async function submitNew() {
+    const trimmed = newLabel.trim();
+    if (!trimmed || isCreating) return cancelAdd();
+    const existing = options.find((tag) => tag.label.toLowerCase() === trimmed.toLowerCase());
+    if (existing) {
+      if (!selectedIds.includes(existing.id)) onChange([...selectedIds, existing.id]);
+      return cancelAdd();
+    }
     setIsCreating(true);
     const response = await fetch("/api/tags", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind, label: query }),
+      body: JSON.stringify({ kind, label: trimmed }),
     });
     const result = await response.json();
     setIsCreating(false);
-    if (!response.ok) return;
+    if (!response.ok) return cancelAdd();
     onCatalogUpdate(result.tag);
     onChange([...selectedIds, result.tag.id]);
-    setQuery("");
+    cancelAdd();
   }
 
   return (
     <div className="field">
       <label>{label}</label>
-      <div className="tag-picker">
-        {selectedTags.length ? (
-          <div className="tag-picker-chips">
-            {selectedTags.map((tag) => (
-              <Badge key={tag.id} variant="secondary" className="tag-chip">
-                {tag.label}
-                <button type="button" className="tag-chip-remove" onClick={() => remove(tag.id)} aria-label={`Remover ${tag.label}`}>
-                  <X size={11} />
-                </button>
-              </Badge>
-            ))}
-          </div>
-        ) : null}
-        <Popover open={open} onOpenChange={setOpen}>
-          <PopoverTrigger render={<button type="button" className="secondary-button tag-picker-trigger" />}>
-            <Plus size={13} /> Adicionar {label.toLowerCase()}
-          </PopoverTrigger>
-          <PopoverContent align="start" className="tag-picker-content">
-            <Command shouldFilter={false}>
-              <CommandInput value={query} onValueChange={setQuery} placeholder={`Buscar ${label.toLowerCase()}...`} />
-              <CommandList>
-                <CommandEmpty>Nenhuma etiqueta encontrada.</CommandEmpty>
-                <CommandGroup>
-                  {visibleOptions.map((tag) => (
-                    <CommandItem key={tag.id} data-checked={selectedIds.includes(tag.id)} onSelect={() => toggle(tag.id)}>
-                      {tag.label}
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-                {query.trim() && !exactMatch ? (
-                  <CommandGroup>
-                    <CommandItem onSelect={createAndSelect} disabled={isCreating}>
-                      <Plus size={13} /> Criar &quot;{query.trim()}&quot;
-                    </CommandItem>
-                  </CommandGroup>
-                ) : null}
-              </CommandList>
-            </Command>
-          </PopoverContent>
-        </Popover>
+      <div className="pill-row">
+        {options.map((tag) => {
+          const selected = selectedIds.includes(tag.id);
+          return (
+            <button
+              key={tag.id}
+              type="button"
+              className={`tag-pill ${selected ? "selected" : ""}`}
+              onClick={() => toggle(tag.id)}
+              aria-pressed={selected}
+            >
+              {selected ? <Check size={10} /> : null}
+              {tag.label}
+            </button>
+          );
+        })}
+        {isAdding ? (
+          <input
+            ref={inputRef}
+            autoFocus
+            className="tag-pill-input"
+            value={newLabel}
+            onChange={(event) => setNewLabel(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                submitNew();
+              }
+              if (event.key === "Escape") cancelAdd();
+            }}
+            onBlur={cancelAdd}
+            placeholder="Nova etiqueta"
+            maxLength={40}
+          />
+        ) : (
+          <button type="button" className="tag-pill-add" onClick={() => setIsAdding(true)}>
+            <Plus size={10} /> Nova
+          </button>
+        )}
       </div>
     </div>
   );

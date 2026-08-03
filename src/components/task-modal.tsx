@@ -22,6 +22,7 @@ type Draft = {
 };
 
 const NO_ASSIGNEE = "none";
+const NO_PROJECT = "none";
 
 function draftFromTask(task: Task | null, defaultProjectId: string): Draft {
   return {
@@ -82,7 +83,7 @@ export function TaskModal({
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!draft.name.trim()) return setError("Informe o nome da tarefa.");
-    if (!draft.projectId) return setError("Selecione um projeto.");
+    if (!draft.projectId || draft.projectId === NO_PROJECT) return setError("Selecione um projeto.");
     setError("");
     setIsSaving(true);
     const payload = {
@@ -137,38 +138,51 @@ export function TaskModal({
       ? members.find((member) => member.id === task.assigneeId)
       : undefined;
   // Base UI's <Select.Value> só resolve o rótulo se o Root receber esse mapa —
-  // sem isso ele exibe o value bruto (o id do membro) em vez do nome.
+  // sem isso ele exibe o value bruto (id) em vez do nome.
   const assigneeLabels: Record<string, string> = {
     [NO_ASSIGNEE]: "Sem responsável",
     ...Object.fromEntries(assigneeOptions.map((member) => [member.id, member.name])),
     ...(currentInactiveAssignee ? { [currentInactiveAssignee.id]: `${currentInactiveAssignee.name} (inativo)` } : {}),
   };
+  const projectLabels: Record<string, string> = Object.fromEntries(projects.map((project) => [project.id, project.name]));
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-[640px] w-[calc(100%-2rem)] max-h-[min(860px,calc(100vh-3rem))] flex flex-col gap-0 overflow-hidden p-0" showCloseButton>
+      <DialogContent className="!max-w-[560px] w-[calc(100%-2rem)] max-h-[min(820px,calc(100vh-3rem))] flex flex-col gap-0 overflow-hidden p-0" showCloseButton>
         <DialogHeader className="modal-head">
           <DialogTitle className="modal-title">{isEditing ? "Editar tarefa" : "Nova tarefa"}</DialogTitle>
         </DialogHeader>
         <div className="modal-body">
           {error ? <div className="form-message">{error}</div> : null}
           <form id="task-fields-form" onSubmit={save}>
-            <div className="field">
-              <label htmlFor="task-name">Nome da tarefa</label>
-              <input id="task-name" value={draft.name} onChange={(e) => update("name", e.target.value)} placeholder="Ex.: Carrossel institucional" required maxLength={140} />
-            </div>
-            <div className="field-row">
-              <div className="field">
-                <label htmlFor="task-project">Projeto</label>
-                <select id="task-project" value={draft.projectId} onChange={(e) => update("projectId", e.target.value)} required>
-                  <option value="" disabled>Selecione</option>
-                  {projects.map((project) => <option value={project.id} key={project.id}>{project.name}</option>)}
-                </select>
+            <input
+              className="meta-title-input"
+              value={draft.name}
+              onChange={(e) => update("name", e.target.value)}
+              placeholder="Nome da tarefa"
+              required
+              maxLength={140}
+            />
+
+            <div className="meta-rows">
+              <div className="meta-row">
+                <span className="meta-row-label">Projeto</span>
+                <Select items={projectLabels} value={draft.projectId || NO_PROJECT} onValueChange={(value) => update("projectId", value ?? NO_PROJECT)}>
+                  <SelectTrigger className="meta-trigger">
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projects.map((project) => (
+                      <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              <div className="field">
-                <label htmlFor="task-assignee">Responsável</label>
+
+              <div className="meta-row">
+                <span className="meta-row-label">Responsável</span>
                 <Select items={assigneeLabels} value={draft.assigneeId} onValueChange={(value) => update("assigneeId", value ?? NO_ASSIGNEE)}>
-                  <SelectTrigger id="task-assignee" className="select-full">
+                  <SelectTrigger className="meta-trigger">
                     <SelectValue placeholder="Sem responsável" />
                   </SelectTrigger>
                   <SelectContent>
@@ -182,44 +196,42 @@ export function TaskModal({
                   </SelectContent>
                 </Select>
               </div>
-            </div>
 
-            <TaskStatusControl status={draft.status} statusHistory={task?.statusHistory ?? []} onChange={(value) => update("status", value)} />
+              <TaskStatusControl status={draft.status} statusHistory={task?.statusHistory ?? []} onChange={(value) => update("status", value)} />
 
-            <div className="field">
-              <label htmlFor="task-due">Data de entrega</label>
-              <input
-                id="task-due"
-                type="date"
-                value={draft.dueDate}
-                disabled={dateLocked}
-                onChange={(e) => update("dueDate", e.target.value)}
-              />
+              <div className="meta-row">
+                <span className="meta-row-label">Entrega</span>
+                <input
+                  className="meta-date"
+                  type="date"
+                  value={draft.dueDate}
+                  disabled={dateLocked}
+                  onChange={(e) => update("dueDate", e.target.value)}
+                />
+              </div>
               {dateLocked ? (
-                <p className="form-message">
+                <p className="form-message" style={{ marginTop: -4 }}>
                   Esta tarefa está atrasada — a data não pode ser alterada. Mude o status para &quot;Aprovado&quot;, &quot;Problema&quot; ou &quot;Finalizado&quot; se o atraso não depender mais dela.
                 </p>
               ) : null}
             </div>
 
-            <div className="field-row">
-              <TagPicker
-                kind="formato"
-                label="Formato"
-                catalog={catalogFor("formato")}
-                selectedIds={draft.formatTagIds}
-                onChange={(ids) => update("formatTagIds", ids)}
-                onCatalogUpdate={onTagCreated}
-              />
-              <TagPicker
-                kind="canal"
-                label="Canal"
-                catalog={catalogFor("canal")}
-                selectedIds={draft.channelTagIds}
-                onChange={(ids) => update("channelTagIds", ids)}
-                onCatalogUpdate={onTagCreated}
-              />
-            </div>
+            <TagPicker
+              kind="formato"
+              label="Formato"
+              catalog={catalogFor("formato")}
+              selectedIds={draft.formatTagIds}
+              onChange={(ids) => update("formatTagIds", ids)}
+              onCatalogUpdate={onTagCreated}
+            />
+            <TagPicker
+              kind="canal"
+              label="Canal"
+              catalog={catalogFor("canal")}
+              selectedIds={draft.channelTagIds}
+              onChange={(ids) => update("channelTagIds", ids)}
+              onCatalogUpdate={onTagCreated}
+            />
 
             <div className="field">
               <label htmlFor="task-drive">Link (Drive)</label>
@@ -267,7 +279,7 @@ export function TaskModal({
         </div>
         <footer className="modal-actions">
           {isEditing ? (
-            <button type="button" className="danger-button" onClick={remove}><Trash2 size={14} /> Excluir</button>
+            <button type="button" className="danger-button" onClick={remove}><Trash2 size={13} /> Excluir</button>
           ) : <span />}
           <div style={{ display: "flex", gap: 8 }}>
             <button type="button" className="secondary-button" onClick={onClose}>Cancelar</button>

@@ -62,6 +62,8 @@ export function TarefasView({
   });
   const [selectedTask, setSelectedTask] = useState<Task | "new" | null>(null);
   const [toast, setToast] = useState("");
+  const [quickAddTitle, setQuickAddTitle] = useState("");
+  const [isQuickAdding, setIsQuickAdding] = useState(false);
   const { visible: visibleColumns, toggle: toggleColumn } = useTaskColumns();
 
   const projectById = useMemo(() => new Map(initialProjects.map((project) => [project.id, project])), [initialProjects]);
@@ -103,6 +105,24 @@ export function TarefasView({
     setTasks((current) => current.filter((item) => item.id !== id));
     setSelectedTask(null);
     showToast("Tarefa excluída.");
+  }
+
+  async function quickAdd(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = quickAddTitle.trim();
+    const projectId = projectFilter || initialProjects[0]?.id;
+    if (!name || !projectId || isQuickAdding) return;
+    setIsQuickAdding(true);
+    const response = await fetch("/api/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, projectId }),
+    });
+    const result = await response.json();
+    setIsQuickAdding(false);
+    if (!response.ok) return showToast(result.error || "Não foi possível criar a tarefa.");
+    setTasks((current) => [result.task, ...current]);
+    setQuickAddTitle("");
   }
 
   function handleTagCreated(tag: Tag) {
@@ -200,39 +220,51 @@ export function TarefasView({
           </div>
 
           {view === "lista" ? (
-            filteredTasks.length ? (
-              <div className="project-table-wrap">
-                <table className="task-table">
-                  <thead>
-                    <tr>
-                      <th>Tarefa</th>
-                      {TASK_COLUMNS.filter((column) => visibleColumns.includes(column.key)).map((column) => (
-                        <th key={column.key}>{column.label}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredTasks.map((task) => (
-                      <tr key={task.id} onClick={() => setSelectedTask(task)}>
-                        <td>
-                          <span className="task-name">{task.name}</span>
-                          <span className="task-project">{projectById.get(task.projectId)?.name || "Sem projeto"}</span>
-                        </td>
+            <>
+              {filteredTasks.length ? (
+                <div className="project-table-wrap">
+                  <table className="task-table">
+                    <thead>
+                      <tr>
+                        <th>Tarefa</th>
                         {TASK_COLUMNS.filter((column) => visibleColumns.includes(column.key)).map((column) => (
-                          <td key={column.key}>{renderColumn(column.key, task)}</td>
+                          <th key={column.key}>{column.label}</th>
                         ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="empty-state">
-                <CheckSquare size={35} />
-                <h3>Nenhuma tarefa encontrada</h3>
-                <p>Ajuste os filtros ou crie a primeira tarefa deste projeto.</p>
-              </div>
-            )
+                    </thead>
+                    <tbody>
+                      {filteredTasks.map((task) => (
+                        <tr key={task.id} onClick={() => setSelectedTask(task)}>
+                          <td>
+                            <span className="task-name">{task.name}</span>
+                            <span className="task-project">{projectById.get(task.projectId)?.name || "Sem projeto"}</span>
+                          </td>
+                          {TASK_COLUMNS.filter((column) => visibleColumns.includes(column.key)).map((column) => (
+                            <td key={column.key}>{renderColumn(column.key, task)}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="empty-state">
+                  <CheckSquare size={35} />
+                  <h3>Nenhuma tarefa encontrada</h3>
+                  <p>Ajuste os filtros ou crie a primeira tarefa deste projeto.</p>
+                </div>
+              )}
+              <form className="task-quick-add" onSubmit={quickAdd}>
+                <Plus size={14} color="var(--muted-text)" />
+                <input
+                  value={quickAddTitle}
+                  onChange={(e) => setQuickAddTitle(e.target.value)}
+                  placeholder="Adicionar tarefa rápida e apertar Enter..."
+                  maxLength={140}
+                  disabled={isQuickAdding}
+                />
+              </form>
+            </>
           ) : (
             <>
               <div className="calendar-summary">
