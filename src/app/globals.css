@@ -112,6 +112,18 @@ h1 { margin-bottom: 10px; font-size: clamp(30px, 4.4vw, 48px); line-height: 1.05
 .icon-button { width: 32px; min-height: 32px; padding: 0; background: white; color: #4e574f; border: 1px solid var(--line); }
 .icon-button:hover { border-color: #aab2aa; color: var(--dark); }
 
+/* ---------- Autenticação (login / esqueci senha / nova senha) ---------- */
+.auth-shell { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: #101010; }
+.auth-card { width: 100%; max-width: 380px; padding: 34px 32px 30px; background: #fff; border: 1px solid #29252f; }
+.auth-logo { width: 108px; height: auto; margin-bottom: 22px; }
+.auth-card h1 { font-size: 20px; margin-bottom: 6px; }
+.auth-card > p { color: var(--muted-text); font-size: 12.5px; margin-bottom: 22px; line-height: 1.5; }
+.auth-form { display: grid; gap: 14px; }
+.auth-links { margin-top: 16px; display: flex; justify-content: space-between; align-items: center; font-size: 11.5px; }
+.auth-links a { color: var(--muted-text); text-decoration: none; }
+.auth-links a:hover { color: var(--brand-strong); }
+.auth-success { border-left: 4px solid var(--approved); background: #f4f9eb; color: #3d5713; padding: 10px 12px; font-size: 12px; line-height: 1.5; }
+
 /* ---------- Estrutura administrativa ---------- */
 .admin-shell { min-height: 100vh; }
 .admin-sidebar { position: fixed; z-index: 40; inset: 0 auto 0 0; width: 240px; display: flex; flex-direction: column; padding: 24px 18px 20px; background: #101010; color: #fff; border-right: 1px solid #29252f; }
@@ -128,7 +140,11 @@ h1 { margin-bottom: 10px; font-size: clamp(30px, 4.4vw, 48px); line-height: 1.05
 .admin-nav a:hover { color: #fff; background: #ffffff0b; }
 .admin-nav a.active { color: #fff; border-color: #6f3cdf; background: #8e48ff24; }
 .admin-nav a.active svg { color: #a970ff; }
-.admin-sidebar-note { margin: auto 4px 0; color: #77727e; font-size: 10px; line-height: 1.55; }
+.admin-user { margin-top: auto; padding: 13px 4px 4px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border-top: 1px solid #29252f; }
+.admin-user strong { display: block; color: #fff; font-size: 12px; }
+.admin-user small { display: block; margin-top: 2px; color: #8a8590; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
+.admin-user-signout { flex: none; width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid #ffffff20; background: transparent; color: #b6b1bd; cursor: pointer; }
+.admin-user-signout:hover { color: #fff; border-color: #ffffff40; }
 .admin-main { min-height: 100vh; margin-left: 240px; }
 .admin-page { width: min(1360px, calc(100% - 56px)); margin: 0 auto; }
 .admin-mobile-bar { display: none; }

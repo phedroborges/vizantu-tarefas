@@ -1,13 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
+import { filterTasksByAccess, isResponse, requireUser } from "@/lib/authz";
 import { createTask, listTasks } from "@/lib/storage";
 import { TASK_STATUSES } from "@/lib/types";
 
 export async function GET() {
+  const auth = await requireUser();
+  if (isResponse(auth)) return auth;
   const tasks = await listTasks();
-  return NextResponse.json({ tasks });
+  return NextResponse.json({ tasks: filterTasksByAccess(tasks, auth.accessibleProjectIds) });
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireUser(["dono", "editor"]);
+  if (isResponse(auth)) return auth;
   const body = await request.json();
   if (!body?.name || typeof body.name !== "string" || !body.name.trim()) {
     return NextResponse.json({ error: "Informe o nome da tarefa." }, { status: 400 });

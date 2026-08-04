@@ -9,7 +9,15 @@ function statusLabel(status: ProjectStatus) {
   return PROJECT_STATUSES.find((item) => item.value === status)?.label || status;
 }
 
-export function ProjetosView({ initialProjects, initialTasks }: { initialProjects: Project[]; initialTasks: Task[] }) {
+export function ProjetosView({
+  initialProjects,
+  initialTasks,
+  canEdit = true,
+}: {
+  initialProjects: Project[];
+  initialTasks: Task[];
+  canEdit?: boolean;
+}) {
   const [projects, setProjects] = useState(initialProjects);
   const [name, setName] = useState("");
   const [client, setClient] = useState("");
@@ -104,36 +112,38 @@ export function ProjetosView({ initialProjects, initialTasks }: { initialProject
             <div className="stat" style={{ background: "white", minWidth: 132, padding: "15px 18px" }}><strong>{projects.length}</strong><span>projetos</span></div>
           </div>
         </div>
-        <div className="split-layout">
-          <section className="panel">
-            <div className="panel-head">
-              <div>
-                <h2>{editingId ? "Editar projeto" : "Novo projeto"}</h2>
-                <p>{editingId ? "Atualize os dados do projeto." : "Cadastre um novo cliente ou projeto interno."}</p>
+        <div className="split-layout" style={!canEdit ? { gridTemplateColumns: "1fr" } : undefined}>
+          {canEdit ? (
+            <section className="panel">
+              <div className="panel-head">
+                <div>
+                  <h2>{editingId ? "Editar projeto" : "Novo projeto"}</h2>
+                  <p>{editingId ? "Atualize os dados do projeto." : "Cadastre um novo cliente ou projeto interno."}</p>
+                </div>
               </div>
-            </div>
-            <form className="modal-body" onSubmit={submit} style={{ padding: "24px 25px 27px" }}>
-              {error ? <div className="form-message">{error}</div> : null}
-              <div className="field">
-                <label htmlFor="project-name">Nome do projeto</label>
-                <input id="project-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Tawper" required maxLength={120} />
-              </div>
-              <div className="field">
-                <label htmlFor="project-client">Cliente</label>
-                <input id="project-client" value={client} onChange={(e) => setClient(e.target.value)} placeholder="Opcional" maxLength={120} />
-              </div>
-              <div className="field">
-                <label htmlFor="project-status">Status</label>
-                <select id="project-status" value={status} onChange={(e) => setStatus(e.target.value as ProjectStatus)}>
-                  {PROJECT_STATUSES.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}
-                </select>
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button className="primary-button" type="submit" disabled={isSaving} style={{ flex: 1 }}>{isSaving ? "Salvando..." : editingId ? "Salvar alterações" : "Criar projeto"}</button>
-                {editingId ? <button className="secondary-button" type="button" onClick={resetForm}><X size={15} /></button> : null}
-              </div>
-            </form>
-          </section>
+              <form className="modal-body" onSubmit={submit} style={{ padding: "24px 25px 27px" }}>
+                {error ? <div className="form-message">{error}</div> : null}
+                <div className="field">
+                  <label htmlFor="project-name">Nome do projeto</label>
+                  <input id="project-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Tawper" required maxLength={120} />
+                </div>
+                <div className="field">
+                  <label htmlFor="project-client">Cliente</label>
+                  <input id="project-client" value={client} onChange={(e) => setClient(e.target.value)} placeholder="Opcional" maxLength={120} />
+                </div>
+                <div className="field">
+                  <label htmlFor="project-status">Status</label>
+                  <select id="project-status" value={status} onChange={(e) => setStatus(e.target.value as ProjectStatus)}>
+                    {PROJECT_STATUSES.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}
+                  </select>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button className="primary-button" type="submit" disabled={isSaving} style={{ flex: 1 }}>{isSaving ? "Salvando..." : editingId ? "Salvar alterações" : "Criar projeto"}</button>
+                  {editingId ? <button className="secondary-button" type="button" onClick={resetForm}><X size={15} /></button> : null}
+                </div>
+              </form>
+            </section>
+          ) : null}
 
           <section className="panel list-panel">
             <div className="toolbar">
@@ -157,8 +167,12 @@ export function ProjetosView({ initialProjects, initialTasks }: { initialProject
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-end" }}>
                         <span className={`status ${project.status === "concluido" ? "feita" : project.status === "pausado" ? "atrasada" : "em_andamento"}`}>{statusLabel(project.status)}</span>
-                        <button className="icon-button" type="button" onClick={() => startEdit(project)} title="Editar" aria-label={`Editar ${project.name}`}><Pencil size={14} /></button>
-                        <button className="icon-button" type="button" onClick={() => remove(project)} title="Excluir" aria-label={`Excluir ${project.name}`}><Trash2 size={14} /></button>
+                        {canEdit ? (
+                          <>
+                            <button className="icon-button" type="button" onClick={() => startEdit(project)} title="Editar" aria-label={`Editar ${project.name}`}><Pencil size={14} /></button>
+                            <button className="icon-button" type="button" onClick={() => remove(project)} title="Excluir" aria-label={`Excluir ${project.name}`}><Trash2 size={14} /></button>
+                          </>
+                        ) : null}
                       </div>
                     </li>
                   );

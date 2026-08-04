@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isResponse, requireUser } from "@/lib/authz";
 import { getSupabase, getSupabaseStorageBucket } from "@/lib/supabase-client";
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
@@ -11,6 +12,9 @@ const EXTENSION_BY_MIME: Record<string, string> = {
 };
 
 export async function POST(request: NextRequest) {
+  const auth = await requireUser();
+  if (isResponse(auth)) return auth;
+  if (!auth.aiEnabled) return NextResponse.json({ error: "O assistente de IA não está disponível para o seu usuário." }, { status: 403 });
   const formData = await request.formData();
   const file = formData.get("file");
   if (!(file instanceof File)) {

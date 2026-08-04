@@ -69,3 +69,29 @@ create table if not exists assistant_conversations (
 -- painel do Supabase — Storage > New bucket — marcado como "Public", com o
 -- mesmo nome que você colocar em SUPABASE_STORAGE_BUCKET no .env; o padrão
 -- que o app espera é "vizantu-tarefas-uploads").
+
+-- ---------- Autenticação + papéis (rodar depois do bloco acima) ----------
+-- A partir daqui, members.id É o auth.users.id — todo membro novo é criado via
+-- supabase.auth.admin.createUser() e o insert em members usa o MESMO id.
+
+alter table members
+  add column if not exists email text,
+  add column if not exists role text not null default 'editor'
+    check (role in ('dono', 'editor', 'visualizador')),
+  add column if not exists ai_enabled boolean not null default false;
+
+create unique index if not exists members_email_idx on members (lower(email)) where email is not null;
+
+-- members está vazia neste projeto (confirmado antes de aplicar isto) — não
+-- há necessidade de re-chavear nenhuma linha existente pra bater com o
+-- auth.users.
+alter table members
+  add constraint members_id_fkey foreign key (id) references auth.users(id) on delete cascade;
+
+create table if not exists project_access (
+  member_id uuid not null references members(id) on delete cascade,
+  project_id uuid not null references projects(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (member_id, project_id)
+);
+create index if not exists project_access_member_id_idx on project_access(member_id);

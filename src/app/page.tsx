@@ -1,7 +1,9 @@
 import { AlertTriangle, CheckCircle2, Clock3, ListTodo } from "lucide-react";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { AdminShell } from "@/components/admin-shell";
 import { formatDueDate, isOverdue } from "@/lib/dates";
+import { getCurrentUser } from "@/lib/current-user";
 import { listMembers, listProjects, listTasks } from "@/lib/storage";
 import { TASK_STATUSES } from "@/lib/types";
 
@@ -12,7 +14,12 @@ function groupOf(status: string) {
 }
 
 export default async function Home() {
-  const [tasks, projects, members] = await Promise.all([listTasks(), listProjects(), listMembers()]);
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+
+  const [allTasks, allProjects, members] = await Promise.all([listTasks(), listProjects(), listMembers()]);
+  const tasks = user.accessibleProjectIds === "all" ? allTasks : allTasks.filter((t) => user.accessibleProjectIds.includes(t.projectId));
+  const projects = user.accessibleProjectIds === "all" ? allProjects : allProjects.filter((p) => user.accessibleProjectIds.includes(p.id));
   const memberById = new Map(members.map((member) => [member.id, member]));
 
   const total = tasks.length;
@@ -46,7 +53,7 @@ export default async function Home() {
   });
 
   return (
-    <AdminShell active="dashboard">
+    <AdminShell active="dashboard" user={user}>
       <main className="admin-page dashboard">
         <div className="dashboard-head">
           <div>

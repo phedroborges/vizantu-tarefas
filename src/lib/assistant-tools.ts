@@ -15,6 +15,7 @@ import {
   updateTask,
   DueDateLockedError,
 } from "./storage";
+import type { CurrentUser } from "./current-user";
 import { DONE_STATUSES, TASK_STATUSES, type Member, type Project, type TagKind, type Task, type TaskStatus } from "./types";
 
 // Marcador especial: quando o modelo pede pra excluir uma tarefa, NÃO apagamos
@@ -78,8 +79,16 @@ function summarizeTask(task: Task, projectById: Map<string, Project>, memberById
   };
 }
 
-async function loadContext() {
-  const [tasks, projects, members] = await Promise.all([listTasks(), listProjects(), listMembers()]);
+// Escopa tasks/projects pelo acesso do caller (dono/editor = "all", sem
+// filtro; visualizador = só os projetos liberados) — um só lugar pra isso,
+// então list_tasks/create_task/update_task/get_deadlines_summary/list_projects
+// ganham escopo de graça só recebendo `caller`.
+async function loadContext(caller: CurrentUser) {
+  const [allTasks, allProjects, members] = await Promise.all([listTasks(), listProjects(), listMembers()]);
+  const projects =
+    caller.accessibleProjectIds === "all" ? allProjects : allProjects.filter((p) => (caller.accessibleProjectIds as string[]).includes(p.id));
+  const visibleProjectIds = new Set(projects.map((p) => p.id));
+  const tasks = caller.accessibleProjectIds === "all" ? allTasks : allTasks.filter((t) => visibleProjectIds.has(t.projectId));
   return {
     tasks,
     projects,
@@ -91,8 +100,11 @@ async function loadContext() {
 
 // ---------- Implementações ----------
 
-async function toolListTasks(args: { query?: string; projectName?: string; assigneeName?: string; status?: string; overdueOnly?: boolean }) {
-  const { tasks, projects, members, projectById, memberById } = await loadContext();
+async function toolListTasks(
+  args: { query?: string; projectName?: string; assigneeName?: string; status?: string; overdueOnly?: boolean },
+  caller: CurrentUser,
+) {
+  const { tasks, projects, members, projectById, memberById } = await loadContext(caller);
   const projectId = await resolveProjectId(args.projectName, projects);
   const assigneeId = await resolveAssigneeId(args.assigneeName, members);
   const statusValue = TASK_STATUSES.find((item) => item.value === args.status || item.label.toLowerCase() === args.status?.toLowerCase())?.value;
@@ -110,10 +122,13 @@ async function toolListTasks(args: { query?: string; projectName?: string; assig
   return { count: filtered.length, tasks: filtered.map((task) => summarizeTask(task, projectById, memberById)) };
 }
 
-async function toolGetTask(args: { taskId: string }) {
+async function toolGetTask(args: { taskId: string }, caller: CurrentUser) {
   const task = await getTask(args.taskId);
   if (!task) return { error: "Tarefa não encontrada." };
-  const [formatTags, channelTags, { projectById, memberById }] = await Promise.all([listTags("formato"), listTags("canal"), loadContext()]);
+  if (caller.accessibleProjectIds !== "all" && !caller.accessibleProjectIds.includes(task.projectId)) {
+    return { error: "Essa tarefa está fora do seu acesso." };
+  }
+  const [formatTags, channelTags, { projectById, memberById }] = await Promise.all([listTags("formato"), listTags("canal"), loadContext(caller)]);
   const formatTagById = new Map(formatTags.map((t) => [t.id, t]));
   const channelTagById = new Map(channelTags.map((t) => [t.id, t]));
   const durations = summarizeStatusDurations(task.statusHistory).map((entry) => ({
@@ -133,17 +148,20 @@ async function toolGetTask(args: { taskId: string }) {
   };
 }
 
-async function toolCreateTask(args: {
-  name: string;
-  projectName: string;
-  assigneeName?: string;
-  dueDate?: string;
-  formatLabels?: string[];
-  channelLabels?: string[];
-  description?: string;
-  status?: string;
-}) {
-  const { projects, members, projectById, memberById } = await loadContext();
+async function toolCreateTask(
+  args: {
+    name: string;
+    projectName: string;
+    assigneeName?: string;
+    dueDate?: string;
+    formatLabels?: string[];
+    channelLabels?: string[];
+    description?: string;
+    status?: string;
+  },
+  caller: CurrentUser,
+) {
+  const { projects, members, projectById, memberById } = await loadContext(caller);
   const projectId = await resolveProjectId(args.projectName, projects);
   if (!projectId) return { error: `Projeto "${args.projectName}" não encontrado. Projetos existentes: ${projects.map((p) => p.name).join(", ")}` };
   const assigneeId = await resolveAssigneeId(args.assigneeName, members);
@@ -166,19 +184,22 @@ async function toolCreateTask(args: {
 
 const CLEAR_ASSIGNEE_WORDS = ["ninguém", "ninguem", "nenhum", "sem responsável", "sem responsavel", "remover responsável", "remover responsavel"];
 
-async function toolUpdateTask(args: {
-  taskId: string;
-  name?: string;
-  projectName?: string;
-  assigneeName?: string;
-  dueDate?: string;
-  formatLabels?: string[];
-  channelLabels?: string[];
-  description?: string;
-  driveLink?: string;
-  status?: string;
-}) {
-  const { projects, members, projectById, memberById } = await loadContext();
+async function toolUpdateTask(
+  args: {
+    taskId: string;
+    name?: string;
+    projectName?: string;
+    assigneeName?: string;
+    dueDate?: string;
+    formatLabels?: string[];
+    channelLabels?: string[];
+    description?: string;
+    driveLink?: string;
+    status?: string;
+  },
+  caller: CurrentUser,
+) {
+  const { projects, members, projectById, memberById } = await loadContext(caller);
   const patch: Parameters<typeof updateTask>[1] = {};
   if (args.name !== undefined) patch.name = args.name;
   if (args.dueDate !== undefined) patch.dueDate = args.dueDate;
@@ -304,8 +325,8 @@ async function toolUpsertKnowledgeDoc(args: { title: string; content: string }) 
   return { saved: { id: created.id, title: created.title }, created: true };
 }
 
-async function toolGetDeadlinesSummary(args: { withinDays?: number }) {
-  const { tasks, projectById, memberById } = await loadContext();
+async function toolGetDeadlinesSummary(args: { withinDays?: number }, caller: CurrentUser) {
+  const { tasks, projectById, memberById } = await loadContext(caller);
   const withinDays = args.withinDays ?? 7;
   const today = todayIso();
   const limitDate = new Date();
@@ -323,8 +344,8 @@ async function toolGetDeadlinesSummary(args: { withinDays?: number }) {
   };
 }
 
-async function toolListProjects() {
-  const projects = await listProjects();
+async function toolListProjects(caller: CurrentUser) {
+  const { projects } = await loadContext(caller);
   return { projects: projects.map((p) => ({ name: p.name, client: p.client || null, status: p.status })) };
 }
 
@@ -496,25 +517,32 @@ export const ASSISTANT_TOOLS: ChatCompletionTool[] = [
   },
 ];
 
-export async function executeTool(name: string, rawArgs: string): Promise<unknown> {
+// Ferramentas que alteram dado — bloqueadas de vez pra "visualizador" antes
+// mesmo de decidir qual é (um guard só, não um if por função).
+const MUTATING_TOOLS = new Set(["create_task", "update_task", "delete_task", "add_comment", "upsert_knowledge_doc"]);
+
+export async function executeTool(name: string, rawArgs: string, caller: CurrentUser): Promise<unknown> {
+  if (MUTATING_TOOLS.has(name) && caller.role === "visualizador") {
+    return { error: "Seu acesso é somente leitura — peça a um editor ou dono do time pra fazer essa alteração." };
+  }
   const args = rawArgs ? JSON.parse(rawArgs) : {};
   switch (name) {
     case "list_tasks":
-      return toolListTasks(args);
+      return toolListTasks(args, caller);
     case "get_task":
-      return toolGetTask(args);
+      return toolGetTask(args, caller);
     case "create_task":
-      return toolCreateTask(args);
+      return toolCreateTask(args, caller);
     case "update_task":
-      return toolUpdateTask(args);
+      return toolUpdateTask(args, caller);
     case "delete_task":
       return toolDeleteTask(args);
     case "add_comment":
       return toolAddComment(args);
     case "get_deadlines_summary":
-      return toolGetDeadlinesSummary(args);
+      return toolGetDeadlinesSummary(args, caller);
     case "list_projects":
-      return toolListProjects();
+      return toolListProjects(caller);
     case "list_members":
       return toolListMembers();
     case "search_knowledge_docs":

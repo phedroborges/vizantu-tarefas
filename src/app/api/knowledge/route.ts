@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isResponse, requireUser } from "@/lib/authz";
 import { createKnowledgeDoc, listKnowledgeDocs } from "@/lib/storage";
 
 export async function GET() {
+  const auth = await requireUser(["dono", "editor"]);
+  if (isResponse(auth)) return auth;
   const docs = await listKnowledgeDocs();
   return NextResponse.json({ docs });
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireUser(["dono", "editor"]);
+  if (isResponse(auth)) return auth;
   const body = await request.json();
   if (!body?.title || typeof body.title !== "string" || !body.title.trim()) {
     return NextResponse.json({ error: "Informe o título do documento." }, { status: 400 });

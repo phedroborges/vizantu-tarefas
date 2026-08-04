@@ -46,6 +46,7 @@ export function TaskModal({
   formatTags,
   channelTags,
   defaultProjectId,
+  canEdit = true,
   onClose,
   onSaved,
   onDeleted,
@@ -57,6 +58,7 @@ export function TaskModal({
   formatTags: Tag[];
   channelTags: Tag[];
   defaultProjectId: string;
+  canEdit?: boolean;
   onClose: () => void;
   onSaved: (task: Task) => void;
   onDeleted: (id: string) => void;
@@ -322,27 +324,31 @@ export function TaskModal({
               ) : (
                 <p style={{ margin: 0, color: "var(--muted-text)", fontSize: 11 }}>Nenhum comentário ainda.</p>
               )}
-              <form className="comment-form" onSubmit={sendComment} style={{ marginTop: 10 }}>
-                <input
-                  value={commentAuthor}
-                  onChange={(e) => setCommentAuthor(e.target.value)}
-                  placeholder="Seu nome"
-                  style={{ maxWidth: 130 }}
-                  maxLength={60}
-                />
-                <input value={commentText} onChange={(e) => setCommentText(e.target.value)} placeholder="Escreva um comentário" maxLength={600} />
-                <button className="icon-button" type="submit" disabled={isSendingComment || !commentText.trim()} aria-label="Enviar comentário"><Send size={15} /></button>
-              </form>
+              {canEdit ? (
+                <form className="comment-form" onSubmit={sendComment} style={{ marginTop: 10 }}>
+                  <input
+                    value={commentAuthor}
+                    onChange={(e) => setCommentAuthor(e.target.value)}
+                    placeholder="Seu nome"
+                    style={{ maxWidth: 130 }}
+                    maxLength={60}
+                  />
+                  <input value={commentText} onChange={(e) => setCommentText(e.target.value)} placeholder="Escreva um comentário" maxLength={600} />
+                  <button className="icon-button" type="submit" disabled={isSendingComment || !commentText.trim()} aria-label="Enviar comentário"><Send size={15} /></button>
+                </form>
+              ) : null}
             </div>
           ) : null}
         </div>
         <footer className="modal-actions">
-          {isEditing ? (
+          {isEditing && canEdit ? (
             <button type="button" className="danger-button" onClick={remove}><Trash2 size={13} /> Excluir</button>
           ) : <span />}
           <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" className="secondary-button" onClick={onClose}>Cancelar</button>
-            <button type="submit" form="task-fields-form" className="primary-button" disabled={isSaving}>{isSaving ? "Salvando..." : "Salvar"}</button>
+            <button type="button" className="secondary-button" onClick={onClose}>{canEdit ? "Cancelar" : "Fechar"}</button>
+            {canEdit ? (
+              <button type="submit" form="task-fields-form" className="primary-button" disabled={isSaving}>{isSaving ? "Salvando..." : "Salvar"}</button>
+            ) : null}
           </div>
         </footer>
       </DialogContent>

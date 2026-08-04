@@ -15,11 +15,22 @@ export const PROJECT_STATUSES: { value: ProjectStatus; label: string }[] = [
   { value: "concluido", label: "Concluído" },
 ];
 
-// ---------- Membros ----------
+// ---------- Membros (= usuários com login) ----------
+
+export type UserRole = "dono" | "editor" | "visualizador";
+
+export const USER_ROLES: { value: UserRole; label: string }[] = [
+  { value: "dono", label: "Dono" },
+  { value: "editor", label: "Editor" },
+  { value: "visualizador", label: "Visualizador" },
+];
 
 export type Member = {
   id: string;
   name: string;
+  email: string;
+  role: UserRole;
+  aiEnabled: boolean;
   active: boolean;
   createdAt: string;
   updatedAt: string;

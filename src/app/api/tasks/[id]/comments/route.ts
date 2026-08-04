@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isResponse, requireUser } from "@/lib/authz";
 import { addComment } from "@/lib/storage";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireUser(["dono", "editor"]);
+  if (isResponse(auth)) return auth;
   const { id } = await params;
   const body = await request.json();
   if (!body?.text || typeof body.text !== "string" || !body.text.trim()) {

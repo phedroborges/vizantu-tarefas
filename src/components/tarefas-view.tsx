@@ -42,12 +42,14 @@ export function TarefasView({
   initialMembers,
   initialFormatTags,
   initialChannelTags,
+  canEdit = true,
 }: {
   initialTasks: Task[];
   initialProjects: Project[];
   initialMembers: Member[];
   initialFormatTags: Tag[];
   initialChannelTags: Tag[];
+  canEdit?: boolean;
 }) {
   const [tasks, setTasks] = useState(initialTasks);
   const [formatTags, setFormatTags] = useState(initialFormatTags);
@@ -199,9 +201,11 @@ export function TarefasView({
             <h1>Tarefas</h1>
             <p>Acompanhe todas as demandas do time em uma lista única ou pelo calendário de entregas.</p>
           </div>
-          <button className="primary-button" type="button" onClick={() => setSelectedTask("new")}>
-            <Plus size={16} /> Nova tarefa
-          </button>
+          {canEdit ? (
+            <button className="primary-button" type="button" onClick={() => setSelectedTask("new")}>
+              <Plus size={16} /> Nova tarefa
+            </button>
+          ) : null}
         </div>
 
         <section className="panel">
@@ -273,16 +277,18 @@ export function TarefasView({
                   <p>Ajuste os filtros ou crie a primeira tarefa deste projeto.</p>
                 </div>
               )}
-              <form className="task-quick-add" onSubmit={quickAdd}>
-                <Plus size={14} color="var(--muted-text)" />
-                <input
-                  value={quickAddTitle}
-                  onChange={(e) => setQuickAddTitle(e.target.value)}
-                  placeholder="Adicionar tarefa rápida e apertar Enter..."
-                  maxLength={140}
-                  disabled={isQuickAdding}
-                />
-              </form>
+              {canEdit ? (
+                <form className="task-quick-add" onSubmit={quickAdd}>
+                  <Plus size={14} color="var(--muted-text)" />
+                  <input
+                    value={quickAddTitle}
+                    onChange={(e) => setQuickAddTitle(e.target.value)}
+                    placeholder="Adicionar tarefa rápida e apertar Enter..."
+                    maxLength={140}
+                    disabled={isQuickAdding}
+                  />
+                </form>
+              ) : null}
             </>
           ) : (
             <>
@@ -346,6 +352,7 @@ export function TarefasView({
           formatTags={formatTags}
           channelTags={channelTags}
           defaultProjectId={projectFilter || initialProjects[0]?.id || ""}
+          canEdit={canEdit}
           onClose={() => setSelectedTask(null)}
           onSaved={handleSaved}
           onDeleted={handleDeleted}

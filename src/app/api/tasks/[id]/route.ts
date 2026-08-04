@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isResponse, requireUser } from "@/lib/authz";
 import { DueDateLockedError, deleteTask, updateTask } from "@/lib/storage";
 import { TASK_STATUSES } from "@/lib/types";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireUser(["dono", "editor"]);
+  if (isResponse(auth)) return auth;
   const { id } = await params;
   const body = await request.json();
   if (body.status !== undefined && !TASK_STATUSES.some((status) => status.value === body.status)) {
@@ -31,6 +34,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 }
 
 export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireUser(["dono", "editor"]);
+  if (isResponse(auth)) return auth;
   const { id } = await params;
   const removed = await deleteTask(id);
   if (!removed) return NextResponse.json({ error: "Tarefa não encontrada." }, { status: 404 });

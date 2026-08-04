@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { ASSISTANT_TOOLS, PendingDeleteConfirmation, executeTool } from "@/lib/assistant-tools";
+import { isResponse, requireUser } from "@/lib/authz";
 import { todayIso } from "@/lib/dates";
 import { appendAssistantMessages, deleteTask, getAssistantConversation, listKnowledgeDocs } from "@/lib/storage";
 import { buildMessageContent } from "@/lib/vision-content";
@@ -19,7 +20,10 @@ const KNOWLEDGE_TITLE_LISTING_THRESHOLD = 40;
 
 // Resumo de prazos ao abrir o widget — cálculo local, zero chamadas à OpenAI.
 export async function GET() {
-  const summary = (await executeTool("get_deadlines_summary", "{}")) as {
+  const auth = await requireUser();
+  if (isResponse(auth)) return auth;
+  if (!auth.aiEnabled) return NextResponse.json({ overdue: [], upcoming: [] });
+  const summary = (await executeTool("get_deadlines_summary", "{}", auth)) as {
     overdue: { name: string }[];
     upcoming: { name: string }[];
   };
@@ -57,6 +61,9 @@ Como agir:
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireUser();
+  if (isResponse(auth)) return auth;
+
   const body = await request.json();
   const conversationId = typeof body.conversationId === "string" ? body.conversationId : undefined;
 
@@ -70,9 +77,17 @@ export async function POST(request: NextRequest) {
   }
 
   // Atalho de confirmação de exclusão — não passa pela OpenAI, custo zero.
+  // Ainda assim é uma mutação: visualizador não pode confirmar.
   if (body.confirmDeleteTaskId) {
+    if (auth.role === "visualizador") {
+      return NextResponse.json({ error: "Seu acesso é somente leitura." }, { status: 403 });
+    }
     const removed = await deleteTask(body.confirmDeleteTaskId);
     return finish(removed ? "Tarefa excluída." : "Não encontrei essa tarefa — talvez já tenha sido excluída.");
+  }
+
+  if (!auth.aiEnabled) {
+    return NextResponse.json({ error: "O assistente de IA não está disponível para o seu usuário." }, { status: 403 });
   }
 
   const apiKey = process.env.OPENAI_API_KEY;
@@ -134,7 +149,7 @@ export async function POST(request: NextRequest) {
 
     for (const toolCall of responseMessage.tool_calls) {
       if (toolCall.type !== "function") continue;
-      const result = await executeTool(toolCall.function.name, toolCall.function.arguments);
+      const result = await executeTool(toolCall.function.name, toolCall.function.arguments, auth);
 
       if (result instanceof PendingDeleteConfirmation) {
         // Corta o loop aqui — a frase é montada localmente (sem custo extra

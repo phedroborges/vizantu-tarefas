@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isResponse, requireUser } from "@/lib/authz";
 import { createTag, listTags } from "@/lib/storage";
 import type { TagKind } from "@/lib/types";
 
 const VALID_KINDS: TagKind[] = ["formato", "canal"];
 
 export async function GET(request: NextRequest) {
+  const auth = await requireUser();
+  if (isResponse(auth)) return auth;
   const kindParam = request.nextUrl.searchParams.get("kind");
   if (kindParam && !VALID_KINDS.includes(kindParam as TagKind)) {
     return NextResponse.json({ error: "Tipo de etiqueta inválido." }, { status: 400 });
@@ -14,6 +17,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireUser(["dono", "editor"]);
+  if (isResponse(auth)) return auth;
   const body = await request.json();
   if (!VALID_KINDS.includes(body?.kind)) {
     return NextResponse.json({ error: "Tipo de etiqueta inválido." }, { status: 400 });

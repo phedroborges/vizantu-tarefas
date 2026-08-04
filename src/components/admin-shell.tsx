@@ -1,11 +1,14 @@
 "use client";
 
-import { BarChart3, BookOpen, CheckSquare, Folders, Menu, Sparkles, Users, X } from "lucide-react";
+import { BarChart3, BookOpen, CheckSquare, Folders, LogOut, Menu, Sparkles, Users, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { AiAssistant } from "@/components/ai-assistant";
+import type { CurrentUser } from "@/lib/current-user";
 import { PageContextProvider } from "@/lib/page-context";
+import { createClient } from "@/lib/supabase/browser-client";
 
 export type AdminShellActive = "dashboard" | "projetos" | "tarefas" | "membros" | "conhecimento" | "assistente";
 
@@ -20,12 +23,21 @@ const PAGE_LABELS: Record<AdminShellActive, string> = {
 
 export function AdminShell({
   active,
+  user,
   children,
 }: {
   active: AdminShellActive;
+  user: CurrentUser;
   children: React.ReactNode;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const router = useRouter();
+
+  async function signOut() {
+    await createClient().auth.signOut();
+    router.push("/login");
+    router.refresh();
+  }
 
   return (
     <PageContextProvider page={PAGE_LABELS[active]}>
@@ -58,20 +70,34 @@ export function AdminShell({
             <CheckSquare size={18} />
             <span>Tarefas</span>
           </Link>
-          <Link className={active === "membros" ? "active" : ""} href="/membros" onClick={() => setMenuOpen(false)}>
-            <Users size={18} />
-            <span>Membros</span>
-          </Link>
-          <Link className={active === "conhecimento" ? "active" : ""} href="/conhecimento" onClick={() => setMenuOpen(false)}>
-            <BookOpen size={18} />
-            <span>Base de conhecimento</span>
-          </Link>
-          <Link className={active === "assistente" ? "active" : ""} href="/assistente" onClick={() => setMenuOpen(false)}>
-            <Sparkles size={18} />
-            <span>Assistente</span>
-          </Link>
+          {user.role === "dono" ? (
+            <Link className={active === "membros" ? "active" : ""} href="/membros" onClick={() => setMenuOpen(false)}>
+              <Users size={18} />
+              <span>Membros</span>
+            </Link>
+          ) : null}
+          {user.role !== "visualizador" ? (
+            <Link className={active === "conhecimento" ? "active" : ""} href="/conhecimento" onClick={() => setMenuOpen(false)}>
+              <BookOpen size={18} />
+              <span>Base de conhecimento</span>
+            </Link>
+          ) : null}
+          {user.aiEnabled ? (
+            <Link className={active === "assistente" ? "active" : ""} href="/assistente" onClick={() => setMenuOpen(false)}>
+              <Sparkles size={18} />
+              <span>Assistente</span>
+            </Link>
+          ) : null}
         </nav>
-        <p className="admin-sidebar-note">Acompanhe prazos, responsáveis e entregas em um só lugar.</p>
+        <div className="admin-user">
+          <div>
+            <strong>{user.name}</strong>
+            <small>{user.email}</small>
+          </div>
+          <button type="button" className="admin-user-signout" onClick={signOut} title="Sair" aria-label="Sair">
+            <LogOut size={16} />
+          </button>
+        </div>
       </aside>
       <div className="admin-main">
         <header className="admin-mobile-bar">
@@ -81,7 +107,7 @@ export function AdminShell({
         </header>
         {children}
       </div>
-      <AiAssistant />
+      {user.aiEnabled ? <AiAssistant /> : null}
     </div>
     </PageContextProvider>
   );

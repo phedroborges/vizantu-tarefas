@@ -1,6 +1,6 @@
 import { isOverdue } from "./dates";
 import { getSupabase } from "./supabase-client";
-import type { AssistantConversation, AssistantMessage, KnowledgeDoc, Member, Project, StatusHistoryEntry, Tag, TagKind, Task, TaskStatus } from "./types";
+import type { AssistantConversation, AssistantMessage, KnowledgeDoc, Member, Project, StatusHistoryEntry, Tag, TagKind, Task, TaskStatus, UserRole } from "./types";
 
 function newId() {
   return crypto.randomUUID();
@@ -72,10 +72,28 @@ export async function deleteProject(id: string): Promise<boolean> {
 
 // ---------- Membros ----------
 
-type MemberRow = { id: string; name: string; active: boolean; created_at: string; updated_at: string };
+type MemberRow = {
+  id: string;
+  name: string;
+  email: string | null;
+  role: UserRole;
+  ai_enabled: boolean;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+};
 
 function mapMember(row: MemberRow): Member {
-  return { id: row.id, name: row.name, active: row.active, createdAt: row.created_at, updatedAt: row.updated_at };
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email ?? "",
+    role: row.role,
+    aiEnabled: row.ai_enabled,
+    active: row.active,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
 }
 
 export async function listMembers(): Promise<Member[]> {
@@ -83,20 +101,76 @@ export async function listMembers(): Promise<Member[]> {
   return sortByLocale((rows as MemberRow[]).map(mapMember), (m) => m.name);
 }
 
-export async function createMember(input: { name: string }): Promise<Member> {
+export async function getMember(id: string): Promise<Member | undefined> {
+  const row = unwrap(await getSupabase().from("members").select("*").eq("id", id).maybeSingle());
+  return row ? mapMember(row as MemberRow) : undefined;
+}
+
+// `id` é obrigatório: precisa ser o mesmo id do usuário já criado no Supabase
+// Auth (supabase.auth.admin.createUser) — quem orquestra essa ordem é a rota
+// de API (src/app/api/members/route.ts), não este módulo.
+export async function createMember(input: { id: string; name: string; email: string; role: UserRole; aiEnabled: boolean }): Promise<Member> {
   const now = nowIso();
   const row = unwrap(
-    await getSupabase().from("members").insert({ id: newId(), name: input.name.trim(), active: true, created_at: now, updated_at: now }).select().single(),
+    await getSupabase()
+      .from("members")
+      .insert({
+        id: input.id,
+        name: input.name.trim(),
+        email: input.email.trim().toLowerCase(),
+        role: input.role,
+        ai_enabled: input.aiEnabled,
+        active: true,
+        created_at: now,
+        updated_at: now,
+      })
+      .select()
+      .single(),
   );
   return mapMember(row as MemberRow);
 }
 
-export async function updateMember(id: string, patch: Partial<Pick<Member, "name" | "active">>): Promise<Member | undefined> {
+export async function updateMember(
+  id: string,
+  patch: Partial<Pick<Member, "name" | "active" | "role" | "aiEnabled">>,
+): Promise<Member | undefined> {
   const update: Record<string, unknown> = { updated_at: nowIso() };
   if (patch.name !== undefined) update.name = patch.name.trim();
   if (patch.active !== undefined) update.active = patch.active;
+  if (patch.role !== undefined) update.role = patch.role;
+  if (patch.aiEnabled !== undefined) update.ai_enabled = patch.aiEnabled;
   const row = unwrap(await getSupabase().from("members").update(update).eq("id", id).select().maybeSingle());
   return row ? mapMember(row as MemberRow) : undefined;
+}
+
+// ---------- Acesso por projeto (só relevante pro papel "visualizador") ----------
+
+export async function listProjectAccess(memberId: string): Promise<string[]> {
+  const rows = unwrap(await getSupabase().from("project_access").select("project_id").eq("member_id", memberId)) as { project_id: string }[];
+  return rows.map((r) => r.project_id);
+}
+
+// Usado pelo painel de usuários (dono) pra montar o mapa completo de acessos
+// sem precisar de uma chamada por membro.
+export async function listAllProjectAccess(): Promise<Record<string, string[]>> {
+  const rows = unwrap(await getSupabase().from("project_access").select("member_id, project_id")) as { member_id: string; project_id: string }[];
+  const map: Record<string, string[]> = {};
+  for (const row of rows) {
+    (map[row.member_id] ??= []).push(row.project_id);
+  }
+  return map;
+}
+
+// Substitui todo o conjunto de acessos daquele membro — mais simples de
+// raciocinar que um diff incremental, e a tabela é pequena o bastante pra
+// apagar-e-reinserir não ser um problema de performance.
+export async function setProjectAccess(memberId: string, projectIds: string[]): Promise<void> {
+  const db = getSupabase();
+  unwrap(await db.from("project_access").delete().eq("member_id", memberId));
+  const uniqueIds = Array.from(new Set(projectIds.filter(Boolean)));
+  if (uniqueIds.length) {
+    unwrap(await db.from("project_access").insert(uniqueIds.map((projectId) => ({ member_id: memberId, project_id: projectId }))));
+  }
 }
 
 // Sem deleteMember — desativação é o único caminho, pra tarefas antigas
