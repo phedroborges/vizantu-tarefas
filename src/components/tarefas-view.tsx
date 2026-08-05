@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, CalendarDays, CheckSquare, List, Plus, Search } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarDays, CheckSquare, Eye, EyeOff, List, Plus, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import {
   currentMonthKey,
@@ -13,12 +13,17 @@ import {
 } from "@/lib/dates";
 import { useSetPageDetail } from "@/lib/page-context";
 import { STATUS_GROUPS, TASK_COLUMNS, TASK_STATUSES } from "@/lib/types";
-import type { Member, Project, Tag, Task, TaskColumnKey } from "@/lib/types";
+import type { Member, Project, Tag, Task, TaskColumnKey, TaskStatus } from "@/lib/types";
 import { TaskModal } from "@/components/task-modal";
 import { TaskColumnPicker } from "@/components/task-column-picker";
+import { TagPickerPopover } from "@/components/tag-picker";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useTaskColumns } from "@/lib/use-task-columns";
 
 const WEEKDAYS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+const NO_ASSIGNEE = "none";
+// Base UI's <Select.Value> só resolve o rótulo se o Root receber esse mapa.
+const STATUS_LABELS: Record<string, string> = Object.fromEntries(TASK_STATUSES.map((status) => [status.value, status.label]));
 
 // Cor do badge = grupo (3 cores + atrasada) — mais legível que 12 tons distintos.
 function statusOf(task: Task): string {
@@ -34,6 +39,92 @@ function statusLabel(task: Task): string {
 // Filtro = status exato (dos 12) ou "atrasada" — mais preciso que filtrar só por grupo.
 function statusFilterValue(task: Task): string {
   return isOverdue(task.dueDate, task.status) ? "atrasada" : task.status;
+}
+
+function InlineStatusCell({ task, group, onChange }: { task: Task; group: string; onChange: (status: TaskStatus) => void }) {
+  return (
+    <Select items={STATUS_LABELS} value={task.status} onValueChange={(value) => value && onChange(value as TaskStatus)}>
+      <SelectTrigger className="meta-trigger cell-trigger" onClick={(event) => event.stopPropagation()}>
+        <span className={`status ${group}`}>
+          <SelectValue />
+        </span>
+      </SelectTrigger>
+      <SelectContent>
+        {STATUS_GROUPS.map((statusGroup) => (
+          <SelectGroup key={statusGroup.value}>
+            <SelectLabel>{statusGroup.label}</SelectLabel>
+            {TASK_STATUSES.filter((item) => item.group === statusGroup.value).map((item) => (
+              <SelectItem key={item.value} value={item.value}>
+                {item.label}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function InlineAssigneeCell({ task, members, onChange }: { task: Task; members: Member[]; onChange: (assigneeId: string | null) => void }) {
+  const activeMembers = members.filter((member) => member.active);
+  const currentInactive =
+    task.assigneeId && !activeMembers.some((member) => member.id === task.assigneeId)
+      ? members.find((member) => member.id === task.assigneeId)
+      : undefined;
+  const labels: Record<string, string> = {
+    [NO_ASSIGNEE]: "Sem responsável",
+    ...Object.fromEntries(activeMembers.map((member) => [member.id, member.name])),
+    ...(currentInactive ? { [currentInactive.id]: `${currentInactive.name} (inativo)` } : {}),
+  };
+  return (
+    <Select items={labels} value={task.assigneeId || NO_ASSIGNEE} onValueChange={(value) => onChange(value === NO_ASSIGNEE ? null : value ?? null)}>
+      <SelectTrigger className="meta-trigger cell-trigger" onClick={(event) => event.stopPropagation()}>
+        <SelectValue placeholder="Sem responsável" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value={NO_ASSIGNEE}>Sem responsável</SelectItem>
+        {activeMembers.map((member) => (
+          <SelectItem key={member.id} value={member.id}>{member.name}</SelectItem>
+        ))}
+        {currentInactive ? <SelectItem value={currentInactive.id}>{currentInactive.name} (inativo)</SelectItem> : null}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function InlineDueDateCell({ task, locked, onChange, onLockedClick }: { task: Task; locked: boolean; onChange: (value: string) => void; onLockedClick: () => void }) {
+  const [editing, setEditing] = useState(false);
+
+  if (editing) {
+    return (
+      <input
+        type="date"
+        className="cell-date-input"
+        defaultValue={task.dueDate || ""}
+        autoFocus
+        onClick={(event) => event.stopPropagation()}
+        onChange={(event) => {
+          setEditing(false);
+          onChange(event.target.value);
+        }}
+        onBlur={() => setEditing(false)}
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className={`meta-value-trigger cell-trigger ${locked ? "locked" : ""}`}
+      onClick={(event) => {
+        event.stopPropagation();
+        if (locked) return onLockedClick();
+        setEditing(true);
+      }}
+    >
+      {formatDueDate(task.dueDate)}
+    </button>
+  );
 }
 
 export function TarefasView({
@@ -59,6 +150,7 @@ export function TarefasView({
   const [projectFilter, setProjectFilter] = useState("");
   const [assigneeFilter, setAssigneeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [showFinalized, setShowFinalized] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const withDue = initialTasks.filter((task) => task.dueDate).map((task) => monthKeyFromDate(task.dueDate!));
     return withDue.sort().at(-1) || currentMonthKey();
@@ -78,6 +170,9 @@ export function TarefasView({
   const filteredTasks = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return tasks.filter((task) => {
+      // Finalizada não tem mais nada a acompanhar — some da lista, a menos que
+      // o usuário peça pra ver ("Mostrar finalizadas") ou filtre por esse status direto.
+      if (task.status === "finalizado" && !showFinalized && statusFilter !== "finalizado") return false;
       if (projectFilter && task.projectId !== projectFilter) return false;
       if (assigneeFilter && task.assigneeId !== assigneeFilter) return false;
       if (statusFilter && statusFilterValue(task) !== statusFilter) return false;
@@ -88,7 +183,7 @@ export function TarefasView({
       }
       return true;
     });
-  }, [tasks, query, projectFilter, assigneeFilter, statusFilter, memberById, channelTagById]);
+  }, [tasks, query, projectFilter, assigneeFilter, statusFilter, showFinalized, memberById, channelTagById]);
 
   const pageDetail = useMemo(() => {
     if (selectedTask && selectedTask !== "new") {
@@ -126,6 +221,17 @@ export function TarefasView({
     setTasks((current) => current.filter((item) => item.id !== id));
     setSelectedTask(null);
     showToast("Tarefa excluída.");
+  }
+
+  async function patchTask(taskId: string, payload: Record<string, unknown>) {
+    const response = await fetch(`/api/tasks/${taskId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json();
+    if (!response.ok) return showToast(result.error || "Não foi possível salvar a alteração.");
+    setTasks((current) => current.map((item) => (item.id === taskId ? result.task : item)));
   }
 
   async function quickAdd(event: React.FormEvent<HTMLFormElement>) {
@@ -192,6 +298,73 @@ export function TarefasView({
     }
   }
 
+  // Colunas editáveis direto na lista, sem abrir o modal — só quando o usuário
+  // tem permissão de edição; visualizadores continuam vendo o valor puro.
+  function renderEditableColumn(key: TaskColumnKey, task: Task) {
+    if (!canEdit) return renderColumn(key, task);
+    switch (key) {
+      case "formatTags":
+        return (
+          <TagPickerPopover
+            kind="formato"
+            catalog={formatTags}
+            selectedIds={task.formatTagIds}
+            onChange={(ids) => patchTask(task.id, { formatTagIds: ids })}
+            onCatalogUpdate={handleTagCreated}
+            triggerClassName="cell-trigger"
+            trigger={
+              task.formatTagIds.length
+                ? task.formatTagIds.map((id) => <span className="badge format" key={id}>{formatTagById.get(id)?.label}</span>)
+                : <span className="meta-empty">—</span>
+            }
+          />
+        );
+      case "channelTags":
+        return (
+          <TagPickerPopover
+            kind="canal"
+            catalog={channelTags}
+            selectedIds={task.channelTagIds}
+            onChange={(ids) => patchTask(task.id, { channelTagIds: ids })}
+            onCatalogUpdate={handleTagCreated}
+            triggerClassName="cell-trigger"
+            trigger={
+              task.channelTagIds.length
+                ? task.channelTagIds.map((id) => <span className="badge channel" key={id}>{channelTagById.get(id)?.label}</span>)
+                : <span className="meta-empty">—</span>
+            }
+          />
+        );
+      case "assignee":
+        return (
+          <InlineAssigneeCell
+            task={task}
+            members={initialMembers}
+            onChange={(assigneeId) => patchTask(task.id, { assigneeId })}
+          />
+        );
+      case "dueDate":
+        return (
+          <InlineDueDateCell
+            task={task}
+            locked={isOverdue(task.dueDate, task.status)}
+            onChange={(dueDate) => patchTask(task.id, { dueDate })}
+            onLockedClick={() => showToast('Tarefa atrasada — mude o status para "Aprovado", "Problema" ou "Finalizado" para editar a data.')}
+          />
+        );
+      case "status":
+        return (
+          <InlineStatusCell
+            task={task}
+            group={statusOf(task)}
+            onChange={(status) => patchTask(task.id, { status })}
+          />
+        );
+      default:
+        return renderColumn(key, task);
+    }
+  }
+
   return (
     <>
       <main className="admin-page dashboard">
@@ -235,6 +408,11 @@ export function TarefasView({
                 <option value="atrasada">Atrasada</option>
               </select>
               {view === "lista" ? <TaskColumnPicker visible={visibleColumns} onToggle={toggleColumn} /> : null}
+              <div className="view-toggle" role="group" aria-label="Exibir tarefas finalizadas">
+                <button type="button" aria-pressed={showFinalized} className={showFinalized ? "active" : ""} onClick={() => setShowFinalized((current) => !current)}>
+                  {showFinalized ? <EyeOff size={14} /> : <Eye size={14} />} {showFinalized ? "Ocultar finalizadas" : "Mostrar finalizadas"}
+                </button>
+              </div>
               <div className="view-toggle" role="tablist" aria-label="Alternar visualização">
                 <button type="button" role="tab" aria-selected={view === "lista"} className={view === "lista" ? "active" : ""} onClick={() => setView("lista")}><List size={14} /> Lista</button>
                 <button type="button" role="tab" aria-selected={view === "calendario"} className={view === "calendario" ? "active" : ""} onClick={() => setView("calendario")}><CalendarDays size={14} /> Calendário</button>
@@ -257,13 +435,13 @@ export function TarefasView({
                     </thead>
                     <tbody>
                       {filteredTasks.map((task) => (
-                        <tr key={task.id} onClick={() => setSelectedTask(task)}>
-                          <td>
+                        <tr key={task.id}>
+                          <td className="task-name-cell" onClick={() => setSelectedTask(task)}>
                             <span className="task-name">{task.name}</span>
                             <span className="task-project">{projectById.get(task.projectId)?.name || "Sem projeto"}</span>
                           </td>
                           {TASK_COLUMNS.filter((column) => visibleColumns.includes(column.key)).map((column) => (
-                            <td key={column.key}>{renderColumn(column.key, task)}</td>
+                            <td key={column.key}>{renderEditableColumn(column.key, task)}</td>
                           ))}
                         </tr>
                       ))}
