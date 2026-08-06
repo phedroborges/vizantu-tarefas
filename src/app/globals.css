@@ -342,7 +342,10 @@ h1 { margin-bottom: 10px; font-size: clamp(30px, 4.4vw, 48px); line-height: 1.05
 .tag-popover-add-button:hover { color: var(--brand-strong); }
 
 /* ---------- Modal de tarefa — layout "livro aberto" ---------- */
-.task-modal-head { align-items: flex-start; padding-right: 64px; gap: 14px; }
+/* DialogHeader (ui/dialog.tsx) vem com "flex flex-col" por padrão — sem
+   forçar row aqui, título e botão de link empilham em vez de ficar lado a
+   lado. */
+.task-modal-head { flex-direction: row; align-items: flex-start; padding-right: 64px; gap: 14px; }
 .task-modal-head .meta-title-input { flex: 1; font-size: 22px; }
 .task-modal-head .icon-button { margin-top: 2px; }
 .task-modal-split { display: grid; grid-template-columns: minmax(220px, 260px) 1fr; gap: 0; align-items: start; }
