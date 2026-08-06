@@ -134,6 +134,7 @@ export function TarefasView({
   initialFormatTags,
   initialChannelTags,
   canEdit = true,
+  currentUserId,
   initialTaskId,
 }: {
   initialTasks: Task[];
@@ -142,6 +143,7 @@ export function TarefasView({
   initialFormatTags: Tag[];
   initialChannelTags: Tag[];
   canEdit?: boolean;
+  currentUserId: string;
   initialTaskId?: string;
 }) {
   const [tasks, setTasks] = useState(initialTasks);
@@ -551,6 +553,7 @@ export function TarefasView({
           channelTags={channelTags}
           defaultProjectId={projectFilter || initialProjects[0]?.id || ""}
           canEdit={canEdit}
+          currentUserId={currentUserId}
           onClose={() => setSelectedTask(null)}
           onSaved={handleSaved}
           onDeleted={handleDeleted}

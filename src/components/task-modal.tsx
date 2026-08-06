@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { MetaRow } from "@/components/meta-row";
 import { TagPicker } from "@/components/tag-picker";
 import { TaskStatusControl } from "@/components/task-status-control";
-import { formatDateTime, isOverdue } from "@/lib/dates";
+import { formatDateTime, isOverdue, todayIso } from "@/lib/dates";
 import type { Member, Project, Tag, TagKind, Task, TaskStatus } from "@/lib/types";
 
 type Draft = {
@@ -25,12 +25,16 @@ type Draft = {
 const NO_ASSIGNEE = "none";
 const NO_PROJECT = "none";
 
-function draftFromTask(task: Task | null, defaultProjectId: string): Draft {
+// Numa tarefa nova, pré-preenche entrega (hoje) e responsável (quem está
+// criando) — menos campo pra preencher no caso mais comum. Numa tarefa
+// existente sem esses valores, mantém vazio (não força um valor que não foi
+// escolhido por ninguém).
+function draftFromTask(task: Task | null, defaultProjectId: string, currentUserId: string): Draft {
   return {
     projectId: task?.projectId || defaultProjectId,
     name: task?.name || "",
-    dueDate: task?.dueDate || "",
-    assigneeId: task?.assigneeId || NO_ASSIGNEE,
+    dueDate: task ? task.dueDate || "" : todayIso(),
+    assigneeId: task ? task.assigneeId || NO_ASSIGNEE : currentUserId || NO_ASSIGNEE,
     description: task?.description || "",
     driveLink: task?.driveLink || "",
     formatTagIds: task?.formatTagIds || [],
@@ -47,6 +51,7 @@ export function TaskModal({
   channelTags,
   defaultProjectId,
   canEdit = true,
+  currentUserId,
   onClose,
   onSaved,
   onDeleted,
@@ -59,12 +64,13 @@ export function TaskModal({
   channelTags: Tag[];
   defaultProjectId: string;
   canEdit?: boolean;
+  currentUserId: string;
   onClose: () => void;
   onSaved: (task: Task) => void;
   onDeleted: (id: string) => void;
   onTagCreated: (tag: Tag) => void;
 }) {
-  const [draft, setDraft] = useState<Draft>(() => draftFromTask(task, defaultProjectId));
+  const [draft, setDraft] = useState<Draft>(() => draftFromTask(task, defaultProjectId, currentUserId));
   const [commentAuthor, setCommentAuthor] = useState("");
   const [commentText, setCommentText] = useState("");
   const [comments, setComments] = useState(task?.comments || []);

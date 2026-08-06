@@ -22,6 +22,7 @@ export default async function TarefaPage({ params }: { params: Promise<{ id: str
         initialFormatTags={formatTags}
         initialChannelTags={channelTags}
         canEdit={user.role !== "visualizador"}
+        currentUserId={user.id}
         initialTaskId={id}
       />
     </AdminShell>

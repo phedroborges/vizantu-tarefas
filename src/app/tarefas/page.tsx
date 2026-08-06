@@ -21,6 +21,7 @@ export default async function TarefasPage() {
         initialFormatTags={formatTags}
         initialChannelTags={channelTags}
         canEdit={user.role !== "visualizador"}
+        currentUserId={user.id}
       />
     </AdminShell>
   );
