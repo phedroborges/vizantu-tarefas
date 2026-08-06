@@ -25,6 +25,16 @@ type Draft = {
 const NO_ASSIGNEE = "none";
 const NO_PROJECT = "none";
 
+// A IA escreve as descrições em Markdown; sem tratar, os **negritos** apareciam
+// crus, com asteriscos. Renderiza só o negrito, como nós de texto React (nada de
+// HTML injetado) — as listas e quebras de linha já vêm do pre-wrap do container.
+function renderDescription(text: string) {
+  return text.split(/(\*\*[^*\n]+\*\*)/g).map((part, index) => {
+    const bold = /^\*\*([^*\n]+)\*\*$/.exec(part);
+    return bold ? <strong key={index}>{bold[1]}</strong> : <span key={index}>{part}</span>;
+  });
+}
+
 // Numa tarefa nova, pré-preenche entrega (hoje) e responsável (quem está
 // criando) — menos campo pra preencher no caso mais comum. Numa tarefa
 // existente sem esses valores, mantém vazio (não força um valor que não foi
@@ -326,7 +336,7 @@ export function TaskModal({
                 />
               ) : (
                 <button type="button" className="task-desc-display" onClick={() => setEditingDescription(true)}>
-                  {draft.description ? draft.description : <span className="meta-empty">Vazio — clique para escrever a descrição</span>}
+                  {draft.description ? renderDescription(draft.description) : <span className="meta-empty">Vazio — clique para escrever a descrição</span>}
                 </button>
               )}
             </div>
