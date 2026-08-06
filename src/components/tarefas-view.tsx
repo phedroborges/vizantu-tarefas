@@ -10,6 +10,7 @@ import {
   monthKeyFromDate,
   monthLabel,
   moveMonth,
+  todayIso,
 } from "@/lib/dates";
 import { useSetPageDetail } from "@/lib/page-context";
 import { STATUS_GROUPS, TASK_COLUMNS, TASK_STATUSES } from "@/lib/types";
@@ -508,8 +509,9 @@ export function TarefasView({
                     if (day === null) return <span className="calendar-day empty" key={`empty-${index}`} aria-hidden="true" />;
                     const key = `${selectedMonth}-${String(day).padStart(2, "0")}`;
                     const dayTasks = tasksByDay.get(key) || [];
+                    const isToday = key === todayIso();
                     return (
-                      <div className={`calendar-day ${dayTasks.length ? "has-tasks" : ""}`} key={key}>
+                      <div className={`calendar-day ${dayTasks.length ? "has-tasks" : ""} ${isToday ? "today" : ""}`} key={key}>
                         <div className="calendar-date"><span>{day}</span>{dayTasks.length ? <small>{dayTasks.length}</small> : null}</div>
                         <div className="calendar-cards">
                           {dayTasks.map((task) => (

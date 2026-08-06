@@ -71,7 +71,6 @@ export function TaskModal({
   onTagCreated: (tag: Tag) => void;
 }) {
   const [draft, setDraft] = useState<Draft>(() => draftFromTask(task, defaultProjectId, currentUserId));
-  const [commentAuthor, setCommentAuthor] = useState("");
   const [commentText, setCommentText] = useState("");
   const [comments, setComments] = useState(task?.comments || []);
   const [isSaving, setIsSaving] = useState(false);
@@ -151,10 +150,12 @@ export function TaskModal({
     event.preventDefault();
     if (!task || !commentText.trim()) return;
     setIsSendingComment(true);
+    // O usuário está logado — assina o comentário com o nome dele, sem pedir.
+    const author = members.find((member) => member.id === currentUserId)?.name || "Equipe";
     const response = await fetch(`/api/tasks/${task.id}/comments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ author: commentAuthor || "Equipe", text: commentText }),
+      body: JSON.stringify({ author, text: commentText }),
     });
     const result = await response.json();
     setIsSendingComment(false);
@@ -348,13 +349,6 @@ export function TaskModal({
               )}
               {canEdit ? (
                 <form className="comment-form" onSubmit={sendComment} style={{ marginTop: 10 }}>
-                  <input
-                    value={commentAuthor}
-                    onChange={(e) => setCommentAuthor(e.target.value)}
-                    placeholder="Seu nome"
-                    style={{ maxWidth: 130 }}
-                    maxLength={60}
-                  />
                   <input value={commentText} onChange={(e) => setCommentText(e.target.value)} placeholder="Escreva um comentário" maxLength={600} />
                   <button className="icon-button" type="submit" disabled={isSendingComment || !commentText.trim()} aria-label="Enviar comentário"><Send size={15} /></button>
                 </form>

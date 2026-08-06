@@ -134,10 +134,10 @@ export default async function Home() {
                 {upcoming.map((task) => {
                   const overdueTask = isOverdue(task.dueDate, task.status);
                   return (
-                    <li className="upcoming-item" key={task.id}>
+                    <Link className="upcoming-item" key={task.id} href={`/tarefas/${task.id}`}>
                       <div><strong>{task.name}</strong><span>{projectById.get(task.projectId)?.name || "Sem projeto"} · {task.assigneeId ? memberById.get(task.assigneeId)?.name || "Ex-membro" : "Sem responsável"}</span></div>
                       <span className={`upcoming-due ${overdueTask ? "overdue" : ""}`}>{formatDueDate(task.dueDate)}{overdueTask ? " · atrasada" : ""}</span>
-                    </li>
+                    </Link>
                   );
                 })}
               </ul>

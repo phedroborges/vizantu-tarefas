@@ -107,7 +107,9 @@ export function AdminShell({
         </header>
         {children}
       </div>
-      {user.aiEnabled ? <AiAssistant /> : null}
+      {/* Na página do chat completo o widget seria redundante — e o botão
+          flutuante cobre o "Enviar" do composer. */}
+      {user.aiEnabled && active !== "assistente" ? <AiAssistant /> : null}
     </div>
     </PageContextProvider>
   );

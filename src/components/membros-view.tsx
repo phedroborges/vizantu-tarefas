@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, FolderLock, Sparkles, Users, X } from "lucide-react";
+import { Check, FolderLock, RotateCcw, Sparkles, UserX, Users, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { USER_ROLES } from "@/lib/types";
 import type { Member, Project, UserRole } from "@/lib/types";
@@ -160,7 +160,7 @@ export function MembrosView({
                         </button>
                       ) : null}
                       <button
-                        className={`icon-button ${member.aiEnabled ? "" : ""}`}
+                        className="icon-button"
                         type="button"
                         onClick={() => patchMember(member.id, { aiEnabled: !member.aiEnabled })}
                         title={member.aiEnabled ? "IA liberada — clique pra desligar" : "IA desligada — clique pra liberar"}
@@ -177,7 +177,7 @@ export function MembrosView({
                         title={member.active ? "Desativar" : "Reativar"}
                         aria-label={`${member.active ? "Desativar" : "Reativar"} ${member.name}`}
                       >
-                        <X size={14} />
+                        {member.active ? <UserX size={14} /> : <RotateCcw size={14} />}
                       </button>
                     </div>
                   </li>

@@ -173,8 +173,14 @@ h1 { margin-bottom: 10px; font-size: clamp(30px, 4.4vw, 48px); line-height: 1.05
 .panel-head p { margin: 0; color: var(--muted-text); font-size: 12px; }
 .panel-head > span { color: var(--muted-text); font-size: 10px; white-space: nowrap; }
 
+/* Chip de contagem no topo das páginas (ex.: "8 projetos") */
+.stat { display: inline-flex; align-items: baseline; gap: 6px; border: 1px solid var(--line); }
+.stat strong { font-size: 19px; letter-spacing: -.02em; }
+.stat span { color: var(--muted-text); font-size: 12px; }
+
 .upcoming-list { margin: 0; padding: 0; list-style: none; }
 .upcoming-item { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 12px; align-items: center; padding: 15px 21px; border-bottom: 1px solid var(--line); }
+a.upcoming-item { color: inherit; text-decoration: none; }
 .upcoming-item:last-child { border-bottom: 0; }
 .upcoming-item:hover { background: #fafbf9; }
 .upcoming-item strong { display: block; font-size: 12px; }
@@ -263,6 +269,8 @@ h1 { margin-bottom: 10px; font-size: clamp(30px, 4.4vw, 48px); line-height: 1.05
 .calendar-day { min-height: 132px; padding: 8px; background: #fff; }
 .calendar-day.empty { background: #fafbf9; }
 .calendar-day.has-tasks { background: #fcfbff; }
+.calendar-day.today { box-shadow: inset 0 0 0 2px var(--brand-strong); }
+.calendar-day.today .calendar-date > span { display: grid; place-items: center; min-width: 20px; height: 20px; border-radius: 99px; background: var(--brand-strong); color: #fff; font-weight: 720; }
 .calendar-date { min-height: 22px; display: flex; align-items: center; justify-content: space-between; color: #6f766f; font: 10px var(--font-mono); }
 .calendar-date small { min-width: 18px; height: 18px; padding: 0 5px; display: grid; place-items: center; border-radius: 99px; background: #eee7fc; color: var(--brand-strong); font-size: 8px; font-weight: 720; }
 .calendar-cards { display: grid; gap: 5px; margin-top: 6px; }
@@ -348,8 +356,10 @@ h1 { margin-bottom: 10px; font-size: clamp(30px, 4.4vw, 48px); line-height: 1.05
 .task-modal-head { flex-direction: row; align-items: flex-start; padding-right: 64px; gap: 14px; }
 .task-modal-head .meta-title-input { flex: 1; font-size: 22px; }
 .task-modal-head .icon-button { margin-top: 2px; }
-.task-modal-split { display: grid; grid-template-columns: minmax(220px, 260px) 1fr; gap: 0; align-items: start; }
-.task-modal-pane-meta { padding-right: 26px; }
+/* Sem align-items:start — os panes esticam na mesma altura e a divisória
+   (border-left do pane direito) vai até o fim, em vez de parar no conteúdo. */
+.task-modal-split { display: grid; grid-template-columns: minmax(300px, 340px) 1fr; gap: 0; }
+.task-modal-pane-meta { padding-right: 26px; align-self: start; }
 .task-modal-pane-desc { display: flex; flex-direction: column; padding-left: 26px; border-left: 1px solid var(--line); }
 .task-desc-label { margin-bottom: 8px; }
 .task-desc-display { flex: 1; width: 100%; min-height: 180px; border: 0; background: transparent; margin: 0; padding: 0; color: var(--dark); font-size: 13.5px; line-height: 1.75; text-align: left; white-space: pre-wrap; cursor: pointer; }
