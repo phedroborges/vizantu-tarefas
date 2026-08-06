@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowLeft, ArrowRight, CalendarDays, CheckSquare, Eye, EyeOff, List, Plus, Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   currentMonthKey,
   daysInCalendarMonth,
@@ -134,6 +134,7 @@ export function TarefasView({
   initialFormatTags,
   initialChannelTags,
   canEdit = true,
+  initialTaskId,
 }: {
   initialTasks: Task[];
   initialProjects: Project[];
@@ -141,6 +142,7 @@ export function TarefasView({
   initialFormatTags: Tag[];
   initialChannelTags: Tag[];
   canEdit?: boolean;
+  initialTaskId?: string;
 }) {
   const [tasks, setTasks] = useState(initialTasks);
   const [formatTags, setFormatTags] = useState(initialFormatTags);
@@ -155,7 +157,9 @@ export function TarefasView({
     const withDue = initialTasks.filter((task) => task.dueDate).map((task) => monthKeyFromDate(task.dueDate!));
     return withDue.sort().at(-1) || currentMonthKey();
   });
-  const [selectedTask, setSelectedTask] = useState<Task | "new" | null>(null);
+  const [selectedTask, setSelectedTask] = useState<Task | "new" | null>(
+    () => initialTasks.find((task) => task.id === initialTaskId) ?? null,
+  );
   const [toast, setToast] = useState("");
   const [quickAddTitle, setQuickAddTitle] = useState("");
   const [isQuickAdding, setIsQuickAdding] = useState(false);
@@ -207,6 +211,22 @@ export function TarefasView({
     setToast(message);
     window.setTimeout(() => setToast(""), 2400);
   }
+
+  // Link direto pra uma tarefa (/tarefas/[id]) que não existe ou que o usuário
+  // não tem acesso — avisa e volta pra lista, sem quebrar a página.
+  useEffect(() => {
+    if (!initialTaskId || initialTasks.some((task) => task.id === initialTaskId)) return;
+    const timer = window.setTimeout(() => showToast("Tarefa não encontrada ou sem acesso a ela."), 0);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Mantém a URL da tarefa aberta em sincronia (sem navegação do Next — só a
+  // barra de endereço) pra dar um link direto e copiável pra cada tarefa.
+  useEffect(() => {
+    const path = selectedTask && selectedTask !== "new" ? `/tarefas/${selectedTask.id}` : selectedTask === "new" ? null : "/tarefas";
+    if (path && window.location.pathname !== path) window.history.replaceState(null, "", path);
+  }, [selectedTask]);
 
   function handleSaved(task: Task) {
     setTasks((current) => {

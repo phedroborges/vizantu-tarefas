@@ -1,6 +1,6 @@
 "use client";
 
-import { AlignLeft, CalendarDays, ExternalLink, Folder, Link2, Send, Trash2, User } from "lucide-react";
+import { AlignLeft, CalendarDays, Check, ExternalLink, Folder, Link2, Send, Share2, Trash2, User } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -73,6 +73,7 @@ export function TaskModal({
   const [error, setError] = useState("");
   const [editingLink, setEditingLink] = useState(false);
   const [editingDescription, setEditingDescription] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
   const titleRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -121,6 +122,17 @@ export function TaskModal({
     onSaved(result.task);
   }
 
+  async function copyLink() {
+    if (!task) return;
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/tarefas/${task.id}`);
+      setLinkCopied(true);
+      window.setTimeout(() => setLinkCopied(false), 1800);
+    } catch {
+      setError("Não foi possível copiar o link.");
+    }
+  }
+
   async function remove() {
     if (!task) return;
     if (!window.confirm(`Excluir a tarefa "${task.name}"?`)) return;
@@ -161,28 +173,32 @@ export function TaskModal({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="!max-w-[640px] w-[calc(100%-2rem)] max-h-[min(820px,calc(100vh-3rem))] flex flex-col gap-0 overflow-hidden p-0" showCloseButton>
-        <DialogHeader className="modal-head">
-          <DialogTitle className="modal-title">{isEditing ? "Editar tarefa" : "Nova tarefa"}</DialogTitle>
+      <DialogContent className="!max-w-[920px] w-[calc(100%-2rem)] max-h-[min(860px,calc(100vh-3rem))] flex flex-col gap-0 overflow-hidden p-0" showCloseButton>
+        <DialogHeader className="modal-head task-modal-head">
+          <DialogTitle className="sr-only">{draft.name || (isEditing ? "Editar tarefa" : "Nova tarefa")}</DialogTitle>
+          <textarea
+            ref={titleRef}
+            className="meta-title-input"
+            value={draft.name}
+            onChange={(e) => update("name", e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") e.preventDefault();
+            }}
+            placeholder="Nome da tarefa"
+            rows={1}
+            required
+            maxLength={140}
+          />
+          {isEditing ? (
+            <button type="button" className="icon-button" onClick={copyLink} title="Copiar link da tarefa" aria-label="Copiar link da tarefa">
+              {linkCopied ? <Check size={14} /> : <Share2 size={14} />}
+            </button>
+          ) : null}
         </DialogHeader>
         <div className="modal-body">
           {error ? <div className="form-message">{error}</div> : null}
-          <form id="task-fields-form" onSubmit={save}>
-            <textarea
-              ref={titleRef}
-              className="meta-title-input"
-              value={draft.name}
-              onChange={(e) => update("name", e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") e.preventDefault();
-              }}
-              placeholder="Nome da tarefa"
-              rows={1}
-              required
-              maxLength={140}
-            />
-
-            <div className="meta-rows">
+          <form id="task-fields-form" onSubmit={save} className="task-modal-split">
+            <div className="task-modal-pane-meta meta-rows">
               <MetaRow icon={<Folder size={13} />} label="Projeto">
                 <Select items={projectLabels} value={draft.projectId || NO_PROJECT} onValueChange={(value) => update("projectId", value ?? NO_PROJECT)}>
                   <SelectTrigger className="meta-trigger">
@@ -283,12 +299,12 @@ export function TaskModal({
               </MetaRow>
             </div>
 
-            <div className="meta-block">
-              <span className="meta-row-label"><AlignLeft size={13} /> O que é para fazer</span>
+            <div className="task-modal-pane-desc">
+              <span className="meta-row-label task-desc-label"><AlignLeft size={13} /> Descrição</span>
               {editingDescription ? (
                 <textarea
                   autoFocus
-                  className="meta-block-textarea"
+                  className="task-desc-textarea"
                   value={draft.description}
                   onChange={(e) => update("description", e.target.value)}
                   onBlur={() => setEditingDescription(false)}
@@ -302,8 +318,8 @@ export function TaskModal({
                   maxLength={2000}
                 />
               ) : (
-                <button type="button" className="meta-block-display" onClick={() => setEditingDescription(true)}>
-                  {draft.description ? draft.description : <span className="meta-empty">Vazio — clique para escrever o briefing</span>}
+                <button type="button" className="task-desc-display" onClick={() => setEditingDescription(true)}>
+                  {draft.description ? draft.description : <span className="meta-empty">Vazio — clique para escrever a descrição</span>}
                 </button>
               )}
             </div>

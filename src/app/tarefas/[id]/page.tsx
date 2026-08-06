@@ -6,9 +6,10 @@ import { loadTarefasData } from "@/lib/tarefas-data";
 
 export const dynamic = "force-dynamic";
 
-export default async function TarefasPage() {
+export default async function TarefaPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect(`/login?next=/tarefas/${id}`);
 
   const { tasks, projects, members, formatTags, channelTags } = await loadTarefasData(user);
 
@@ -21,6 +22,7 @@ export default async function TarefasPage() {
         initialFormatTags={formatTags}
         initialChannelTags={channelTags}
         canEdit={user.role !== "visualizador"}
+        initialTaskId={id}
       />
     </AdminShell>
   );
