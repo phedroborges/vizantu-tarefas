@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { AdminShell } from "@/components/admin-shell";
 import { MembrosView } from "@/components/membros-view";
 import { getCurrentUser } from "@/lib/current-user";
-import { listAllProjectAccess, listMembers, listProjects } from "@/lib/storage";
+import { listAllMemberListAccess, listAllProjectAccess, listMembers, listProjects } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
@@ -11,11 +11,16 @@ export default async function MembrosPage() {
   if (!user) redirect("/login");
   if (user.role !== "dono") redirect("/");
 
-  const [members, projects, projectAccess] = await Promise.all([listMembers(), listProjects(), listAllProjectAccess()]);
+  const [members, projects, projectAccess, listAccess] = await Promise.all([
+    listMembers(),
+    listProjects(),
+    listAllProjectAccess(),
+    listAllMemberListAccess(),
+  ]);
 
   return (
     <AdminShell active="membros" user={user}>
-      <MembrosView initialMembers={members} projects={projects} initialProjectAccess={projectAccess} />
+      <MembrosView initialMembers={members} projects={projects} initialProjectAccess={projectAccess} initialListAccess={listAccess} />
     </AdminShell>
   );
 }

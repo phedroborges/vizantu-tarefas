@@ -2,20 +2,23 @@
 
 import { Check, FolderLock, RotateCcw, Sparkles, UserX, Users, X } from "lucide-react";
 import { useMemo, useState } from "react";
-import { USER_ROLES } from "@/lib/types";
-import type { Member, Project, UserRole } from "@/lib/types";
+import { TASK_LIST_KINDS, USER_ROLES } from "@/lib/types";
+import type { Member, Project, TaskListKind, UserRole } from "@/lib/types";
 
 export function MembrosView({
   initialMembers,
   projects,
   initialProjectAccess,
+  initialListAccess,
 }: {
   initialMembers: Member[];
   projects: Project[];
   initialProjectAccess: Record<string, string[]>;
+  initialListAccess: Record<string, TaskListKind[]>;
 }) {
   const [members, setMembers] = useState(initialMembers);
   const [projectAccess, setProjectAccess] = useState(initialProjectAccess);
+  const [listAccess, setListAccess] = useState(initialListAccess);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -79,6 +82,17 @@ export function MembrosView({
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ projectIds: next }),
+    });
+  }
+
+  async function toggleListAccess(memberId: string, listKind: TaskListKind) {
+    const current = listAccess[memberId] || [];
+    const next = current.includes(listKind) ? current.filter((kind) => kind !== listKind) : [...current, listKind];
+    setListAccess((state) => ({ ...state, [memberId]: next }));
+    await fetch(`/api/members/${memberId}/lists`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ listKinds: next }),
     });
   }
 
@@ -155,7 +169,7 @@ export function MembrosView({
                         {USER_ROLES.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}
                       </select>
                       {member.role === "visualizador" ? (
-                        <button className="icon-button" type="button" onClick={() => setManagingAccessFor(member.id)} title="Projetos liberados" aria-label={`Projetos liberados para ${member.name}`}>
+                        <button className="icon-button" type="button" onClick={() => setManagingAccessFor(member.id)} title="Acessos (projetos e listas)" aria-label={`Acessos de ${member.name}`}>
                           <FolderLock size={14} />
                         </button>
                       ) : null}
@@ -197,26 +211,46 @@ export function MembrosView({
       {managingMember ? (
         <div className="modal-layer">
           <button className="modal-backdrop" type="button" aria-label="Fechar" onClick={() => setManagingAccessFor(null)} />
-          <div className="modal" style={{ maxHeight: 460 }}>
+          <div className="modal" style={{ maxHeight: 560 }}>
             <header className="modal-head">
-              <h2 className="modal-title">Projetos de {managingMember.name}</h2>
+              <h2 className="modal-title">Acessos de {managingMember.name}</h2>
               <button type="button" onClick={() => setManagingAccessFor(null)} aria-label="Fechar"><X size={16} /></button>
             </header>
             <div className="modal-body">
-              <p style={{ margin: 0, color: "var(--muted-text)", fontSize: 12 }}>Marque os projetos que essa pessoa pode ver. Sem nenhum marcado, ela não vê tarefa nenhuma.</p>
-              <ul className="project-list">
-                {projects.map((project) => {
-                  const checked = (projectAccess[managingMember.id] || []).includes(project.id);
-                  return (
-                    <li className="project-row" key={project.id} style={{ gridTemplateColumns: "1fr auto", padding: "12px 4px" }}>
-                      <span>{projectById.get(project.id)?.name}</span>
-                      <button type="button" className={`tag-pill ${checked ? "selected" : ""}`} onClick={() => toggleProjectAccess(managingMember.id, project.id)}>
-                        {checked ? <Check size={11} /> : null} {checked ? "Liberado" : "Bloqueado"}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
+              <div>
+                <label style={{ display: "block", marginBottom: 6 }}>Projetos</label>
+                <p style={{ margin: "0 0 10px", color: "var(--muted-text)", fontSize: 12 }}>Marque os projetos que essa pessoa pode ver. Sem nenhum marcado, ela não vê tarefa nenhuma.</p>
+                <ul className="project-list">
+                  {projects.map((project) => {
+                    const checked = (projectAccess[managingMember.id] || []).includes(project.id);
+                    return (
+                      <li className="project-row" key={project.id} style={{ gridTemplateColumns: "1fr auto", padding: "12px 4px" }}>
+                        <span>{projectById.get(project.id)?.name}</span>
+                        <button type="button" className={`tag-pill ${checked ? "selected" : ""}`} onClick={() => toggleProjectAccess(managingMember.id, project.id)}>
+                          {checked ? <Check size={11} /> : null} {checked ? "Liberado" : "Bloqueado"}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+              <div>
+                <label style={{ display: "block", marginBottom: 6 }}>Listas de tarefas</label>
+                <p style={{ margin: "0 0 10px", color: "var(--muted-text)", fontSize: 12 }}>Marque as listas (Interna/Externa) que essa pessoa pode ver. Tarefas sem lista marcada continuam visíveis pra todo mundo.</p>
+                <ul className="project-list">
+                  {TASK_LIST_KINDS.map((kind) => {
+                    const checked = (listAccess[managingMember.id] || []).includes(kind.value);
+                    return (
+                      <li className="project-row" key={kind.value} style={{ gridTemplateColumns: "1fr auto", padding: "12px 4px" }}>
+                        <span>{kind.label}</span>
+                        <button type="button" className={`tag-pill ${checked ? "selected" : ""}`} onClick={() => toggleListAccess(managingMember.id, kind.value)}>
+                          {checked ? <Check size={11} /> : null} {checked ? "Liberado" : "Bloqueado"}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
             </div>
             <footer className="modal-actions">
               <span />

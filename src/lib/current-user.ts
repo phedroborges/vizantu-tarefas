@@ -1,7 +1,7 @@
 import { cache } from "react";
 import { createClient } from "./supabase/server-client";
 import { getSupabase } from "./supabase-client";
-import type { UserRole } from "./types";
+import type { TaskListKind, UserRole } from "./types";
 
 export type CurrentUser = {
   id: string;
@@ -11,6 +11,7 @@ export type CurrentUser = {
   aiEnabled: boolean;
   active: boolean;
   accessibleProjectIds: string[] | "all";
+  accessibleListKinds: TaskListKind[] | "all";
 };
 
 // cache() deduplica dentro de UMA requisição — chamar getCurrentUser() várias
@@ -29,9 +30,14 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   if (!member || !member.active) return null; // conta desativada = tratada como deslogada
 
   let accessibleProjectIds: string[] | "all" = "all";
+  let accessibleListKinds: TaskListKind[] | "all" = "all";
   if (member.role === "visualizador") {
-    const { data: grants } = await db.from("project_access").select("project_id").eq("member_id", user.id);
-    accessibleProjectIds = (grants ?? []).map((g) => g.project_id);
+    const [{ data: projectGrants }, { data: listGrants }] = await Promise.all([
+      db.from("project_access").select("project_id").eq("member_id", user.id),
+      db.from("member_list_access").select("list_kind").eq("member_id", user.id),
+    ]);
+    accessibleProjectIds = (projectGrants ?? []).map((g) => g.project_id);
+    accessibleListKinds = (listGrants ?? []).map((g) => g.list_kind as TaskListKind);
   }
 
   return {
@@ -42,5 +48,6 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
     aiEnabled: member.ai_enabled,
     active: member.active,
     accessibleProjectIds,
+    accessibleListKinds,
   };
 });

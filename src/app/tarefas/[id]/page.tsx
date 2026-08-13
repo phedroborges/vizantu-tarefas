@@ -11,7 +11,7 @@ export default async function TarefaPage({ params }: { params: Promise<{ id: str
   const user = await getCurrentUser();
   if (!user) redirect(`/login?next=/tarefas/${id}`);
 
-  const { tasks, projects, members, formatTags, channelTags } = await loadTarefasData(user);
+  const { tasks, projects, members, formatTags, channelTags, statusColors } = await loadTarefasData(user);
 
   return (
     <AdminShell active="tarefas" user={user}>
@@ -21,6 +21,7 @@ export default async function TarefaPage({ params }: { params: Promise<{ id: str
         initialMembers={members}
         initialFormatTags={formatTags}
         initialChannelTags={channelTags}
+        initialStatusColors={statusColors}
         canEdit={user.role !== "visualizador"}
         currentUserId={user.id}
         initialTaskId={id}

@@ -93,6 +93,21 @@ export const TASK_STATUSES: { value: TaskStatus; label: string; group: StatusGro
 // de entrega volta a ficar editável.
 export const DONE_STATUSES: TaskStatus[] = ["aprovado", "problema", "finalizado"];
 
+// ---------- Cor por etapa do status (customizável, ver status_colors) ----------
+// Default = mesma cor que o grupo já usava, então enquanto ninguém customiza
+// nada a UI continua idêntica ao que era antes desta função existir.
+const GROUP_DEFAULT_COLOR: Record<StatusGroup, string> = {
+  nao_iniciada: "#aeb5ae",
+  em_andamento: "#e3c23c",
+  feita: "#6aa329",
+};
+
+export const DEFAULT_STATUS_COLORS: Record<TaskStatus, string> = Object.fromEntries(
+  TASK_STATUSES.map((status) => [status.value, GROUP_DEFAULT_COLOR[status.group]]),
+) as Record<TaskStatus, string>;
+
+export type StatusColor = { status: TaskStatus; color: string };
+
 // ---------- Histórico de status (tempo em cada etapa) ----------
 
 export type StatusHistoryEntry = {
@@ -110,6 +125,17 @@ export type Comment = {
   createdAt: string;
 };
 
+// ---------- Listas de tarefas (Interna / Externa) ----------
+// Uma tarefa pode estar em uma, nas duas ou em nenhuma — é sempre a mesma
+// linha (sincronizada por natureza), "lists" só marca em quais ela aparece.
+
+export type TaskListKind = "interna" | "externa";
+
+export const TASK_LIST_KINDS: { value: TaskListKind; label: string }[] = [
+  { value: "interna", label: "Interna" },
+  { value: "externa", label: "Externa" },
+];
+
 // ---------- Tarefa ----------
 
 export type Task = {
@@ -119,9 +145,11 @@ export type Task = {
   dueDate?: string;
   assigneeId?: string;
   description?: string;
+  images: string[];
   driveLink?: string;
   formatTagIds: string[];
   channelTagIds: string[];
+  lists: TaskListKind[];
   status: TaskStatus;
   statusHistory: StatusHistoryEntry[];
   comments: Comment[];
@@ -159,7 +187,7 @@ export type AssistantConversation = {
 
 // ---------- Colunas configuráveis da lista de tarefas ----------
 
-export type TaskColumnKey = "formatTags" | "channelTags" | "assignee" | "dueDate" | "status" | "driveLink";
+export type TaskColumnKey = "formatTags" | "channelTags" | "assignee" | "dueDate" | "status" | "driveLink" | "lists";
 
 export const TASK_COLUMNS: { key: TaskColumnKey; label: string; defaultVisible: boolean }[] = [
   { key: "formatTags", label: "Formato", defaultVisible: true },
@@ -167,5 +195,6 @@ export const TASK_COLUMNS: { key: TaskColumnKey; label: string; defaultVisible: 
   { key: "assignee", label: "Responsável", defaultVisible: true },
   { key: "dueDate", label: "Prazo", defaultVisible: true },
   { key: "status", label: "Status", defaultVisible: true },
+  { key: "lists", label: "Lista", defaultVisible: false },
   { key: "driveLink", label: "Link (Drive)", defaultVisible: false },
 ];

@@ -1,6 +1,21 @@
 import { isOverdue } from "./dates";
 import { getSupabase } from "./supabase-client";
-import type { AssistantConversation, AssistantMessage, KnowledgeDoc, Member, Project, StatusHistoryEntry, Tag, TagKind, Task, TaskStatus, UserRole } from "./types";
+import { DEFAULT_STATUS_COLORS, TASK_STATUSES } from "./types";
+import type {
+  AssistantConversation,
+  AssistantMessage,
+  KnowledgeDoc,
+  Member,
+  Project,
+  StatusColor,
+  StatusHistoryEntry,
+  Tag,
+  TagKind,
+  Task,
+  TaskListKind,
+  TaskStatus,
+  UserRole,
+} from "./types";
 
 function newId() {
   return crypto.randomUUID();
@@ -173,6 +188,32 @@ export async function setProjectAccess(memberId: string, projectIds: string[]): 
   }
 }
 
+// ---------- Acesso por lista de tarefas (Interna / Externa) ----------
+// Mesmo padrão de listProjectAccess/setProjectAccess acima, só que pra lista.
+
+export async function listMemberListAccess(memberId: string): Promise<TaskListKind[]> {
+  const rows = unwrap(await getSupabase().from("member_list_access").select("list_kind").eq("member_id", memberId)) as { list_kind: TaskListKind }[];
+  return rows.map((r) => r.list_kind);
+}
+
+export async function listAllMemberListAccess(): Promise<Record<string, TaskListKind[]>> {
+  const rows = unwrap(await getSupabase().from("member_list_access").select("member_id, list_kind")) as { member_id: string; list_kind: TaskListKind }[];
+  const map: Record<string, TaskListKind[]> = {};
+  for (const row of rows) {
+    (map[row.member_id] ??= []).push(row.list_kind);
+  }
+  return map;
+}
+
+export async function setMemberListAccess(memberId: string, listKinds: TaskListKind[]): Promise<void> {
+  const db = getSupabase();
+  unwrap(await db.from("member_list_access").delete().eq("member_id", memberId));
+  const uniqueKinds = Array.from(new Set(listKinds));
+  if (uniqueKinds.length) {
+    unwrap(await db.from("member_list_access").insert(uniqueKinds.map((listKind) => ({ member_id: memberId, list_kind: listKind }))));
+  }
+}
+
 // Sem deleteMember — desativação é o único caminho, pra tarefas antigas
 // continuarem resolvendo o nome do responsável.
 
@@ -224,9 +265,11 @@ export type TaskInput = {
   dueDate?: string;
   assigneeId?: string;
   description?: string;
+  images?: string[];
   driveLink?: string;
   formatTagIds?: string[];
   channelTagIds?: string[];
+  lists?: TaskListKind[];
   status?: TaskStatus;
 };
 
@@ -237,9 +280,11 @@ type TaskRow = {
   due_date: string | null;
   assignee_id: string | null;
   description: string | null;
+  images: string[];
   drive_link: string | null;
   format_tag_ids: string[];
   channel_tag_ids: string[];
+  lists: TaskListKind[];
   status: TaskStatus;
   status_history: StatusHistoryEntry[];
   comments: Task["comments"];
@@ -255,9 +300,11 @@ function mapTask(row: TaskRow): Task {
     dueDate: row.due_date ?? undefined,
     assigneeId: row.assignee_id ?? undefined,
     description: row.description ?? undefined,
+    images: row.images ?? [],
     driveLink: row.drive_link ?? undefined,
     formatTagIds: row.format_tag_ids ?? [],
     channelTagIds: row.channel_tag_ids ?? [],
+    lists: row.lists ?? [],
     status: row.status,
     statusHistory: row.status_history ?? [],
     comments: row.comments ?? [],
@@ -309,9 +356,11 @@ export async function createTask(input: TaskInput): Promise<Task> {
         due_date: input.dueDate || null,
         assignee_id: input.assigneeId || null,
         description: input.description?.trim() || null,
+        images: dedupeIds(input.images ?? []),
         drive_link: input.driveLink?.trim() || null,
         format_tag_ids: dedupeIds(input.formatTagIds ?? []),
         channel_tag_ids: dedupeIds(input.channelTagIds ?? []),
+        lists: Array.from(new Set(input.lists ?? [])),
         status,
         status_history: openStatusHistory(status, now),
         comments: [],
@@ -322,6 +371,27 @@ export async function createTask(input: TaskInput): Promise<Task> {
       .single(),
   );
   return mapTask(row as TaskRow);
+}
+
+// Cria uma cópia independente da tarefa — mesmos dados, mas id, comentários e
+// histórico de status novos (a cópia começa a contar tempo do zero no status
+// atual, e não herda os comentários do original).
+export async function duplicateTask(id: string): Promise<Task | undefined> {
+  const current = await getTask(id);
+  if (!current) return undefined;
+  return createTask({
+    projectId: current.projectId,
+    name: `${current.name} (cópia)`,
+    dueDate: current.dueDate,
+    assigneeId: current.assigneeId,
+    description: current.description,
+    images: current.images,
+    driveLink: current.driveLink,
+    formatTagIds: current.formatTagIds,
+    channelTagIds: current.channelTagIds,
+    lists: current.lists,
+    status: current.status,
+  });
 }
 
 export async function updateTask(
@@ -346,9 +416,11 @@ export async function updateTask(
   if (patch.dueDate !== undefined) update.due_date = patch.dueDate || null;
   if (patch.assigneeId !== undefined) update.assignee_id = patch.assigneeId || null;
   if (patch.description !== undefined) update.description = patch.description.trim() || null;
+  if (patch.images !== undefined) update.images = dedupeIds(patch.images);
   if (patch.driveLink !== undefined) update.drive_link = patch.driveLink.trim() || null;
   if (patch.formatTagIds !== undefined) update.format_tag_ids = dedupeIds(patch.formatTagIds);
   if (patch.channelTagIds !== undefined) update.channel_tag_ids = dedupeIds(patch.channelTagIds);
+  if (patch.lists !== undefined) update.lists = Array.from(new Set(patch.lists));
 
   if (patch.status !== undefined && patch.status !== current.status) {
     update.status = patch.status;
@@ -483,4 +555,28 @@ export async function appendAssistantMessages(id: string, newMessages: Assistant
     await getSupabase().from("assistant_conversations").update({ messages, title, updated_at: nowIso() }).eq("id", id).select().maybeSingle(),
   );
   return row ? mapConversation(row as ConversationRow) : undefined;
+}
+
+// ---------- Cores por etapa do status ----------
+// A tabela só guarda o que foi customizado — o resto sai de DEFAULT_STATUS_COLORS,
+// então a lista devolvida aqui SEMPRE tem as 12 etapas, customizadas ou não.
+
+type StatusColorRow = { status: TaskStatus; color: string };
+
+export async function listStatusColors(): Promise<StatusColor[]> {
+  const rows = unwrap(await getSupabase().from("status_colors").select("status, color")) as StatusColorRow[];
+  const overrides = new Map(rows.map((row) => [row.status, row.color]));
+  return TASK_STATUSES.map((status) => ({ status: status.value, color: overrides.get(status.value) || DEFAULT_STATUS_COLORS[status.value] }));
+}
+
+export async function setStatusColors(colors: Partial<Record<TaskStatus, string>>): Promise<StatusColor[]> {
+  const entries = Object.entries(colors) as [TaskStatus, string][];
+  if (entries.length) {
+    unwrap(
+      await getSupabase()
+        .from("status_colors")
+        .upsert(entries.map(([status, color]) => ({ status, color, updated_at: nowIso() }))),
+    );
+  }
+  return listStatusColors();
 }

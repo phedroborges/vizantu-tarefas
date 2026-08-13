@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { AdminShell } from "@/components/admin-shell";
 import { ProjetosView } from "@/components/projetos-view";
+import { filterTasksByAccess, filterTasksByListAccess } from "@/lib/authz";
 import { getCurrentUser } from "@/lib/current-user";
 import { listProjects, listTasks } from "@/lib/storage";
 
@@ -12,7 +13,7 @@ export default async function ProjetosPage() {
 
   const [projects, tasks] = await Promise.all([listProjects(), listTasks()]);
   const visibleProjects = user.accessibleProjectIds === "all" ? projects : projects.filter((p) => user.accessibleProjectIds.includes(p.id));
-  const visibleTasks = user.accessibleProjectIds === "all" ? tasks : tasks.filter((t) => user.accessibleProjectIds.includes(t.projectId));
+  const visibleTasks = filterTasksByListAccess(filterTasksByAccess(tasks, user.accessibleProjectIds), user.accessibleListKinds);
 
   return (
     <AdminShell active="projetos" user={user}>

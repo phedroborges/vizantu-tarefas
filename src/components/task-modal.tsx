@@ -1,14 +1,16 @@
 "use client";
 
-import { AlignLeft, CalendarDays, Check, ExternalLink, Folder, Link2, Send, Share2, Trash2, User } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { AlignLeft, CalendarDays, Check, Copy, ExternalLink, Folder, ImagePlus, Link2, ListChecks, Loader2, Send, Share2, Trash2, User, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { MetaRow } from "@/components/meta-row";
 import { TagPicker } from "@/components/tag-picker";
 import { TaskStatusControl } from "@/components/task-status-control";
 import { formatDateTime, isOverdue, todayIso } from "@/lib/dates";
-import type { Member, Project, Tag, TagKind, Task, TaskStatus } from "@/lib/types";
+import { resizeImageFile } from "@/lib/resize-image";
+import { TASK_LIST_KINDS } from "@/lib/types";
+import type { Member, Project, StatusColor, Tag, TagKind, Task, TaskListKind, TaskStatus } from "@/lib/types";
 
 type Draft = {
   projectId: string;
@@ -16,9 +18,11 @@ type Draft = {
   dueDate: string;
   assigneeId: string;
   description: string;
+  images: string[];
   driveLink: string;
   formatTagIds: string[];
   channelTagIds: string[];
+  lists: TaskListKind[];
   status: TaskStatus;
 };
 
@@ -46,9 +50,11 @@ function draftFromTask(task: Task | null, defaultProjectId: string, currentUserI
     dueDate: task ? task.dueDate || "" : todayIso(),
     assigneeId: task ? task.assigneeId || NO_ASSIGNEE : currentUserId || NO_ASSIGNEE,
     description: task?.description || "",
+    images: task?.images || [],
     driveLink: task?.driveLink || "",
     formatTagIds: task?.formatTagIds || [],
     channelTagIds: task?.channelTagIds || [],
+    lists: task?.lists || [],
     status: task?.status || "rascunho",
   };
 }
@@ -59,12 +65,14 @@ export function TaskModal({
   members,
   formatTags,
   channelTags,
+  statusColors,
   defaultProjectId,
   canEdit = true,
   currentUserId,
   onClose,
   onSaved,
   onDeleted,
+  onDuplicated,
   onTagCreated,
 }: {
   task: Task | null;
@@ -72,12 +80,14 @@ export function TaskModal({
   members: Member[];
   formatTags: Tag[];
   channelTags: Tag[];
+  statusColors: StatusColor[];
   defaultProjectId: string;
   canEdit?: boolean;
   currentUserId: string;
   onClose: () => void;
   onSaved: (task: Task) => void;
   onDeleted: (id: string) => void;
+  onDuplicated: (task: Task) => void;
   onTagCreated: (tag: Tag) => void;
 }) {
   const [draft, setDraft] = useState<Draft>(() => draftFromTask(task, defaultProjectId, currentUserId));
@@ -85,11 +95,14 @@ export function TaskModal({
   const [comments, setComments] = useState(task?.comments || []);
   const [isSaving, setIsSaving] = useState(false);
   const [isSendingComment, setIsSendingComment] = useState(false);
+  const [isDuplicating, setIsDuplicating] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [error, setError] = useState("");
   const [editingLink, setEditingLink] = useState(false);
   const [editingDescription, setEditingDescription] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const titleRef = useRef<HTMLTextAreaElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const el = titleRef.current;
@@ -100,6 +113,7 @@ export function TaskModal({
 
   const isEditing = Boolean(task);
   const dateLocked = isEditing && isOverdue(task!.dueDate, task!.status);
+  const colorByStatus = useMemo(() => new Map(statusColors.map((entry) => [entry.status, entry.color])), [statusColors]);
 
   function update<K extends keyof Draft>(key: K, value: Draft[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -121,9 +135,11 @@ export function TaskModal({
       dueDate: draft.dueDate || undefined,
       assigneeId: draft.assigneeId === NO_ASSIGNEE ? null : draft.assigneeId,
       description: draft.description,
+      images: draft.images,
       driveLink: draft.driveLink,
       formatTagIds: draft.formatTagIds,
       channelTagIds: draft.channelTagIds,
+      lists: draft.lists,
       status: draft.status,
     };
     const response = await fetch(isEditing ? `/api/tasks/${task!.id}` : "/api/tasks", {
@@ -154,6 +170,45 @@ export function TaskModal({
     const response = await fetch(`/api/tasks/${task.id}`, { method: "DELETE" });
     if (!response.ok) return setError("Não foi possível excluir a tarefa.");
     onDeleted(task.id);
+  }
+
+  async function duplicate() {
+    if (!task || isDuplicating) return;
+    setIsDuplicating(true);
+    const response = await fetch(`/api/tasks/${task.id}/duplicate`, { method: "POST" });
+    const result = await response.json();
+    setIsDuplicating(false);
+    if (!response.ok) return setError(result.error || "Não foi possível duplicar a tarefa.");
+    onDuplicated(result.task);
+  }
+
+  async function addImageFiles(files: FileList | null) {
+    if (!files || !files.length) return;
+    setIsUploadingImage(true);
+    setError("");
+    try {
+      for (const file of Array.from(files)) {
+        const resized = await resizeImageFile(file);
+        const formData = new FormData();
+        formData.append("file", resized);
+        const response = await fetch("/api/uploads", { method: "POST", body: formData });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Falha ao enviar imagem.");
+        setDraft((current) => ({ ...current, images: [...current.images, result.url] }));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível enviar a imagem.");
+    } finally {
+      setIsUploadingImage(false);
+    }
+  }
+
+  function removeImage(url: string) {
+    update("images", draft.images.filter((item) => item !== url));
+  }
+
+  function toggleList(kind: TaskListKind) {
+    update("lists", draft.lists.includes(kind) ? draft.lists.filter((item) => item !== kind) : [...draft.lists, kind]);
   }
 
   async function sendComment(event: React.FormEvent<HTMLFormElement>) {
@@ -246,7 +301,13 @@ export function TaskModal({
                 </Select>
               </MetaRow>
 
-              <TaskStatusControl status={draft.status} statusHistory={task?.statusHistory ?? []} dueDate={draft.dueDate} onChange={(value) => update("status", value)} />
+              <TaskStatusControl
+                status={draft.status}
+                statusHistory={task?.statusHistory ?? []}
+                dueDate={draft.dueDate}
+                color={colorByStatus.get(draft.status)}
+                onChange={(value) => update("status", value)}
+              />
 
               <MetaRow icon={<CalendarDays size={13} />} label="Entrega">
                 <input
@@ -314,10 +375,62 @@ export function TaskModal({
                   </button>
                 )}
               </MetaRow>
+
+              <MetaRow icon={<ListChecks size={13} />} label="Listas">
+                <div className="list-toggle-group">
+                  {TASK_LIST_KINDS.map((kind) => (
+                    <button
+                      key={kind.value}
+                      type="button"
+                      className={`list-toggle-pill ${draft.lists.includes(kind.value) ? "active" : ""}`}
+                      disabled={!canEdit}
+                      onClick={() => toggleList(kind.value)}
+                    >
+                      {draft.lists.includes(kind.value) ? <Check size={11} /> : null} {kind.label}
+                    </button>
+                  ))}
+                </div>
+              </MetaRow>
             </div>
 
             <div className="task-modal-pane-desc">
-              <span className="meta-row-label task-desc-label"><AlignLeft size={13} /> Descrição</span>
+              <div className="task-desc-head">
+                <span className="meta-row-label task-desc-label"><AlignLeft size={13} /> Descrição</span>
+                {canEdit ? (
+                  <button
+                    type="button"
+                    className="task-desc-image-add"
+                    onClick={() => imageInputRef.current?.click()}
+                    disabled={isUploadingImage}
+                    title="Adicionar imagem"
+                  >
+                    {isUploadingImage ? <Loader2 size={13} className="ai-spin" /> : <ImagePlus size={13} />} Imagem
+                  </button>
+                ) : null}
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  multiple
+                  hidden
+                  onChange={(e) => {
+                    addImageFiles(e.target.files);
+                    e.target.value = "";
+                  }}
+                />
+              </div>
+              {draft.images.length ? (
+                <div className="task-desc-images">
+                  {draft.images.map((url) => (
+                    <div className="task-desc-image" key={url}>
+                      <a href={url} target="_blank" rel="noreferrer"><img src={url} alt="Imagem da tarefa" /></a>
+                      {canEdit ? (
+                        <button type="button" onClick={() => removeImage(url)} aria-label="Remover imagem"><X size={11} /></button>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
               {editingDescription ? (
                 <textarea
                   autoFocus
@@ -368,7 +481,12 @@ export function TaskModal({
         </div>
         <footer className="modal-actions">
           {isEditing && canEdit ? (
-            <button type="button" className="danger-button" onClick={remove}><Trash2 size={13} /> Excluir</button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button type="button" className="danger-button" onClick={remove}><Trash2 size={13} /> Excluir</button>
+              <button type="button" className="secondary-button" onClick={duplicate} disabled={isDuplicating}>
+                <Copy size={13} /> {isDuplicating ? "Duplicando..." : "Duplicar"}
+              </button>
+            </div>
           ) : <span />}
           <div style={{ display: "flex", gap: 8 }}>
             <button type="button" className="secondary-button" onClick={onClose}>{canEdit ? "Cancelar" : "Fechar"}</button>

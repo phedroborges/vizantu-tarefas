@@ -209,20 +209,46 @@ a.upcoming-item { color: inherit; text-decoration: none; }
 .project-progress > span { display: block; height: 100%; background: var(--approved); }
 
 /* ---------- Badges de status/formato ---------- */
+/* --status-color é a cor da ETAPA exata (ver StatusColorPicker) — as classes
+   de grupo abaixo só dão um default (mesmas cores de sempre) pra quando
+   ninguém customizou nada ainda. Um style inline com --status-color no
+   elemento (setado por status, não por grupo) sempre vence essas classes,
+   porque especificidade de inline > classe — e como ::before não aceita
+   style inline direto, a variável é o jeito de "furar" o pseudo-elemento. */
 .status { display: inline-flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 730; text-transform: uppercase; }
-.status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #aeb5ae; }
-.status.nao_iniciada { color: #707770; }
-.status.nao_iniciada::before { background: #aeb5ae; }
-.status.em_andamento { color: #8a6d16; }
-.status.em_andamento::before { background: #e3c23c; }
-.status.feita { color: #4b6715; }
-.status.feita::before { background: var(--approved); }
-.status.atrasada { color: #9c3c20; }
-.status.atrasada::before { background: #e56a3c; }
+.status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--status-color, #aeb5ae); }
+.status.nao_iniciada { color: #707770; --status-color: #aeb5ae; }
+.status.em_andamento { color: #8a6d16; --status-color: #e3c23c; }
+.status.feita { color: #4b6715; --status-color: var(--approved); }
+.status.atrasada { color: #9c3c20; --status-color: #e56a3c; }
 
 .badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px; background: #f0f2ee; color: #596159; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; }
 .badge.format { background: #f1ebff; color: var(--brand-strong); }
 .badge.channel { background: #eaf4fb; color: #356c9c; }
+.badge.list { background: #eaf4fb; color: #356c9c; }
+.badge + .badge { margin-left: 4px; }
+
+/* ---------- Pílula de acesso (liberado/bloqueado) — Membros ---------- */
+.tag-pill { display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 11px; border: 1px solid var(--line); background: #fff; color: var(--muted-text); font-size: 11px; font-weight: 650; cursor: pointer; }
+.tag-pill:hover { border-color: #aab2aa; color: var(--dark); }
+.tag-pill.selected { border-color: #b7e08a; background: #f4f9eb; color: #4b6715; }
+
+/* ---------- Toggle de listas (Interna/Externa) — modal de tarefa ---------- */
+.list-toggle-group { display: flex; gap: 6px; flex-wrap: wrap; }
+.list-toggle-pill { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px; border: 1px solid var(--line); background: #fff; color: var(--muted-text); font-size: 11px; font-weight: 650; cursor: pointer; }
+.list-toggle-pill:hover { border-color: #aab2aa; color: var(--dark); }
+.list-toggle-pill.active { border-color: #a9c9e6; background: #eaf4fb; color: #356c9c; }
+.list-toggle-pill:disabled { cursor: not-allowed; opacity: .7; }
+
+/* ---------- Cores por etapa do status — popover de edição ---------- */
+.status-color-list { max-height: 320px; overflow-y: auto; padding: 6px; display: grid; gap: 10px; }
+.status-color-group { display: grid; gap: 2px; }
+.status-color-group-label { display: block; padding: 4px 6px; color: var(--muted-text); font-size: 9.5px; font-weight: 720; text-transform: uppercase; letter-spacing: .06em; }
+.status-color-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px; cursor: pointer; }
+.status-color-row:hover { background: #fafbf9; }
+.status-color-row span { font-size: 12px; color: var(--dark); }
+.status-color-row input[type="color"] { width: 30px; height: 22px; padding: 0; border: 1px solid var(--line); background: none; cursor: pointer; }
+.status-color-actions { padding: 8px 6px 4px; border-top: 1px solid var(--line); }
 
 /* ---------- Filtros / Toolbar ---------- */
 .toolbar { padding: 18px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
@@ -325,17 +351,21 @@ a.upcoming-item { color: inherit; text-decoration: none; }
 .meta-link-open:hover { color: var(--brand-strong); }
 
 /* ---------- Bloco de texto clicável (Descrição) ---------- */
+/* appearance:none + flex column top-aligned: sem isso, um <button> em bloco
+   ainda centraliza o conteúdo verticalmente (renderização nativa do form
+   control), mesmo com display:block e text-align:left setados. */
 .meta-block { display: grid; gap: 4px; padding: 10px 0 6px; }
-.meta-block-display { display: block; width: 100%; border: 0; background: transparent; margin: 0; padding: 2px 0; color: var(--dark); font-size: 12.5px; line-height: 1.6; text-align: left; white-space: pre-wrap; cursor: pointer; }
+.meta-block-display { appearance: none; -webkit-appearance: none; display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; width: 100%; border: 0; background: transparent; margin: 0; padding: 2px 0; color: var(--dark); font-size: 12.5px; line-height: 1.6; text-align: left; white-space: pre-wrap; cursor: pointer; }
 .meta-block-display:hover { color: var(--brand-strong); }
 .meta-block-textarea { width: 100%; border: 1px solid var(--brand-strong); background: white; padding: 9px 11px; min-height: 90px; font-size: 12.5px; line-height: 1.55; resize: vertical; }
 
 /* ---------- Status inline (dot colorido) ---------- */
+/* Mesmo esquema de --status-color de .status acima (ver comentário lá). */
 .status-inline { display: inline-flex; align-items: center; gap: 6px; }
-.status-inline::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #aeb5ae; }
-.status-inline.em_andamento::before { background: #e3c23c; }
-.status-inline.feita::before { background: var(--approved); }
-.status-inline.atrasada::before { background: #e56a3c; }
+.status-inline::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--status-color, #aeb5ae); }
+.status-inline.em_andamento { --status-color: #e3c23c; }
+.status-inline.feita { --status-color: var(--approved); }
+.status-inline.atrasada { --status-color: #e56a3c; }
 
 /* ---------- Etiquetas (Formato / Canal) — popover de seleção ---------- */
 .pill-inline-list { display: flex; flex-wrap: wrap; gap: 5px; }
@@ -366,8 +396,19 @@ a.upcoming-item { color: inherit; text-decoration: none; }
 .task-modal-pane-meta .meta-trigger { max-width: 100%; overflow: hidden; }
 .task-modal-pane-meta .meta-trigger [data-slot="select-value"] { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task-modal-pane-desc { display: flex; flex-direction: column; padding-left: 26px; border-left: 1px solid var(--line); }
-.task-desc-label { margin-bottom: 8px; }
-.task-desc-display { flex: 1; width: 100%; min-height: 180px; border: 0; background: transparent; margin: 0; padding: 0; color: var(--dark); font-size: 13.5px; line-height: 1.75; text-align: left; white-space: pre-wrap; cursor: pointer; }
+.task-desc-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.task-desc-label { margin-bottom: 0; }
+.task-desc-image-add { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); background: #fff; padding: 5px 9px; color: var(--muted-text); font-size: 10.5px; font-weight: 650; cursor: pointer; }
+.task-desc-image-add:hover { border-color: var(--brand-strong); color: var(--brand-strong); }
+.task-desc-image-add:disabled { opacity: .6; cursor: wait; }
+.task-desc-images { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.task-desc-image { position: relative; width: 76px; height: 76px; flex: none; border: 1px solid var(--line); overflow: hidden; }
+.task-desc-image img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.task-desc-image button { position: absolute; top: -1px; right: -1px; width: 18px; height: 18px; padding: 0; display: grid; place-items: center; border: 0; background: var(--dark); color: #fff; cursor: pointer; }
+/* appearance:none + flex column top-aligned: mesmo motivo do .meta-block-display
+   acima — sem isso a descrição aparece centralizada verticalmente no painel
+   em vez de grudada no topo, junto do rótulo/galeria. */
+.task-desc-display { appearance: none; -webkit-appearance: none; display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; flex: 1; width: 100%; min-height: 180px; border: 0; background: transparent; margin: 0; padding: 0; color: var(--dark); font-size: 13.5px; line-height: 1.75; text-align: left; white-space: pre-wrap; cursor: pointer; }
 .task-desc-display:hover { color: var(--brand-strong); }
 .task-desc-textarea { flex: 1; width: 100%; min-height: 180px; border: 0; background: transparent; padding: 0; color: var(--dark); font-size: 13.5px; line-height: 1.75; font-family: inherit; resize: vertical; }
 .task-desc-textarea:focus { outline: none; }

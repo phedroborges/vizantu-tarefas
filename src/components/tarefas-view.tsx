@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, CalendarDays, CheckSquare, Eye, EyeOff, List, Plus, Search } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarDays, Check, CheckSquare, Eye, EyeOff, List, Plus, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
   currentMonthKey,
@@ -13,11 +13,13 @@ import {
   todayIso,
 } from "@/lib/dates";
 import { useSetPageDetail } from "@/lib/page-context";
-import { STATUS_GROUPS, TASK_COLUMNS, TASK_STATUSES } from "@/lib/types";
-import type { Member, Project, Tag, Task, TaskColumnKey, TaskStatus } from "@/lib/types";
+import { STATUS_GROUPS, TASK_COLUMNS, TASK_LIST_KINDS, TASK_STATUSES } from "@/lib/types";
+import type { Member, Project, StatusColor, Tag, Task, TaskColumnKey, TaskListKind, TaskStatus } from "@/lib/types";
 import { TaskModal } from "@/components/task-modal";
 import { TaskColumnPicker } from "@/components/task-column-picker";
 import { TagPickerPopover } from "@/components/tag-picker";
+import { StatusColorPicker } from "@/components/status-color-picker";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useTaskColumns } from "@/lib/use-task-columns";
 
@@ -25,6 +27,17 @@ const WEEKDAYS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 const NO_ASSIGNEE = "none";
 // Base UI's <Select.Value> só resolve o rótulo se o Root receber esse mapa.
 const STATUS_LABELS: Record<string, string> = Object.fromEntries(TASK_STATUSES.map((status) => [status.value, status.label]));
+const LIST_LABELS: Record<TaskListKind, string> = Object.fromEntries(TASK_LIST_KINDS.map((kind) => [kind.value, kind.label])) as Record<TaskListKind, string>;
+
+// Cor customizada por etapa exata (não por grupo) — vira uma custom property
+// que o CSS de .status/.status-inline lê no ::before (não dá pra estilizar
+// pseudo-elemento via inline style direto). "Atrasada" nunca é sobrescrita:
+// é um estado sintético, não uma etapa que o usuário escolheu.
+function statusColorStyle(task: Task, colorByStatus: Map<TaskStatus, string>): React.CSSProperties | undefined {
+  if (isOverdue(task.dueDate, task.status)) return undefined;
+  const color = colorByStatus.get(task.status);
+  return color ? ({ "--status-color": color } as React.CSSProperties) : undefined;
+}
 
 // Cor do badge = grupo (3 cores + atrasada) — mais legível que 12 tons distintos.
 function statusOf(task: Task): string {
@@ -42,11 +55,11 @@ function statusFilterValue(task: Task): string {
   return isOverdue(task.dueDate, task.status) ? "atrasada" : task.status;
 }
 
-function InlineStatusCell({ task, group, onChange }: { task: Task; group: string; onChange: (status: TaskStatus) => void }) {
+function InlineStatusCell({ task, group, colorStyle, onChange }: { task: Task; group: string; colorStyle?: React.CSSProperties; onChange: (status: TaskStatus) => void }) {
   return (
     <Select items={STATUS_LABELS} value={task.status} onValueChange={(value) => value && onChange(value as TaskStatus)}>
       <SelectTrigger className="meta-trigger cell-trigger" onClick={(event) => event.stopPropagation()}>
-        <span className={`status ${group}`}>
+        <span className={`status ${group}`} style={colorStyle}>
           <SelectValue />
         </span>
       </SelectTrigger>
@@ -128,12 +141,37 @@ function InlineDueDateCell({ task, locked, onChange, onLockedClick }: { task: Ta
   );
 }
 
+function InlineListsCell({ task, onChange }: { task: Task; onChange: (lists: TaskListKind[]) => void }) {
+  const [open, setOpen] = useState(false);
+  function toggle(kind: TaskListKind) {
+    onChange(task.lists.includes(kind) ? task.lists.filter((item) => item !== kind) : [...task.lists, kind]);
+  }
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger className="cell-trigger meta-value-trigger" onClick={(event) => event.stopPropagation()}>
+        {task.lists.length ? task.lists.map((kind) => <span className="badge list" key={kind}>{LIST_LABELS[kind]}</span>) : <span className="meta-empty">—</span>}
+      </PopoverTrigger>
+      <PopoverContent className="!w-44 !rounded-none !p-0 !gap-0" align="start" onClick={(event) => event.stopPropagation()}>
+        <div className="tag-popover-list">
+          {TASK_LIST_KINDS.map((kind) => (
+            <button key={kind.value} type="button" className={`tag-popover-row ${task.lists.includes(kind.value) ? "selected" : ""}`} onClick={() => toggle(kind.value)}>
+              {kind.label}
+              {task.lists.includes(kind.value) ? <Check size={13} /> : null}
+            </button>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export function TarefasView({
   initialTasks,
   initialProjects,
   initialMembers,
   initialFormatTags,
   initialChannelTags,
+  initialStatusColors,
   canEdit = true,
   currentUserId,
   initialTaskId,
@@ -143,6 +181,7 @@ export function TarefasView({
   initialMembers: Member[];
   initialFormatTags: Tag[];
   initialChannelTags: Tag[];
+  initialStatusColors: StatusColor[];
   canEdit?: boolean;
   currentUserId: string;
   initialTaskId?: string;
@@ -150,11 +189,13 @@ export function TarefasView({
   const [tasks, setTasks] = useState(initialTasks);
   const [formatTags, setFormatTags] = useState(initialFormatTags);
   const [channelTags, setChannelTags] = useState(initialChannelTags);
+  const [statusColors, setStatusColors] = useState(initialStatusColors);
   const [view, setView] = useState<"lista" | "calendario">("lista");
   const [query, setQuery] = useState("");
   const [projectFilter, setProjectFilter] = useState("");
   const [assigneeFilter, setAssigneeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [listFilter, setListFilter] = useState<TaskListKind | "">("");
   const [showFinalized, setShowFinalized] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const withDue = initialTasks.filter((task) => task.dueDate).map((task) => monthKeyFromDate(task.dueDate!));
@@ -173,6 +214,7 @@ export function TarefasView({
   const formatTagById = useMemo(() => new Map(formatTags.map((tag) => [tag.id, tag])), [formatTags]);
   const channelTagById = useMemo(() => new Map(channelTags.map((tag) => [tag.id, tag])), [channelTags]);
   const activeMembers = useMemo(() => initialMembers.filter((member) => member.active), [initialMembers]);
+  const colorByStatus = useMemo(() => new Map(statusColors.map((entry) => [entry.status, entry.color])), [statusColors]);
 
   const filteredTasks = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -183,6 +225,7 @@ export function TarefasView({
       if (projectFilter && task.projectId !== projectFilter) return false;
       if (assigneeFilter && task.assigneeId !== assigneeFilter) return false;
       if (statusFilter && statusFilterValue(task) !== statusFilter) return false;
+      if (listFilter && !task.lists.includes(listFilter)) return false;
       if (normalized) {
         const assigneeName = task.assigneeId ? memberById.get(task.assigneeId)?.name || "" : "";
         const channelNames = task.channelTagIds.map((id) => channelTagById.get(id)?.label || "").join(" ");
@@ -190,7 +233,7 @@ export function TarefasView({
       }
       return true;
     });
-  }, [tasks, query, projectFilter, assigneeFilter, statusFilter, showFinalized, memberById, channelTagById]);
+  }, [tasks, query, projectFilter, assigneeFilter, statusFilter, listFilter, showFinalized, memberById, channelTagById]);
 
   const pageDetail = useMemo(() => {
     if (selectedTask && selectedTask !== "new") {
@@ -244,6 +287,12 @@ export function TarefasView({
     setTasks((current) => current.filter((item) => item.id !== id));
     setSelectedTask(null);
     showToast("Tarefa excluída.");
+  }
+
+  function handleDuplicated(task: Task) {
+    setTasks((current) => [task, ...current]);
+    setSelectedTask(null);
+    showToast("Tarefa duplicada.");
   }
 
   async function patchTask(taskId: string, payload: Record<string, unknown>) {
@@ -309,7 +358,9 @@ export function TarefasView({
       case "dueDate":
         return formatDueDate(task.dueDate);
       case "status":
-        return <span className={`status ${statusOf(task)}`}>{statusLabel(task)}</span>;
+        return <span className={`status ${statusOf(task)}`} style={statusColorStyle(task, colorByStatus)}>{statusLabel(task)}</span>;
+      case "lists":
+        return task.lists.length ? task.lists.map((kind) => <span className="badge list" key={kind}>{LIST_LABELS[kind]}</span>) : "—";
       case "driveLink":
         return task.driveLink ? (
           <a href={task.driveLink} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
@@ -380,9 +431,12 @@ export function TarefasView({
           <InlineStatusCell
             task={task}
             group={statusOf(task)}
+            colorStyle={statusColorStyle(task, colorByStatus)}
             onChange={(status) => patchTask(task.id, { status })}
           />
         );
+      case "lists":
+        return <InlineListsCell task={task} onChange={(lists) => patchTask(task.id, { lists })} />;
       default:
         return renderColumn(key, task);
     }
@@ -430,7 +484,20 @@ export function TarefasView({
                 ))}
                 <option value="atrasada">Atrasada</option>
               </select>
+              <select value={listFilter} onChange={(e) => setListFilter(e.target.value as TaskListKind | "")} aria-label="Filtrar por lista">
+                <option value="">Todas as listas</option>
+                {TASK_LIST_KINDS.map((kind) => <option value={kind.value} key={kind.value}>{kind.label}</option>)}
+              </select>
               {view === "lista" ? <TaskColumnPicker visible={visibleColumns} onToggle={toggleColumn} /> : null}
+              {canEdit ? (
+                <StatusColorPicker
+                  colors={statusColors}
+                  onSaved={(colors) => {
+                    setStatusColors(colors);
+                    showToast("Cores dos status atualizadas.");
+                  }}
+                />
+              ) : null}
               <div className="view-toggle" role="group" aria-label="Exibir tarefas finalizadas">
                 <button type="button" aria-pressed={showFinalized} className={showFinalized ? "active" : ""} onClick={() => setShowFinalized((current) => !current)}>
                   {showFinalized ? <EyeOff size={14} /> : <Eye size={14} />} {showFinalized ? "Ocultar finalizadas" : "Mostrar finalizadas"}
@@ -536,7 +603,7 @@ export function TarefasView({
                     {noDueTasks.map((task) => (
                       <li className="upcoming-item" key={task.id} onClick={() => setSelectedTask(task)} style={{ cursor: "pointer" }}>
                         <div><strong>{task.name}</strong><span>{projectById.get(task.projectId)?.name || "Sem projeto"}</span></div>
-                        <span className={`status ${statusOf(task)}`}>{statusLabel(task)}</span>
+                        <span className={`status ${statusOf(task)}`} style={statusColorStyle(task, colorByStatus)}>{statusLabel(task)}</span>
                       </li>
                     ))}
                   </ul>
@@ -553,12 +620,14 @@ export function TarefasView({
           members={initialMembers}
           formatTags={formatTags}
           channelTags={channelTags}
+          statusColors={statusColors}
           defaultProjectId={projectFilter || initialProjects[0]?.id || ""}
           canEdit={canEdit}
           currentUserId={currentUserId}
           onClose={() => setSelectedTask(null)}
           onSaved={handleSaved}
           onDeleted={handleDeleted}
+          onDuplicated={handleDuplicated}
           onTagCreated={handleTagCreated}
         />
       ) : null}

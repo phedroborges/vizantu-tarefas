@@ -15,11 +15,13 @@ export function TaskStatusControl({
   status,
   statusHistory,
   dueDate,
+  color,
   onChange,
 }: {
   status: TaskStatus;
   statusHistory: StatusHistoryEntry[];
   dueDate?: string;
+  color?: string;
   onChange: (next: TaskStatus) => void;
 }) {
   const [showTiming, setShowTiming] = useState(false);
@@ -35,14 +37,16 @@ export function TaskStatusControl({
   }, [statusHistory, hasHistory]);
 
   const currentEntry = hasHistory ? visitedDurations.find(({ def }) => def.value === status)?.entry : undefined;
-  const statusGroup = dueDate && isOverdue(dueDate, status) ? "atrasada" : TASK_STATUSES.find((item) => item.value === status)?.group;
+  const overdue = Boolean(dueDate && isOverdue(dueDate, status));
+  const statusGroup = overdue ? "atrasada" : TASK_STATUSES.find((item) => item.value === status)?.group;
+  const colorStyle = !overdue && color ? ({ "--status-color": color } as React.CSSProperties) : undefined;
 
   return (
     <MetaRow icon={<CircleDot size={13} />} label="Status">
       <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flexWrap: "wrap" }}>
         <Select items={STATUS_LABELS} value={status} onValueChange={(value) => onChange(value as TaskStatus)}>
           <SelectTrigger className="meta-trigger">
-            <span className={`status-inline ${statusGroup}`}>
+            <span className={`status-inline ${statusGroup}`} style={colorStyle}>
               <SelectValue />
             </span>
           </SelectTrigger>

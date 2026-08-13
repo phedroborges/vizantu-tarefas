@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser, type CurrentUser } from "./current-user";
-import type { UserRole } from "./types";
+import type { TaskListKind, UserRole } from "./types";
 
 // Devolve o usuário atual (autenticado e, se `roles` foi passado, autorizado)
 // ou já devolve a NextResponse de erro certa. Cada rota faz uma chamada,
@@ -30,4 +30,13 @@ export function filterTasksByAccess<T extends { projectId: string }>(tasks: T[],
   if (accessibleProjectIds === "all") return tasks;
   const allowed = new Set(accessibleProjectIds);
   return tasks.filter((task) => allowed.has(task.projectId));
+}
+
+// Tarefa sem lista marcada não pertence a nenhuma lista específica — continua
+// visível pra todo mundo. Uma tarefa em ambas as listas (interna + externa)
+// só some pra quem não tem acesso a NENHUMA das duas em que ela está.
+export function filterTasksByListAccess<T extends { lists: TaskListKind[] }>(tasks: T[], accessibleListKinds: TaskListKind[] | "all"): T[] {
+  if (accessibleListKinds === "all") return tasks;
+  const allowed = new Set(accessibleListKinds);
+  return tasks.filter((task) => task.lists.length === 0 || task.lists.some((kind) => allowed.has(kind)));
 }
