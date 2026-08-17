@@ -8,6 +8,7 @@ import { MetaRow } from "@/components/meta-row";
 import { TagPicker } from "@/components/tag-picker";
 import { TaskStatusControl } from "@/components/task-status-control";
 import { useConfirm } from "@/components/confirm-dialog";
+import { DESCRIPTION_SECTIONS, parseDescription, serializeDescription } from "@/lib/description-sections";
 import { formatDateTime, isOverdue, todayIso } from "@/lib/dates";
 import { resizeImageFile } from "@/lib/resize-image";
 import type { Member, Project, StatusColor, Tag, TagKind, Task, TaskStatus } from "@/lib/types";
@@ -110,6 +111,7 @@ export function TaskModal({
   onTagCreated: (tag: Tag) => void;
 }) {
   const [draft, setDraft] = useState<Draft>(() => draftFromTask(task, defaultProjectId, currentUserId));
+  const [sections, setSections] = useState(() => parseDescription(task?.description));
   const [liveTaskId, setLiveTaskId] = useState(task?.id);
   const [statusHistory, setStatusHistory] = useState(task?.statusHistory ?? []);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -213,6 +215,15 @@ export function TaskModal({
   }
 
   const isPlanItem = Boolean(task?.planId);
+
+  // A descrição continua sendo UM campo de texto no banco (a IA lê/escreve
+  // nele, e o cliente vê ele no vizantu-planos) — aqui só é editada por
+  // seções. Reserializa a cada tecla e deixa o autosave debounced levar.
+  function updateSection(key: keyof typeof sections, value: string) {
+    const next = { ...sections, [key]: value };
+    setSections(next);
+    updateField("description", serializeDescription(next));
+  }
 
   async function copyLink() {
     if (!liveTaskId) return;
@@ -493,7 +504,38 @@ export function TaskModal({
                   ))}
                 </div>
               ) : null}
-              {editingDescription ? (
+              {/* Item de plano tem SEMPRE as mesmas seções, em toda tarefa —
+                  é o padrão da casa, não markdown que alguém precisa lembrar
+                  de digitar. Tarefa comum segue com a descrição livre. */}
+              {isPlanItem ? (
+                <div className="desc-sections">
+                  {sections.livre.trim() ? (
+                    <div className="desc-section">
+                      <span className="desc-section-label">Anotações</span>
+                      <textarea
+                        className="desc-section-input"
+                        value={sections.livre}
+                        disabled={!canEdit}
+                        onChange={(e) => updateSection("livre", e.target.value)}
+                        rows={2}
+                      />
+                    </div>
+                  ) : null}
+                  {DESCRIPTION_SECTIONS.map((section) => (
+                    <div className="desc-section" key={section.key}>
+                      <span className="desc-section-label">{section.label}</span>
+                      <textarea
+                        className="desc-section-input"
+                        value={sections[section.key]}
+                        disabled={!canEdit}
+                        onChange={(e) => updateSection(section.key, e.target.value)}
+                        placeholder={section.placeholder}
+                        rows={3}
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : editingDescription ? (
                 <textarea
                   autoFocus
                   className="task-desc-textarea"
@@ -506,7 +548,7 @@ export function TaskModal({
                       setEditingDescription(false);
                     }
                   }}
-                  placeholder={isPlanItem ? "Direcionamento, roteiro, referência, legenda — escreva tudo aqui, do jeito que fizer sentido." : "Descreva o briefing da tarefa"}
+                  placeholder="Descreva o briefing da tarefa"
                   maxLength={4000}
                 />
               ) : (
