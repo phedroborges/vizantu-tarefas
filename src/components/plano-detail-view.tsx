@@ -1,8 +1,10 @@
 "use client";
 
-import { CalendarDays, ClipboardList, Copy, Film, Link2, Plus, Trash2, Users as UsersIcon } from "lucide-react";
+import { CalendarDays, Camera, ClipboardList, Copy, Link2, Plus, Trash2, Users as UsersIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { TaskModal } from "@/components/task-modal";
+import { useConfirm } from "@/components/confirm-dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatDueDate } from "@/lib/dates";
 import { TASK_STATUSES } from "@/lib/types";
 import type { Member, Plan, PlanCaptacao, PlanClient, Project, StatusColor, Tag, Task } from "@/lib/types";
@@ -11,6 +13,8 @@ import type { Member, Plan, PlanCaptacao, PlanClient, Project, StatusColor, Tag,
 // (/c/[token]) — configurável porque os dois apps ficam em domínios
 // diferentes; sem a env, mostra só o token pro time copiar manualmente.
 const PLANOS_PUBLIC_URL = process.env.NEXT_PUBLIC_PLANOS_URL || "";
+const NO_CAPTACAO = "none";
+const NO_FORMAT_KEY = "__sem_formato__";
 
 function statusGroup(status: Task["status"]): string {
   return TASK_STATUSES.find((s) => s.value === status)?.group || "nao_iniciada";
@@ -52,10 +56,13 @@ export function PlanoDetailView({
   const [clients, setClients] = useState(initialClients);
   const [newCaptacaoLabel, setNewCaptacaoLabel] = useState("");
   const [newItemName, setNewItemName] = useState("");
-  const [newItemCaptacaoId, setNewItemCaptacaoId] = useState("");
+  const [newItemFormatId, setNewItemFormatId] = useState(formatTags[0]?.id || "");
+  const [newClientName, setNewClientName] = useState("");
+  const [addingClient, setAddingClient] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null | undefined>(undefined);
   const [tokensByClient, setTokensByClient] = useState<Record<string, string[]>>({});
   const [toast, setToast] = useState("");
+  const { confirm, ConfirmDialog } = useConfirm();
 
   const isContent = plan.kind === "content";
 
@@ -78,12 +85,16 @@ export function PlanoDetailView({
     setNewCaptacaoLabel("");
   }
 
-  async function removeCaptacao(id: string) {
-    if (!window.confirm("Remover esta captação? Os itens dela ficam sem captação.")) return;
-    const response = await fetch(`/api/plan-captacoes/${id}`, { method: "DELETE" });
+  async function removeCaptacao(captacao: PlanCaptacao) {
+    const used = tasks.filter((t) => t.captacaoId === captacao.id).length;
+    const message = used
+      ? `Remover "${captacao.label}"? ${used} ${used === 1 ? "item fica" : "itens ficam"} sem captação (nada é excluído).`
+      : `Remover "${captacao.label}"?`;
+    if (!(await confirm({ title: "Remover captação", message, confirmLabel: "Remover", danger: true }))) return;
+    const response = await fetch(`/api/plan-captacoes/${captacao.id}`, { method: "DELETE" });
     if (!response.ok) return showToast("Não foi possível remover a captação.");
-    setCaptacoes((current) => current.filter((c) => c.id !== id));
-    setTasks((current) => current.map((t) => (t.captacaoId === id ? { ...t, captacaoId: undefined } : t)));
+    setCaptacoes((current) => current.filter((c) => c.id !== captacao.id));
+    setTasks((current) => current.map((t) => (t.captacaoId === captacao.id ? { ...t, captacaoId: undefined } : t)));
   }
 
   async function addItem(event: React.FormEvent<HTMLFormElement>) {
@@ -96,7 +107,7 @@ export function PlanoDetailView({
         projectId: plan.projectId,
         name: newItemName,
         planId: plan.id,
-        captacaoId: isContent ? newItemCaptacaoId || undefined : undefined,
+        formatTagIds: isContent && newItemFormatId ? [newItemFormatId] : undefined,
         sequenceOrder: isContent ? undefined : tasks.length,
       }),
     });
@@ -106,9 +117,21 @@ export function PlanoDetailView({
     setNewItemName("");
   }
 
+  // Captação é atribuída por item (e é universal: vale pra vídeo, carrossel,
+  // estático — qualquer formato pode precisar de uma sessão de captação).
+  async function setItemCaptacao(taskId: string, captacaoId: string) {
+    const value = captacaoId === NO_CAPTACAO ? null : captacaoId;
+    setTasks((current) => current.map((t) => (t.id === taskId ? { ...t, captacaoId: value || undefined } : t)));
+    const response = await fetch(`/api/tasks/${taskId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ captacaoId: value }),
+    });
+    if (!response.ok) showToast("Não foi possível mudar a captação.");
+  }
+
   function onTaskSaved(task: Task) {
     setTasks((current) => (current.some((t) => t.id === task.id) ? current.map((t) => (t.id === task.id ? task : t)) : [...current, task]));
-    setEditingTask(undefined);
   }
 
   function onTaskDeleted(id: string) {
@@ -116,35 +139,40 @@ export function PlanoDetailView({
     setEditingTask(undefined);
   }
 
-  const itemsByCaptacao = useMemo(() => {
+  const formatTagById = useMemo(() => new Map(formatTags.map((t) => [t.id, t])), [formatTags]);
+  const categoryTagById = useMemo(() => new Map(categoryTags.map((t) => [t.id, t])), [categoryTags]);
+  const memberById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
+  const captacaoById = useMemo(() => new Map(captacoes.map((c) => [c.id, c])), [captacoes]);
+
+  // Agrupamento principal = FORMATO (vídeo, carrossel, estático...). Captação
+  // é uma marcação transversal escolhida por item, não o agrupador.
+  const itemsByFormat = useMemo(() => {
     const map = new Map<string, Task[]>();
     tasks.forEach((task) => {
-      const key = task.captacaoId || "__none__";
+      const key = task.formatTagIds[0] || NO_FORMAT_KEY;
       map.set(key, [...(map.get(key) || []), task]);
     });
     return map;
   }, [tasks]);
 
   const processItems = useMemo(() => [...tasks].sort((a, b) => (a.sequenceOrder ?? 0) - (b.sequenceOrder ?? 0)), [tasks]);
-  const formatTagById = useMemo(() => new Map(formatTags.map((t) => [t.id, t])), [formatTags]);
-  const categoryTagById = useMemo(() => new Map(categoryTags.map((t) => [t.id, t])), [categoryTags]);
-  const memberById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
 
   const doneCount = tasks.filter((t) => statusGroup(t.status) === "feita").length;
-  const scriptedCount = tasks.filter((t) => t.scriptText?.trim()).length;
   const progressRate = tasks.length ? Math.round((doneCount / tasks.length) * 100) : 0;
 
-  async function createClient() {
-    const name = window.prompt("Nome do cliente (aparece no cabeçalho do dashboard):");
-    if (!name?.trim()) return;
+  async function createClient(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!newClientName.trim()) return;
     const response = await fetch("/api/plan-clients", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ projectId: plan.projectId, name }),
+      body: JSON.stringify({ projectId: plan.projectId, name: newClientName }),
     });
     const result = await response.json();
     if (!response.ok) return showToast(result.error || "Não foi possível criar o cliente.");
     setClients((current) => [...current, result.client]);
+    setNewClientName("");
+    setAddingClient(false);
   }
 
   async function generateToken(clientId: string) {
@@ -160,26 +188,54 @@ export function PlanoDetailView({
     navigator.clipboard.writeText(url).then(() => showToast("Link copiado."));
   }
 
+  const captacaoLabels: Record<string, string> = {
+    [NO_CAPTACAO]: "Sem captação",
+    ...Object.fromEntries(captacoes.map((c) => [c.id, c.label])),
+  };
+
   function renderTaskRow(task: Task) {
-    const format = task.formatTagIds.map((id) => formatTagById.get(id)?.label).filter(Boolean);
     const categories = task.categoryTagIds.map((id) => categoryTagById.get(id)?.label).filter(Boolean);
     const assignee = task.assigneeId ? memberById.get(task.assigneeId)?.name : undefined;
     return (
-      <li key={task.id} className="plan-item-row" onClick={() => setEditingTask(task)}>
-        <div className="plan-item-row-main">
+      <li key={task.id} className="plan-item-row">
+        <div className="plan-item-row-main" onClick={() => setEditingTask(task)}>
           <strong>{task.name}</strong>
           <div className="plan-item-row-meta">
-            {format.map((label) => <span className="badge format" key={label}>{label}</span>)}
             {categories.map((label) => <span className="badge channel" key={label}>{label}</span>)}
-            {!format.length && !categories.length ? <span className="plan-item-empty">Sem formato/categoria</span> : null}
+            {assignee ? <span className="plan-item-assignee">{assignee}</span> : null}
+            {task.dueDate ? <span className="plan-item-due"><CalendarDays size={11} /> {formatDueDate(task.dueDate)}</span> : null}
           </div>
         </div>
         <div className="plan-item-row-side">
-          {assignee ? <span className="plan-item-assignee">{assignee}</span> : null}
-          {task.dueDate ? <span className="plan-item-due"><CalendarDays size={11} /> {formatDueDate(task.dueDate)}</span> : null}
-          <span className={`status ${statusGroup(task.status)}`}>{statusLabel(task.status)}</span>
+          {isContent ? (
+            canEdit ? (
+              <Select items={captacaoLabels} value={task.captacaoId || NO_CAPTACAO} onValueChange={(value) => setItemCaptacao(task.id, value ?? NO_CAPTACAO)}>
+                <SelectTrigger className="plan-captacao-select">
+                  <SelectValue placeholder="Sem captação" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_CAPTACAO}>Sem captação</SelectItem>
+                  {captacoes.map((c) => <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            ) : (
+              <span className="plan-item-assignee">{task.captacaoId ? captacaoById.get(task.captacaoId)?.label : "Sem captação"}</span>
+            )
+          ) : null}
+          <span className={`status ${statusGroup(task.status)}`} onClick={() => setEditingTask(task)}>{statusLabel(task.status)}</span>
         </div>
       </li>
+    );
+  }
+
+  function renderFormatGroup(formatId: string, label: string) {
+    const groupTasks = itemsByFormat.get(formatId) || [];
+    if (!groupTasks.length) return null;
+    return (
+      <div key={formatId}>
+        <div className="plan-group-label">{label} <em>{groupTasks.length}</em></div>
+        <ul className="plan-item-list">{groupTasks.map(renderTaskRow)}</ul>
+      </div>
     );
   }
 
@@ -190,13 +246,10 @@ export function PlanoDetailView({
           <div>
             <span className="eyebrow">{project.name}</span>
             <h1>{plan.title}</h1>
-            <p>{isContent ? "Vídeos, posts e carrosséis agrupados por captação — roteiro, direcionamento, referência e legenda ficam em cada item." : "Passos ordenados do processo."}</p>
+            <p>{isContent ? "Conteúdos agrupados por formato. A captação é escolhida por item — qualquer formato pode entrar numa captação." : "Passos ordenados do processo."}</p>
           </div>
           <div className="stats" style={{ display: "flex", gap: 1, background: "var(--line)", border: "1px solid var(--line)" }}>
             <div className="stat" style={{ background: "white", minWidth: 110, padding: "15px 18px" }}><strong>{tasks.length}</strong><span>itens</span></div>
-            {isContent ? (
-              <div className="stat" style={{ background: "white", minWidth: 110, padding: "15px 18px" }}><strong>{scriptedCount}</strong><span>com roteiro</span></div>
-            ) : null}
             <div className="stat" style={{ background: "white", minWidth: 110, padding: "15px 18px" }}><strong>{progressRate}%</strong><span>concluído</span></div>
           </div>
         </div>
@@ -209,16 +262,24 @@ export function PlanoDetailView({
 
         {isContent ? (
           <section className="panel" style={{ marginBottom: 18 }}>
-            <div className="panel-head"><h2><Film size={15} style={{ verticalAlign: -2 }} /> Captações</h2></div>
+            <div className="panel-head">
+              <div>
+                <h2><Camera size={15} style={{ verticalAlign: -2 }} /> Captações</h2>
+                <p>Sessões de captação do plano — cada item escolhe a sua na lista ao lado.</p>
+              </div>
+            </div>
             <div className="plan-captacao-row">
-              {captacoes.map((c) => (
-                <span key={c.id} className="plan-captacao-chip">
-                  {c.label}
-                  <em>{(itemsByCaptacao.get(c.id) || []).length}</em>
-                  {canEdit ? <button type="button" onClick={() => removeCaptacao(c.id)} aria-label={`Remover ${c.label}`}><Trash2 size={11} /></button> : null}
-                </span>
-              ))}
-              {!captacoes.length ? <span className="plan-item-empty">Nenhuma captação ainda — crie a primeira ao lado.</span> : null}
+              {captacoes.map((c) => {
+                const count = tasks.filter((t) => t.captacaoId === c.id).length;
+                return (
+                  <span key={c.id} className="plan-captacao-chip">
+                    {c.label}
+                    <em>{count}</em>
+                    {canEdit ? <button type="button" onClick={() => removeCaptacao(c)} aria-label={`Remover ${c.label}`}><Trash2 size={11} /></button> : null}
+                  </span>
+                );
+              })}
+              {!captacoes.length ? <span className="plan-item-empty">Nenhuma captação ainda.</span> : null}
               {canEdit ? (
                 <form onSubmit={addCaptacao} className="plan-captacao-form">
                   <input value={newCaptacaoLabel} onChange={(e) => setNewCaptacaoLabel(e.target.value)} placeholder="Ex.: 1ª Captação" style={{ width: 160 }} />
@@ -236,19 +297,19 @@ export function PlanoDetailView({
               <form className="modal-body" onSubmit={addItem} style={{ padding: "24px 25px 27px" }}>
                 <div className="field">
                   <label htmlFor="item-name">Nome</label>
-                  <input id="item-name" value={newItemName} onChange={(e) => setNewItemName(e.target.value)} placeholder={isContent ? "Ex.: Vídeo #1 — trends" : "Ex.: E-mail de acesso enviado"} required maxLength={140} />
+                  <input id="item-name" value={newItemName} onChange={(e) => setNewItemName(e.target.value)} placeholder={isContent ? "Ex.: Pulando de paraquedas com meu cachorro" : "Ex.: E-mail de acesso enviado"} required maxLength={140} />
                 </div>
                 {isContent ? (
                   <div className="field">
-                    <label htmlFor="item-captacao">Captação</label>
-                    <select id="item-captacao" value={newItemCaptacaoId} onChange={(e) => setNewItemCaptacaoId(e.target.value)}>
-                      <option value="">Sem captação</option>
-                      {captacoes.map((c) => <option value={c.id} key={c.id}>{c.label}</option>)}
+                    <label htmlFor="item-format">Formato</label>
+                    <select id="item-format" value={newItemFormatId} onChange={(e) => setNewItemFormatId(e.target.value)}>
+                      <option value="">Sem formato</option>
+                      {formatTags.map((t) => <option value={t.id} key={t.id}>{t.label}</option>)}
                     </select>
                   </div>
                 ) : null}
                 <button className="primary-button" type="submit" style={{ width: "100%" }}>Adicionar item</button>
-                <p className="plan-form-hint">Depois de criado, clique no item pra preencher roteiro, direcionamento, referência e legenda.</p>
+                <p className="plan-form-hint">Clique no item pra escrever a descrição (direcionamento, roteiro, referência) e escolher a captação.</p>
               </form>
             </section>
           ) : null}
@@ -257,18 +318,8 @@ export function PlanoDetailView({
             <div className="panel-head"><h2>Itens ({tasks.length})</h2></div>
             {isContent ? (
               <>
-                {captacoes.map((c) => (
-                  <div key={c.id}>
-                    <div className="plan-group-label">{c.label}</div>
-                    <ul className="plan-item-list">{(itemsByCaptacao.get(c.id) || []).map(renderTaskRow)}</ul>
-                  </div>
-                ))}
-                {itemsByCaptacao.get("__none__")?.length ? (
-                  <div>
-                    <div className="plan-group-label">Sem captação</div>
-                    <ul className="plan-item-list">{itemsByCaptacao.get("__none__")!.map(renderTaskRow)}</ul>
-                  </div>
-                ) : null}
+                {formatTags.map((t) => renderFormatGroup(t.id, t.label))}
+                {renderFormatGroup(NO_FORMAT_KEY, "Sem formato")}
               </>
             ) : (
               <ul className="plan-item-list">{processItems.map(renderTaskRow)}</ul>
@@ -284,7 +335,12 @@ export function PlanoDetailView({
         </div>
 
         <section className="panel" style={{ marginTop: 18 }}>
-          <div className="panel-head"><h2><UsersIcon size={15} style={{ verticalAlign: -2 }} /> Cliente e link mágico</h2><p>O link dá acesso ao dashboard de aprovação em vizantu-planos — sem senha, um token por cliente.</p></div>
+          <div className="panel-head">
+            <div>
+              <h2><UsersIcon size={15} style={{ verticalAlign: -2 }} /> Cliente e link mágico</h2>
+              <p>O link dá acesso ao dashboard de aprovação em vizantu-planos — sem senha, um token por cliente.</p>
+            </div>
+          </div>
           <div className="plan-client-grid">
             {clients.map((client) => {
               const tokens = tokensByClient[client.id] || [];
@@ -311,9 +367,26 @@ export function PlanoDetailView({
               );
             })}
             {canEdit ? (
-              <button type="button" className="plan-client-add" onClick={createClient}>
-                <Plus size={16} /> Novo cliente
-              </button>
+              addingClient ? (
+                <form className="plan-client-card" onSubmit={createClient}>
+                  <input
+                    autoFocus
+                    value={newClientName}
+                    onChange={(e) => setNewClientName(e.target.value)}
+                    onKeyDown={(e) => e.key === "Escape" && setAddingClient(false)}
+                    placeholder="Nome do cliente"
+                    maxLength={120}
+                  />
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button type="submit" className="primary-button" style={{ flex: 1 }}>Criar</button>
+                    <button type="button" className="secondary-button" onClick={() => setAddingClient(false)}>Cancelar</button>
+                  </div>
+                </form>
+              ) : (
+                <button type="button" className="plan-client-add" onClick={() => setAddingClient(true)}>
+                  <Plus size={16} /> Novo cliente
+                </button>
+              )
             ) : null}
             {!clients.length && !canEdit ? <span className="plan-item-empty">Nenhum cliente cadastrado ainda.</span> : null}
           </div>
@@ -339,6 +412,7 @@ export function PlanoDetailView({
           onTagCreated={() => {}}
         />
       ) : null}
+      {ConfirmDialog}
       {toast ? <div className="toast">{toast}</div> : null}
     </>
   );

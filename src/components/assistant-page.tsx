@@ -4,6 +4,7 @@ import { Check, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { ChatComposer } from "@/components/chat-composer";
 import { ChatThread } from "@/components/chat-thread";
+import { useConfirm } from "@/components/confirm-dialog";
 import { useAssistantChat } from "@/lib/use-assistant-chat";
 
 type ConversationSummary = { id: string; title: string; updatedAt: string };
@@ -20,6 +21,7 @@ export function AssistantPage() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const { confirm, ConfirmDialog } = useConfirm();
   const { messages, setMessages, isSending, send, confirmDelete } = useAssistantChat({ conversationId: activeId ?? undefined });
   const bodyRef = useRef<HTMLDivElement>(null);
   const hasLoadedListRef = useRef(false);
@@ -95,7 +97,7 @@ export function AssistantPage() {
   }
 
   async function removeConversation(conversation: ConversationSummary) {
-    if (!window.confirm(`Excluir a conversa "${conversation.title}"?`)) return;
+    if (!(await confirm({ title: "Excluir conversa", message: `Excluir a conversa "${conversation.title}"?`, confirmLabel: "Excluir", danger: true }))) return;
     const response = await fetch(`/api/assistant/conversations/${conversation.id}`, { method: "DELETE" });
     if (!response.ok) return;
     setConversations((current) => current.filter((c) => c.id !== conversation.id));
@@ -103,6 +105,7 @@ export function AssistantPage() {
   }
 
   return (
+    <>
     <div className="assistant-shell">
       <aside className="assistant-sidebar">
         <button type="button" className="assistant-new-chat" onClick={startNewConversation}>
@@ -188,5 +191,7 @@ export function AssistantPage() {
         />
       </div>
     </div>
+    {ConfirmDialog}
+    </>
   );
 }

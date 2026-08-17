@@ -60,17 +60,17 @@ describe("assistant-tools: planos e avisos", () => {
     )) as { created: { id: string } };
     const item = (await executeTool(
       "add_plan_item",
-      JSON.stringify({ planId: plan.created.id, name: "Vídeo #1", captacaoLabel: "1ª Captação", scriptText: "Roteiro via IA" }),
+      JSON.stringify({ planId: plan.created.id, name: "Vídeo #1", captacaoLabel: "1ª Captação", description: "**Roteiro**\nRoteiro via IA" }),
       donoUser,
     )) as { created: { id: string; planId: string } };
     expect(item.created.planId).toBe(plan.created.id);
 
     const detail = (await executeTool("get_plan", JSON.stringify({ planId: plan.created.id }), donoUser)) as {
       captacoes: string[];
-      items: { name: string; captacao: string | null; hasScript: boolean }[];
+      items: { name: string; captacao: string | null; hasDescription: boolean }[];
     };
     expect(detail.captacoes).toEqual(["1ª Captação"]);
-    expect(detail.items[0]).toMatchObject({ name: "Vídeo #1", captacao: "1ª Captação", hasScript: true });
+    expect(detail.items[0]).toMatchObject({ name: "Vídeo #1", captacao: "1ª Captação", hasDescription: true });
   });
 
   it("3. update_plan_item edita o roteiro de um item já criado", async () => {
@@ -84,13 +84,13 @@ describe("assistant-tools: planos e avisos", () => {
     };
     const updated = (await executeTool(
       "update_plan_item",
-      JSON.stringify({ taskId: item.created.id, scriptText: "Roteiro atualizado", status: "em_criacao" }),
+      JSON.stringify({ taskId: item.created.id, description: "Roteiro atualizado", status: "em_criacao" }),
       donoUser,
     )) as { updated: { status: string } };
     expect(updated.updated.status).toBe("Em criação");
 
-    const { data: row } = await db.from("tasks").select("script_text, lists").eq("id", item.created.id).single();
-    expect(row!.script_text).toBe("Roteiro atualizado");
+    const { data: row } = await db.from("tasks").select("description, lists").eq("id", item.created.id).single();
+    expect(row!.description).toBe("Roteiro atualizado");
     expect(row!.lists).toEqual(["criativa"]); // confirma que a automação também dispara vindo da IA
   });
 

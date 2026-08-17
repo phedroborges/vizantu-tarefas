@@ -1,12 +1,13 @@
 "use client";
 
-import { AlignLeft, CalendarDays, Check, Clapperboard, Copy, ExternalLink, Folder, ImagePlus, Link2, Loader2, Send, Share2, Trash2, User, X } from "lucide-react";
+import { AlignLeft, CalendarDays, Check, Copy, ExternalLink, Folder, ImagePlus, Link2, Loader2, Send, Share2, Trash2, User, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { MetaRow } from "@/components/meta-row";
 import { TagPicker } from "@/components/tag-picker";
 import { TaskStatusControl } from "@/components/task-status-control";
+import { useConfirm } from "@/components/confirm-dialog";
 import { formatDateTime, isOverdue, todayIso } from "@/lib/dates";
 import { resizeImageFile } from "@/lib/resize-image";
 import type { Member, Project, StatusColor, Tag, TagKind, Task, TaskStatus } from "@/lib/types";
@@ -22,15 +23,12 @@ type Draft = {
   formatTagIds: string[];
   channelTagIds: string[];
   categoryTagIds: string[];
-  scriptText: string;
-  directionText: string;
-  referenceText: string;
-  captionText: string;
   status: TaskStatus;
 };
 
 const NO_ASSIGNEE = "none";
 const NO_PROJECT = "none";
+const AUTOSAVE_DEBOUNCE_MS = 700;
 
 // A IA escreve as descrições em Markdown; sem tratar, os **negritos** apareciam
 // crus, com asteriscos. Renderiza só o negrito, como nós de texto React (nada de
@@ -58,11 +56,23 @@ function draftFromTask(task: Task | null, defaultProjectId: string, currentUserI
     formatTagIds: task?.formatTagIds || [],
     channelTagIds: task?.channelTagIds || [],
     categoryTagIds: task?.categoryTagIds || [],
-    scriptText: task?.scriptText || "",
-    directionText: task?.directionText || "",
-    referenceText: task?.referenceText || "",
-    captionText: task?.captionText || "",
     status: task?.status || "rascunho",
+  };
+}
+
+function buildPayload(draft: Draft) {
+  return {
+    projectId: draft.projectId,
+    name: draft.name,
+    dueDate: draft.dueDate || undefined,
+    assigneeId: draft.assigneeId === NO_ASSIGNEE ? null : draft.assigneeId,
+    description: draft.description,
+    images: draft.images,
+    driveLink: draft.driveLink,
+    formatTagIds: draft.formatTagIds,
+    channelTagIds: draft.channelTagIds,
+    categoryTagIds: draft.categoryTagIds,
+    status: draft.status,
   };
 }
 
@@ -100,9 +110,11 @@ export function TaskModal({
   onTagCreated: (tag: Tag) => void;
 }) {
   const [draft, setDraft] = useState<Draft>(() => draftFromTask(task, defaultProjectId, currentUserId));
+  const [liveTaskId, setLiveTaskId] = useState(task?.id);
+  const [statusHistory, setStatusHistory] = useState(task?.statusHistory ?? []);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [commentText, setCommentText] = useState("");
   const [comments, setComments] = useState(task?.comments || []);
-  const [isSaving, setIsSaving] = useState(false);
   const [isSendingComment, setIsSendingComment] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
@@ -112,6 +124,15 @@ export function TaskModal({
   const [linkCopied, setLinkCopied] = useState(false);
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const { confirm, ConfirmDialog } = useConfirm();
+
+  // Refs (não state) pra evitar corrida entre o autosave debounced e uma
+  // criação/atualização ainda em andamento — persist() sempre lê o valor
+  // atual daqui, nunca um closure velho.
+  const liveTaskIdRef = useRef(task?.id);
+  const inFlightRef = useRef(false);
+  const pendingRef = useRef<Draft | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const el = titleRef.current;
@@ -120,12 +141,69 @@ export function TaskModal({
     el.style.height = `${el.scrollHeight}px`;
   }, [draft.name]);
 
-  const isEditing = Boolean(task);
-  const dateLocked = isEditing && isOverdue(task!.dueDate, task!.status);
+  const isEditing = Boolean(liveTaskId);
+  const dateLocked = isEditing && isOverdue(draft.dueDate, draft.status);
   const colorByStatus = useMemo(() => new Map(statusColors.map((entry) => [entry.status, entry.color])), [statusColors]);
 
-  function update<K extends keyof Draft>(key: K, value: Draft[K]) {
-    setDraft((current) => ({ ...current, [key]: value }));
+  // Salva de verdade — cria a tarefa no primeiro autosave com nome+projeto
+  // preenchidos, atualiza dali em diante. Se uma chamada já estiver em voo
+  // quando outra edição chega, guarda só a mais recente pra rodar assim que
+  // a primeira terminar (nunca perde uma edição, nunca dispara 2 ao mesmo
+  // tempo).
+  async function persist(current: Draft) {
+    if (!current.name.trim() || !current.projectId || current.projectId === NO_PROJECT) return;
+    if (!canEdit) return;
+    if (inFlightRef.current) {
+      pendingRef.current = current;
+      return;
+    }
+    inFlightRef.current = true;
+    setSaveState("saving");
+    try {
+      const isCreate = !liveTaskIdRef.current;
+      const response = await fetch(isCreate ? "/api/tasks" : `/api/tasks/${liveTaskIdRef.current}`, {
+        method: isCreate ? "POST" : "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildPayload(current)),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        setSaveState("error");
+        setError(result.error || "Não foi possível salvar.");
+        return;
+      }
+      setError("");
+      if (isCreate) {
+        liveTaskIdRef.current = result.task.id;
+        setLiveTaskId(result.task.id);
+      }
+      setStatusHistory(result.task.statusHistory);
+      setSaveState("saved");
+      onSaved(result.task);
+    } catch {
+      setSaveState("error");
+      setError("Falha de conexão — tente de novo.");
+    } finally {
+      inFlightRef.current = false;
+      if (pendingRef.current) {
+        const next = pendingRef.current;
+        pendingRef.current = null;
+        persist(next);
+      }
+    }
+  }
+
+  // `immediate`: pra escolhas discretas (select, data, tags) — salva na hora.
+  // Sem isso: debounce, pra não disparar um PATCH a cada tecla digitada.
+  function updateField<K extends keyof Draft>(key: K, value: Draft[K], options?: { immediate?: boolean }) {
+    const next = { ...draft, [key]: value };
+    setDraft(next);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (options?.immediate) {
+      persist(next);
+    } else {
+      debounceRef.current = setTimeout(() => persist(next), AUTOSAVE_DEBOUNCE_MS);
+    }
   }
 
   function catalogFor(kind: TagKind): Tag[] {
@@ -136,44 +214,10 @@ export function TaskModal({
 
   const isPlanItem = Boolean(task?.planId);
 
-  async function save(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!draft.name.trim()) return setError("Informe o nome da tarefa.");
-    if (!draft.projectId || draft.projectId === NO_PROJECT) return setError("Selecione um projeto.");
-    setError("");
-    setIsSaving(true);
-    const payload = {
-      projectId: draft.projectId,
-      name: draft.name,
-      dueDate: draft.dueDate || undefined,
-      assigneeId: draft.assigneeId === NO_ASSIGNEE ? null : draft.assigneeId,
-      description: draft.description,
-      images: draft.images,
-      driveLink: draft.driveLink,
-      formatTagIds: draft.formatTagIds,
-      channelTagIds: draft.channelTagIds,
-      categoryTagIds: draft.categoryTagIds,
-      scriptText: draft.scriptText,
-      directionText: draft.directionText,
-      referenceText: draft.referenceText,
-      captionText: draft.captionText,
-      status: draft.status,
-    };
-    const response = await fetch(isEditing ? `/api/tasks/${task!.id}` : "/api/tasks", {
-      method: isEditing ? "PATCH" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const result = await response.json();
-    setIsSaving(false);
-    if (!response.ok) return setError(result.error || "Não foi possível salvar a tarefa.");
-    onSaved(result.task);
-  }
-
   async function copyLink() {
-    if (!task) return;
+    if (!liveTaskId) return;
     try {
-      await navigator.clipboard.writeText(`${window.location.origin}/tarefas/${task.id}`);
+      await navigator.clipboard.writeText(`${window.location.origin}/tarefas/${liveTaskId}`);
       setLinkCopied(true);
       window.setTimeout(() => setLinkCopied(false), 1800);
     } catch {
@@ -182,17 +226,17 @@ export function TaskModal({
   }
 
   async function remove() {
-    if (!task) return;
-    if (!window.confirm(`Excluir a tarefa "${task.name}"?`)) return;
-    const response = await fetch(`/api/tasks/${task.id}`, { method: "DELETE" });
+    if (!liveTaskId) return;
+    if (!(await confirm({ title: "Excluir tarefa", message: `Excluir a tarefa "${draft.name}"? Essa ação não pode ser desfeita.`, confirmLabel: "Excluir", danger: true }))) return;
+    const response = await fetch(`/api/tasks/${liveTaskId}`, { method: "DELETE" });
     if (!response.ok) return setError("Não foi possível excluir a tarefa.");
-    onDeleted(task.id);
+    onDeleted(liveTaskId);
   }
 
   async function duplicate() {
-    if (!task || isDuplicating) return;
+    if (!liveTaskId || isDuplicating) return;
     setIsDuplicating(true);
-    const response = await fetch(`/api/tasks/${task.id}/duplicate`, { method: "POST" });
+    const response = await fetch(`/api/tasks/${liveTaskId}/duplicate`, { method: "POST" });
     const result = await response.json();
     setIsDuplicating(false);
     if (!response.ok) return setError(result.error || "Não foi possível duplicar a tarefa.");
@@ -211,7 +255,7 @@ export function TaskModal({
         const response = await fetch("/api/uploads", { method: "POST", body: formData });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || "Falha ao enviar imagem.");
-        setDraft((current) => ({ ...current, images: [...current.images, result.url] }));
+        updateField("images", [...draft.images, result.url], { immediate: true });
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível enviar a imagem.");
@@ -221,16 +265,16 @@ export function TaskModal({
   }
 
   function removeImage(url: string) {
-    update("images", draft.images.filter((item) => item !== url));
+    updateField("images", draft.images.filter((item) => item !== url), { immediate: true });
   }
 
   async function sendComment(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!task || !commentText.trim()) return;
+    if (!liveTaskId || !commentText.trim()) return;
     setIsSendingComment(true);
     // O usuário está logado — assina o comentário com o nome dele, sem pedir.
     const author = members.find((member) => member.id === currentUserId)?.name || "Equipe";
-    const response = await fetch(`/api/tasks/${task.id}/comments`, {
+    const response = await fetch(`/api/tasks/${liveTaskId}/comments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ author, text: commentText }),
@@ -257,6 +301,7 @@ export function TaskModal({
   const projectLabels: Record<string, string> = Object.fromEntries(projects.map((project) => [project.id, project.name]));
 
   return (
+    <>
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="!max-w-[920px] w-[calc(100%-2rem)] max-h-[min(860px,calc(100vh-3rem))] flex flex-col gap-0 overflow-hidden p-0" showCloseButton>
         <DialogHeader className="modal-head task-modal-head">
@@ -265,7 +310,7 @@ export function TaskModal({
             ref={titleRef}
             className="meta-title-input"
             value={draft.name}
-            onChange={(e) => update("name", e.target.value)}
+            onChange={(e) => updateField("name", e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") e.preventDefault();
             }}
@@ -274,6 +319,11 @@ export function TaskModal({
             required
             maxLength={140}
           />
+          {canEdit ? (
+            <span className="task-save-status" aria-live="polite">
+              {saveState === "saving" ? "Salvando..." : saveState === "saved" ? "Salvo" : saveState === "error" ? "Erro ao salvar" : ""}
+            </span>
+          ) : null}
           {isEditing ? (
             <button type="button" className="icon-button" onClick={copyLink} title="Copiar link da tarefa" aria-label="Copiar link da tarefa">
               {linkCopied ? <Check size={14} /> : <Share2 size={14} />}
@@ -282,10 +332,10 @@ export function TaskModal({
         </DialogHeader>
         <div className="modal-body">
           {error ? <div className="form-message">{error}</div> : null}
-          <form id="task-fields-form" onSubmit={save} className="task-modal-split">
+          <div className="task-modal-split">
             <div className="task-modal-pane-meta meta-rows">
               <MetaRow icon={<Folder size={13} />} label="Projeto">
-                <Select items={projectLabels} value={draft.projectId || NO_PROJECT} onValueChange={(value) => update("projectId", value ?? NO_PROJECT)}>
+                <Select items={projectLabels} value={draft.projectId || NO_PROJECT} onValueChange={(value) => updateField("projectId", value ?? NO_PROJECT, { immediate: true })}>
                   <SelectTrigger className="meta-trigger">
                     <SelectValue placeholder="Selecione" />
                   </SelectTrigger>
@@ -298,7 +348,7 @@ export function TaskModal({
               </MetaRow>
 
               <MetaRow icon={<User size={13} />} label="Responsável">
-                <Select items={assigneeLabels} value={draft.assigneeId} onValueChange={(value) => update("assigneeId", value ?? NO_ASSIGNEE)}>
+                <Select items={assigneeLabels} value={draft.assigneeId} onValueChange={(value) => updateField("assigneeId", value ?? NO_ASSIGNEE, { immediate: true })}>
                   <SelectTrigger className="meta-trigger">
                     <SelectValue placeholder="Sem responsável" />
                   </SelectTrigger>
@@ -316,10 +366,10 @@ export function TaskModal({
 
               <TaskStatusControl
                 status={draft.status}
-                statusHistory={task?.statusHistory ?? []}
+                statusHistory={statusHistory}
                 dueDate={draft.dueDate}
                 color={colorByStatus.get(draft.status)}
-                onChange={(value) => update("status", value)}
+                onChange={(value) => updateField("status", value, { immediate: true })}
               />
 
               <MetaRow icon={<CalendarDays size={13} />} label="Entrega">
@@ -328,7 +378,7 @@ export function TaskModal({
                   type="date"
                   value={draft.dueDate}
                   disabled={dateLocked}
-                  onChange={(e) => update("dueDate", e.target.value)}
+                  onChange={(e) => updateField("dueDate", e.target.value, { immediate: true })}
                 />
               </MetaRow>
               {dateLocked ? (
@@ -342,7 +392,7 @@ export function TaskModal({
                 label="Formato"
                 catalog={catalogFor("formato")}
                 selectedIds={draft.formatTagIds}
-                onChange={(ids) => update("formatTagIds", ids)}
+                onChange={(ids) => updateField("formatTagIds", ids, { immediate: true })}
                 onCatalogUpdate={onTagCreated}
               />
               <TagPicker
@@ -350,7 +400,7 @@ export function TaskModal({
                 label="Canal"
                 catalog={catalogFor("canal")}
                 selectedIds={draft.channelTagIds}
-                onChange={(ids) => update("channelTagIds", ids)}
+                onChange={(ids) => updateField("channelTagIds", ids, { immediate: true })}
                 onCatalogUpdate={onTagCreated}
               />
 
@@ -361,12 +411,16 @@ export function TaskModal({
                     autoFocus
                     type="url"
                     value={draft.driveLink}
-                    onChange={(e) => update("driveLink", e.target.value)}
-                    onBlur={() => setEditingLink(false)}
+                    onChange={(e) => updateField("driveLink", e.target.value)}
+                    onBlur={() => {
+                      setEditingLink(false);
+                      updateField("driveLink", draft.driveLink, { immediate: true });
+                    }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
                         e.preventDefault();
                         setEditingLink(false);
+                        updateField("driveLink", draft.driveLink, { immediate: true });
                       }
                       if (e.key === "Escape") {
                         e.stopPropagation();
@@ -395,7 +449,7 @@ export function TaskModal({
                   label="Categoria"
                   catalog={catalogFor("categoria")}
                   selectedIds={draft.categoryTagIds}
-                  onChange={(ids) => update("categoryTagIds", ids)}
+                  onChange={(ids) => updateField("categoryTagIds", ids, { immediate: true })}
                   onCatalogUpdate={onTagCreated}
                 />
               ) : null}
@@ -444,7 +498,7 @@ export function TaskModal({
                   autoFocus
                   className="task-desc-textarea"
                   value={draft.description}
-                  onChange={(e) => update("description", e.target.value)}
+                  onChange={(e) => updateField("description", e.target.value)}
                   onBlur={() => setEditingDescription(false)}
                   onKeyDown={(e) => {
                     if (e.key === "Escape") {
@@ -452,62 +506,16 @@ export function TaskModal({
                       setEditingDescription(false);
                     }
                   }}
-                  placeholder="Descreva o briefing da tarefa"
-                  maxLength={2000}
+                  placeholder={isPlanItem ? "Direcionamento, roteiro, referência, legenda — escreva tudo aqui, do jeito que fizer sentido." : "Descreva o briefing da tarefa"}
+                  maxLength={4000}
                 />
               ) : (
                 <button type="button" className="task-desc-display" onClick={() => setEditingDescription(true)}>
                   {draft.description ? renderDescription(draft.description) : <span className="meta-empty">Vazio — clique para escrever a descrição</span>}
                 </button>
               )}
-
-              {isPlanItem ? (
-                <div className="plan-item-fields">
-                  <span className="meta-row-label task-desc-label"><Clapperboard size={13} /> Conteúdo do plano</span>
-                  <label className="field">
-                    <span>Roteiro</span>
-                    <textarea
-                      className="task-desc-textarea"
-                      value={draft.scriptText}
-                      disabled={!canEdit}
-                      onChange={(e) => update("scriptText", e.target.value)}
-                      placeholder="Roteiro / ideia do conteúdo"
-                    />
-                  </label>
-                  <label className="field">
-                    <span>Direcionamento</span>
-                    <textarea
-                      className="task-desc-textarea"
-                      value={draft.directionText}
-                      disabled={!canEdit}
-                      onChange={(e) => update("directionText", e.target.value)}
-                      placeholder="Direcionamento de gravação/produção"
-                    />
-                  </label>
-                  <label className="field">
-                    <span>Referência</span>
-                    <textarea
-                      className="task-desc-textarea"
-                      value={draft.referenceText}
-                      disabled={!canEdit}
-                      onChange={(e) => update("referenceText", e.target.value)}
-                      placeholder="Links ou descrição de referência"
-                    />
-                  </label>
-                  <label className="field">
-                    <span>Legenda</span>
-                    <textarea
-                      className="task-desc-textarea"
-                      value={draft.captionText}
-                      disabled={!canEdit}
-                      onChange={(e) => update("captionText", e.target.value)}
-                      placeholder="Legenda de publicação"
-                    />
-                  </label>
-                </div>
-              ) : null}
             </div>
-          </form>
+          </div>
 
           {isEditing ? (
             <div className="field">
@@ -542,14 +550,11 @@ export function TaskModal({
               </button>
             </div>
           ) : <span />}
-          <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" className="secondary-button" onClick={onClose}>{canEdit ? "Cancelar" : "Fechar"}</button>
-            {canEdit ? (
-              <button type="submit" form="task-fields-form" className="primary-button" disabled={isSaving}>{isSaving ? "Salvando..." : "Salvar"}</button>
-            ) : null}
-          </div>
+          <button type="button" className="secondary-button" onClick={onClose}>Fechar</button>
         </footer>
       </DialogContent>
     </Dialog>
+    {ConfirmDialog}
+    </>
   );
 }

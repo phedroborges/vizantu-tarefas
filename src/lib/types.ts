@@ -162,10 +162,6 @@ export type Task = {
   comments: Comment[];
   planId?: string;
   captacaoId?: string;
-  scriptText?: string; // roteiro
-  directionText?: string; // direcionamento
-  referenceText?: string; // referência
-  captionText?: string; // legenda
   sequenceOrder?: number;
   createdAt: string;
   updatedAt: string;

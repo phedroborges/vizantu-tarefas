@@ -403,7 +403,7 @@ async function toolGetPlan(args: { planId: string }, caller: CurrentUser) {
       name: t.name,
       captacao: t.captacaoId ? captacaoById.get(t.captacaoId) || null : null,
       status: statusLabel(t.status),
-      hasScript: Boolean(t.scriptText),
+      hasDescription: Boolean(t.description),
     })),
   };
 }
@@ -419,7 +419,7 @@ async function toolCreatePlan(args: { title: string; projectName: string; kind: 
 }
 
 async function toolAddPlanItem(
-  args: { planId: string; name: string; captacaoLabel?: string; formatLabels?: string[]; scriptText?: string; directionText?: string; referenceText?: string; captionText?: string },
+  args: { planId: string; name: string; captacaoLabel?: string; formatLabels?: string[]; description?: string },
   caller: CurrentUser,
 ) {
   const plan = await getPlan(args.planId);
@@ -440,23 +440,17 @@ async function toolAddPlanItem(
     planId: plan.id,
     captacaoId,
     formatTagIds,
-    scriptText: args.scriptText,
-    directionText: args.directionText,
-    referenceText: args.referenceText,
-    captionText: args.captionText,
+    description: args.description,
   });
   return { created: { id: task.id, name: task.name, planId: task.planId } };
 }
 
 async function toolUpdatePlanItem(
-  args: { taskId: string; scriptText?: string; directionText?: string; referenceText?: string; captionText?: string; status?: string },
+  args: { taskId: string; description?: string; status?: string },
   caller: CurrentUser,
 ) {
   const patch: Parameters<typeof updateTask>[1] = {};
-  if (args.scriptText !== undefined) patch.scriptText = args.scriptText;
-  if (args.directionText !== undefined) patch.directionText = args.directionText;
-  if (args.referenceText !== undefined) patch.referenceText = args.referenceText;
-  if (args.captionText !== undefined) patch.captionText = args.captionText;
+  if (args.description !== undefined) patch.description = args.description;
   if (args.status !== undefined) {
     const status = TASK_STATUSES.find((item) => item.value === args.status || item.label.toLowerCase() === args.status?.toLowerCase())?.value;
     if (!status) return { error: `Status "${args.status}" inválido.` };
@@ -714,10 +708,11 @@ export const ASSISTANT_TOOLS: ChatCompletionTool[] = [
           name: { type: "string" },
           captacaoLabel: { type: "string", description: "Ex.: '1ª Captação' — cria a captação se ainda não existir." },
           formatLabels: { type: "array", items: { type: "string" }, description: "Ex.: Vídeo, Carrossel, Estático." },
-          scriptText: { type: "string", description: "Roteiro do conteúdo." },
-          directionText: { type: "string", description: "Direcionamento de gravação/produção." },
-          referenceText: { type: "string", description: "Referência (link ou descrição)." },
-          captionText: { type: "string", description: "Legenda de publicação." },
+          description: {
+            type: "string",
+            description:
+              "Descrição completa do item — direcionamento, roteiro, referência e legenda vão TODOS aqui, como seções em markdown (ex.: '**Direcionamento**\\n...\\n\\n**Roteiro**\\n...'). Não existem campos separados pra isso.",
+          },
         },
         required: ["planId", "name"],
       },
@@ -727,15 +722,12 @@ export const ASSISTANT_TOOLS: ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "update_plan_item",
-      description: "Edita roteiro, direcionamento, referência, legenda ou status de um item de Plano já existente (é uma tarefa — use o mesmo taskId de list_tasks/get_task).",
+      description: "Edita a descrição (onde ficam direcionamento/roteiro/referência/legenda) ou o status de um item de Plano já existente (é uma tarefa — use o mesmo taskId de list_tasks/get_task).",
       parameters: {
         type: "object",
         properties: {
           taskId: { type: "string" },
-          scriptText: { type: "string" },
-          directionText: { type: "string" },
-          referenceText: { type: "string" },
-          captionText: { type: "string" },
+          description: { type: "string", description: "Substitui a descrição inteira do item (direcionamento/roteiro/referência/legenda como seções markdown)." },
           status: { type: "string", description: "Um dos: " + TASK_STATUSES.map((s) => s.value).join(", ") },
         },
         required: ["taskId"],

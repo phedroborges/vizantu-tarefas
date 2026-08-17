@@ -288,10 +288,6 @@ export type TaskInput = {
   status?: TaskStatus;
   planId?: string;
   captacaoId?: string;
-  scriptText?: string;
-  directionText?: string;
-  referenceText?: string;
-  captionText?: string;
   sequenceOrder?: number;
 };
 
@@ -313,10 +309,6 @@ type TaskRow = {
   comments: Task["comments"];
   plan_id: string | null;
   captacao_id: string | null;
-  script_text: string | null;
-  direction_text: string | null;
-  reference_text: string | null;
-  caption_text: string | null;
   sequence_order: number | null;
   created_at: string;
   updated_at: string;
@@ -341,10 +333,6 @@ function mapTask(row: TaskRow): Task {
     comments: row.comments ?? [],
     planId: row.plan_id ?? undefined,
     captacaoId: row.captacao_id ?? undefined,
-    scriptText: row.script_text ?? undefined,
-    directionText: row.direction_text ?? undefined,
-    referenceText: row.reference_text ?? undefined,
-    captionText: row.caption_text ?? undefined,
     sequenceOrder: row.sequence_order ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -421,10 +409,6 @@ export async function createTask(input: TaskInput): Promise<Task> {
         comments: [],
         plan_id: input.planId || null,
         captacao_id: input.captacaoId || null,
-        script_text: input.scriptText?.trim() || null,
-        direction_text: input.directionText?.trim() || null,
-        reference_text: input.referenceText?.trim() || null,
-        caption_text: input.captionText?.trim() || null,
         sequence_order: input.sequenceOrder ?? null,
         created_at: now,
         updated_at: now,
@@ -455,10 +439,6 @@ export async function duplicateTask(id: string): Promise<Task | undefined> {
     status: current.status,
     planId: current.planId,
     captacaoId: current.captacaoId,
-    scriptText: current.scriptText,
-    directionText: current.directionText,
-    referenceText: current.referenceText,
-    captionText: current.captionText,
     sequenceOrder: current.sequenceOrder,
   });
 }
@@ -492,10 +472,6 @@ export async function updateTask(
   if (patch.categoryTagIds !== undefined) update.category_tag_ids = dedupeIds(patch.categoryTagIds);
   if (patch.planId !== undefined) update.plan_id = patch.planId || null;
   if (patch.captacaoId !== undefined) update.captacao_id = patch.captacaoId || null;
-  if (patch.scriptText !== undefined) update.script_text = patch.scriptText.trim() || null;
-  if (patch.directionText !== undefined) update.direction_text = patch.directionText.trim() || null;
-  if (patch.referenceText !== undefined) update.reference_text = patch.referenceText.trim() || null;
-  if (patch.captionText !== undefined) update.caption_text = patch.captionText.trim() || null;
   if (patch.sequenceOrder !== undefined) update.sequence_order = patch.sequenceOrder;
 
   if (patch.status !== undefined && patch.status !== current.status) {

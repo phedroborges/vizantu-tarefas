@@ -32,10 +32,10 @@ test.describe("criação de Plano", () => {
     ).json();
     expect(step1.task.sequenceOrder).toBe(0);
     expect(step2.task.sequenceOrder).toBe(1);
-    expect(step1.task.scriptText).toBeUndefined();
+    expect(step1.task.description).toBeUndefined();
   });
 
-  test("3. roteiro/direcionamento/referência/legenda fazem round-trip completo", async ({ page }) => {
+  test("3. descrição (com as seções de conteúdo) faz round-trip completo", async ({ page }) => {
     await loginAsTestDono(page);
     const { projectId } = fixtures();
     const plan = await (await page.request.post("/api/plans", { data: { projectId, title: "[E2E] Roteiro round-trip", kind: "content" } })).json();
@@ -44,13 +44,12 @@ test.describe("criação de Plano", () => {
     ).json();
     const patched = await (
       await page.request.patch(`/api/tasks/${created.task.id}`, {
-        data: { scriptText: "Roteiro de teste", directionText: "Direcionamento de teste", referenceText: "https://ref.example", captionText: "Legenda de teste" },
+        data: { description: "**Direcionamento**\nDir de teste\n\n**Roteiro**\nRoteiro de teste\n\n**Referência**\nhttps://ref.example\n\n**Legenda**\nLegenda de teste" },
       })
     ).json();
-    expect(patched.task.scriptText).toBe("Roteiro de teste");
-    expect(patched.task.directionText).toBe("Direcionamento de teste");
-    expect(patched.task.referenceText).toBe("https://ref.example");
-    expect(patched.task.captionText).toBe("Legenda de teste");
+    expect(patched.task.description).toContain("**Roteiro**");
+    expect(patched.task.description).toContain("Roteiro de teste");
+    expect(patched.task.description).toContain("**Legenda**");
   });
 
   test("4. visualizador não pode criar plano", async ({ page }) => {

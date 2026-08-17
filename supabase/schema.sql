@@ -178,11 +178,19 @@ alter table tasks
   add column if not exists plan_id uuid references plans(id) on delete cascade,
   add column if not exists captacao_id uuid references plan_captacoes(id) on delete set null,
   add column if not exists category_tag_ids uuid[] not null default '{}',
-  add column if not exists script_text text,       -- roteiro
-  add column if not exists direction_text text,     -- direcionamento
-  add column if not exists reference_text text,     -- referência
-  add column if not exists caption_text text,        -- legenda
   add column if not exists sequence_order int;       -- ordem de exibição (planos de processo)
+
+-- Direcionamento, roteiro, referência e legenda NÃO são colunas próprias —
+-- são seções escritas dentro de tasks.description (markdown-lite, com os
+-- títulos em **negrito**). Menos campos pra preencher, e o mesmo texto serve
+-- pra qualquer formato (vídeo, carrossel, estático). Uma versão anterior
+-- deste schema criou script_text/direction_text/reference_text/caption_text;
+-- o drop abaixo existe pra bancos que passaram por aquela versão.
+alter table tasks
+  drop column if exists script_text,
+  drop column if exists direction_text,
+  drop column if exists reference_text,
+  drop column if exists caption_text;
 
 create index if not exists tasks_plan_id_idx on tasks(plan_id);
 create index if not exists tasks_captacao_id_idx on tasks(captacao_id);

@@ -26,10 +26,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       status: body.status,
       planId: body.planId,
       captacaoId: body.captacaoId,
-      scriptText: body.scriptText,
-      directionText: body.directionText,
-      referenceText: body.referenceText,
-      captionText: body.captionText,
       sequenceOrder: body.sequenceOrder,
     });
     if (!task) return NextResponse.json({ error: "Tarefa não encontrada." }, { status: 404 });

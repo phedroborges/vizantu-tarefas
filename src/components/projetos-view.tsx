@@ -2,6 +2,7 @@
 
 import { Folders, Pencil, Search, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useConfirm } from "@/components/confirm-dialog";
 import { PROJECT_STATUSES } from "@/lib/types";
 import type { Project, ProjectStatus, Task } from "@/lib/types";
 
@@ -27,6 +28,7 @@ export function ProjetosView({
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState("");
+  const { confirm, ConfirmDialog } = useConfirm();
 
   const taskStats = useMemo(() => {
     const map = new Map<string, { total: number; done: number }>();
@@ -91,7 +93,7 @@ export function ProjetosView({
   }
 
   async function remove(project: Project) {
-    if (!window.confirm(`Excluir "${project.name}"? As tarefas desse projeto também serão excluídas.`)) return;
+    if (!(await confirm({ title: "Excluir projeto", message: `Excluir "${project.name}"? As tarefas desse projeto também serão excluídas.`, confirmLabel: "Excluir", danger: true }))) return;
     const response = await fetch(`/api/projects/${project.id}`, { method: "DELETE" });
     if (!response.ok) return showToast("Não foi possível excluir o projeto.");
     setProjects((current) => current.filter((item) => item.id !== project.id));
@@ -188,6 +190,7 @@ export function ProjetosView({
           </section>
         </div>
       </main>
+      {ConfirmDialog}
       {toast ? <div className="toast">{toast}</div> : null}
     </>
   );

@@ -2,6 +2,7 @@
 
 import { BookOpen, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { useConfirm } from "@/components/confirm-dialog";
 import type { KnowledgeDoc } from "@/lib/types";
 
 function formatUpdatedAt(iso: string): string {
@@ -16,6 +17,7 @@ export function KnowledgeView({ initialDocs }: { initialDocs: KnowledgeDoc[] }) 
   const [isSaving, setIsSaving] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [toast, setToast] = useState("");
+  const { confirm, ConfirmDialog } = useConfirm();
 
   const selected = docs.find((doc) => doc.id === selectedId) || null;
   const dirty = selected ? title !== selected.title || content !== selected.content : Boolean(title || content);
@@ -63,7 +65,7 @@ export function KnowledgeView({ initialDocs }: { initialDocs: KnowledgeDoc[] }) 
 
   async function remove() {
     if (!selected) return;
-    if (!window.confirm(`Excluir o documento "${selected.title}"?`)) return;
+    if (!(await confirm({ title: "Excluir documento", message: `Excluir o documento "${selected.title}"?`, confirmLabel: "Excluir", danger: true }))) return;
     const response = await fetch(`/api/knowledge/${selected.id}`, { method: "DELETE" });
     if (!response.ok) return showToast("Não foi possível excluir o documento.");
     const remaining = docs.filter((doc) => doc.id !== selected.id);
@@ -164,6 +166,7 @@ export function KnowledgeView({ initialDocs }: { initialDocs: KnowledgeDoc[] }) 
           </section>
         </div>
       </main>
+      {ConfirmDialog}
       {toast ? <div className="toast">{toast}</div> : null}
     </>
   );

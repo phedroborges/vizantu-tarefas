@@ -38,10 +38,6 @@ export async function POST(request: NextRequest) {
     status: body.status,
     planId: body.planId,
     captacaoId: body.captacaoId,
-    scriptText: body.scriptText,
-    directionText: body.directionText,
-    referenceText: body.referenceText,
-    captionText: body.captionText,
     sequenceOrder: body.sequenceOrder,
   });
   return NextResponse.json({ task }, { status: 201 });

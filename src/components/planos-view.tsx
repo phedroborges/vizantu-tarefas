@@ -3,6 +3,7 @@
 import { ClipboardList, Search, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { useConfirm } from "@/components/confirm-dialog";
 import { PLAN_KINDS } from "@/lib/types";
 import type { Plan, PlanKind, Project } from "@/lib/types";
 
@@ -27,6 +28,7 @@ export function PlanosView({
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState("");
+  const { confirm, ConfirmDialog } = useConfirm();
 
   const projectById = useMemo(() => new Map(initialProjects.map((p) => [p.id, p])), [initialProjects]);
 
@@ -61,7 +63,7 @@ export function PlanosView({
   }
 
   async function remove(plan: Plan) {
-    if (!window.confirm(`Excluir o plano "${plan.title}"? Os itens (tarefas) dele também serão excluídos.`)) return;
+    if (!(await confirm({ title: "Excluir plano", message: `Excluir o plano "${plan.title}"? Os itens (tarefas) dele também serão excluídos.`, confirmLabel: "Excluir", danger: true }))) return;
     const response = await fetch(`/api/plans/${plan.id}`, { method: "DELETE" });
     if (!response.ok) return showToast("Não foi possível excluir o plano.");
     setPlans((current) => current.filter((item) => item.id !== plan.id));
@@ -145,6 +147,7 @@ export function PlanosView({
           </section>
         </div>
       </main>
+      {ConfirmDialog}
       {toast ? <div className="toast">{toast}</div> : null}
     </>
   );
