@@ -16,6 +16,7 @@ import { useSetPageDetail } from "@/lib/page-context";
 import { STATUS_GROUPS, TASK_COLUMNS, TASK_LIST_KINDS, TASK_STATUSES } from "@/lib/types";
 import type { Member, Project, StatusColor, Tag, Task, TaskColumnKey, TaskListKind, TaskStatus } from "@/lib/types";
 import { TaskModal } from "@/components/task-modal";
+import { QuickTaskModal } from "@/components/quick-task-modal";
 import { TaskColumnPicker } from "@/components/task-column-picker";
 import { TagPickerPopover } from "@/components/tag-picker";
 import { StatusColorPicker } from "@/components/status-color-picker";
@@ -587,9 +588,28 @@ export function TarefasView({
           )}
         </section>
       </main>
-      {selectedTask ? (
+      {/* Criar = modal enxuto (nome/descrição + pílulas). Abrir uma tarefa
+          existente = modal completo, com comentários e tempo por status. */}
+      {selectedTask === "new" ? (
+        <QuickTaskModal
+          projects={initialProjects}
+          members={initialMembers}
+          formatTags={formatTags}
+          channelTags={channelTags}
+          statusColors={statusColors}
+          defaultProjectId={projectFilter || initialProjects[0]?.id || ""}
+          currentUserId={currentUserId}
+          onClose={() => setSelectedTask(null)}
+          onCreated={(task) => {
+            handleSaved(task);
+            showToast("Tarefa criada.");
+          }}
+          onTagCreated={handleTagCreated}
+        />
+      ) : null}
+      {selectedTask && selectedTask !== "new" ? (
         <TaskModal
-          task={selectedTask === "new" ? null : selectedTask}
+          task={selectedTask}
           projects={initialProjects}
           members={initialMembers}
           formatTags={formatTags}
