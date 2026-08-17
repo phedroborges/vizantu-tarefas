@@ -1,14 +1,24 @@
 "use client";
 
-import { Copy, Film, Plus, Trash2, Users as UsersIcon } from "lucide-react";
+import { CalendarDays, ClipboardList, Copy, Film, Link2, Plus, Trash2, Users as UsersIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { TaskModal } from "@/components/task-modal";
+import { formatDueDate } from "@/lib/dates";
+import { TASK_STATUSES } from "@/lib/types";
 import type { Member, Plan, PlanCaptacao, PlanClient, Project, StatusColor, Tag, Task } from "@/lib/types";
 
 // URL pública onde o vizantu-planos serve o dashboard do cliente
 // (/c/[token]) — configurável porque os dois apps ficam em domínios
 // diferentes; sem a env, mostra só o token pro time copiar manualmente.
 const PLANOS_PUBLIC_URL = process.env.NEXT_PUBLIC_PLANOS_URL || "";
+
+function statusGroup(status: Task["status"]): string {
+  return TASK_STATUSES.find((s) => s.value === status)?.group || "nao_iniciada";
+}
+
+function statusLabel(status: Task["status"]): string {
+  return TASK_STATUSES.find((s) => s.value === status)?.label || status;
+}
 
 export function PlanoDetailView({
   plan,
@@ -118,6 +128,11 @@ export function PlanoDetailView({
   const processItems = useMemo(() => [...tasks].sort((a, b) => (a.sequenceOrder ?? 0) - (b.sequenceOrder ?? 0)), [tasks]);
   const formatTagById = useMemo(() => new Map(formatTags.map((t) => [t.id, t])), [formatTags]);
   const categoryTagById = useMemo(() => new Map(categoryTags.map((t) => [t.id, t])), [categoryTags]);
+  const memberById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
+
+  const doneCount = tasks.filter((t) => statusGroup(t.status) === "feita").length;
+  const scriptedCount = tasks.filter((t) => t.scriptText?.trim()).length;
+  const progressRate = tasks.length ? Math.round((doneCount / tasks.length) * 100) : 0;
 
   async function createClient() {
     const name = window.prompt("Nome do cliente (aparece no cabeçalho do dashboard):");
@@ -146,16 +161,24 @@ export function PlanoDetailView({
   }
 
   function renderTaskRow(task: Task) {
+    const format = task.formatTagIds.map((id) => formatTagById.get(id)?.label).filter(Boolean);
+    const categories = task.categoryTagIds.map((id) => categoryTagById.get(id)?.label).filter(Boolean);
+    const assignee = task.assigneeId ? memberById.get(task.assigneeId)?.name : undefined;
     return (
-      <li key={task.id} className="project-row" style={{ cursor: "pointer" }} onClick={() => setEditingTask(task)}>
-        <div className="project-row-title">
+      <li key={task.id} className="plan-item-row" onClick={() => setEditingTask(task)}>
+        <div className="plan-item-row-main">
           <strong>{task.name}</strong>
-          <span>
-            {task.formatTagIds.map((id) => formatTagById.get(id)?.label).filter(Boolean).join(", ") || "Sem formato"}
-            {task.categoryTagIds.length ? ` · ${task.categoryTagIds.map((id) => categoryTagById.get(id)?.label).filter(Boolean).join(", ")}` : ""}
-          </span>
+          <div className="plan-item-row-meta">
+            {format.map((label) => <span className="badge format" key={label}>{label}</span>)}
+            {categories.map((label) => <span className="badge channel" key={label}>{label}</span>)}
+            {!format.length && !categories.length ? <span className="plan-item-empty">Sem formato/categoria</span> : null}
+          </div>
         </div>
-        <span className="status nao_iniciada">{task.status}</span>
+        <div className="plan-item-row-side">
+          {assignee ? <span className="plan-item-assignee">{assignee}</span> : null}
+          {task.dueDate ? <span className="plan-item-due"><CalendarDays size={11} /> {formatDueDate(task.dueDate)}</span> : null}
+          <span className={`status ${statusGroup(task.status)}`}>{statusLabel(task.status)}</span>
+        </div>
       </li>
     );
   }
@@ -169,20 +192,35 @@ export function PlanoDetailView({
             <h1>{plan.title}</h1>
             <p>{isContent ? "Vídeos, posts e carrosséis agrupados por captação — roteiro, direcionamento, referência e legenda ficam em cada item." : "Passos ordenados do processo."}</p>
           </div>
+          <div className="stats" style={{ display: "flex", gap: 1, background: "var(--line)", border: "1px solid var(--line)" }}>
+            <div className="stat" style={{ background: "white", minWidth: 110, padding: "15px 18px" }}><strong>{tasks.length}</strong><span>itens</span></div>
+            {isContent ? (
+              <div className="stat" style={{ background: "white", minWidth: 110, padding: "15px 18px" }}><strong>{scriptedCount}</strong><span>com roteiro</span></div>
+            ) : null}
+            <div className="stat" style={{ background: "white", minWidth: 110, padding: "15px 18px" }}><strong>{progressRate}%</strong><span>concluído</span></div>
+          </div>
         </div>
+
+        {tasks.length ? (
+          <div className="plan-progress-track" style={{ marginBottom: 22 }}>
+            <div className="plan-progress-fill" style={{ width: `${progressRate}%` }} />
+          </div>
+        ) : null}
 
         {isContent ? (
           <section className="panel" style={{ marginBottom: 18 }}>
             <div className="panel-head"><h2><Film size={15} style={{ verticalAlign: -2 }} /> Captações</h2></div>
-            <div style={{ padding: "16px 25px", display: "flex", flexWrap: "wrap", gap: 8 }}>
+            <div className="plan-captacao-row">
               {captacoes.map((c) => (
-                <span key={c.id} className="badge format" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span key={c.id} className="plan-captacao-chip">
                   {c.label}
+                  <em>{(itemsByCaptacao.get(c.id) || []).length}</em>
                   {canEdit ? <button type="button" onClick={() => removeCaptacao(c.id)} aria-label={`Remover ${c.label}`}><Trash2 size={11} /></button> : null}
                 </span>
               ))}
+              {!captacoes.length ? <span className="plan-item-empty">Nenhuma captação ainda — crie a primeira ao lado.</span> : null}
               {canEdit ? (
-                <form onSubmit={addCaptacao} style={{ display: "flex", gap: 6 }}>
+                <form onSubmit={addCaptacao} className="plan-captacao-form">
                   <input value={newCaptacaoLabel} onChange={(e) => setNewCaptacaoLabel(e.target.value)} placeholder="Ex.: 1ª Captação" style={{ width: 160 }} />
                   <button className="secondary-button" type="submit"><Plus size={13} /></button>
                 </form>
@@ -210,6 +248,7 @@ export function PlanoDetailView({
                   </div>
                 ) : null}
                 <button className="primary-button" type="submit" style={{ width: "100%" }}>Adicionar item</button>
+                <p className="plan-form-hint">Depois de criado, clique no item pra preencher roteiro, direcionamento, referência e legenda.</p>
               </form>
             </section>
           ) : null}
@@ -220,22 +259,23 @@ export function PlanoDetailView({
               <>
                 {captacoes.map((c) => (
                   <div key={c.id}>
-                    <div style={{ padding: "10px 20px 4px", fontSize: 12, fontWeight: 600, color: "var(--muted-text)" }}>{c.label}</div>
-                    <ul className="project-list">{(itemsByCaptacao.get(c.id) || []).map(renderTaskRow)}</ul>
+                    <div className="plan-group-label">{c.label}</div>
+                    <ul className="plan-item-list">{(itemsByCaptacao.get(c.id) || []).map(renderTaskRow)}</ul>
                   </div>
                 ))}
                 {itemsByCaptacao.get("__none__")?.length ? (
                   <div>
-                    <div style={{ padding: "10px 20px 4px", fontSize: 12, fontWeight: 600, color: "var(--muted-text)" }}>Sem captação</div>
-                    <ul className="project-list">{itemsByCaptacao.get("__none__")!.map(renderTaskRow)}</ul>
+                    <div className="plan-group-label">Sem captação</div>
+                    <ul className="plan-item-list">{itemsByCaptacao.get("__none__")!.map(renderTaskRow)}</ul>
                   </div>
                 ) : null}
               </>
             ) : (
-              <ul className="project-list">{processItems.map(renderTaskRow)}</ul>
+              <ul className="plan-item-list">{processItems.map(renderTaskRow)}</ul>
             )}
             {!tasks.length ? (
               <div className="empty-state">
+                <ClipboardList size={35} />
                 <h3>Nenhum item ainda</h3>
                 <p>Use o formulário ao lado para adicionar o primeiro.</p>
               </div>
@@ -244,28 +284,38 @@ export function PlanoDetailView({
         </div>
 
         <section className="panel" style={{ marginTop: 18 }}>
-          <div className="panel-head"><h2><UsersIcon size={15} style={{ verticalAlign: -2 }} /> Cliente e link mágico</h2></div>
-          <div style={{ padding: "16px 25px 22px", display: "flex", flexDirection: "column", gap: 14 }}>
-            {clients.map((client) => (
-              <div key={client.id} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <strong>{client.name}</strong>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  {(tokensByClient[client.id] || []).map((token) => (
-                    <button key={token} type="button" className="secondary-button" onClick={() => copyLink(token)}>
-                      <Copy size={12} /> Copiar link
-                    </button>
-                  ))}
+          <div className="panel-head"><h2><UsersIcon size={15} style={{ verticalAlign: -2 }} /> Cliente e link mágico</h2><p>O link dá acesso ao dashboard de aprovação em vizantu-planos — sem senha, um token por cliente.</p></div>
+          <div className="plan-client-grid">
+            {clients.map((client) => {
+              const tokens = tokensByClient[client.id] || [];
+              return (
+                <div className="plan-client-card" key={client.id}>
+                  <strong>{client.name}</strong>
+                  {tokens.length ? (
+                    <div className="plan-client-tokens">
+                      {tokens.map((token) => (
+                        <button key={token} type="button" className="secondary-button" onClick={() => copyLink(token)}>
+                          <Copy size={12} /> Copiar link
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="plan-item-empty"><Link2 size={11} /> Nenhum link gerado ainda</span>
+                  )}
                   {canEdit ? (
-                    <button type="button" className="secondary-button" onClick={() => generateToken(client.id)}>Gerar novo link</button>
+                    <button type="button" className="secondary-button" onClick={() => generateToken(client.id)} style={{ alignSelf: "flex-start" }}>
+                      Gerar novo link
+                    </button>
                   ) : null}
                 </div>
-              </div>
-            ))}
+              );
+            })}
             {canEdit ? (
-              <button type="button" className="secondary-button" onClick={createClient} style={{ alignSelf: "flex-start" }}>
-                <Plus size={13} /> Novo cliente
+              <button type="button" className="plan-client-add" onClick={createClient}>
+                <Plus size={16} /> Novo cliente
               </button>
             ) : null}
+            {!clients.length && !canEdit ? <span className="plan-item-empty">Nenhum cliente cadastrado ainda.</span> : null}
           </div>
         </section>
       </main>
