@@ -1,6 +1,6 @@
 "use client";
 
-import { AlignLeft, CalendarDays, Check, Copy, ExternalLink, Folder, ImagePlus, Link2, ListChecks, Loader2, Send, Share2, Trash2, User, X } from "lucide-react";
+import { AlignLeft, CalendarDays, Check, Clapperboard, Copy, ExternalLink, Folder, ImagePlus, Link2, Loader2, Send, Share2, Trash2, User, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -9,8 +9,7 @@ import { TagPicker } from "@/components/tag-picker";
 import { TaskStatusControl } from "@/components/task-status-control";
 import { formatDateTime, isOverdue, todayIso } from "@/lib/dates";
 import { resizeImageFile } from "@/lib/resize-image";
-import { TASK_LIST_KINDS } from "@/lib/types";
-import type { Member, Project, StatusColor, Tag, TagKind, Task, TaskListKind, TaskStatus } from "@/lib/types";
+import type { Member, Project, StatusColor, Tag, TagKind, Task, TaskStatus } from "@/lib/types";
 
 type Draft = {
   projectId: string;
@@ -22,7 +21,11 @@ type Draft = {
   driveLink: string;
   formatTagIds: string[];
   channelTagIds: string[];
-  lists: TaskListKind[];
+  categoryTagIds: string[];
+  scriptText: string;
+  directionText: string;
+  referenceText: string;
+  captionText: string;
   status: TaskStatus;
 };
 
@@ -54,7 +57,11 @@ function draftFromTask(task: Task | null, defaultProjectId: string, currentUserI
     driveLink: task?.driveLink || "",
     formatTagIds: task?.formatTagIds || [],
     channelTagIds: task?.channelTagIds || [],
-    lists: task?.lists || [],
+    categoryTagIds: task?.categoryTagIds || [],
+    scriptText: task?.scriptText || "",
+    directionText: task?.directionText || "",
+    referenceText: task?.referenceText || "",
+    captionText: task?.captionText || "",
     status: task?.status || "rascunho",
   };
 }
@@ -65,6 +72,7 @@ export function TaskModal({
   members,
   formatTags,
   channelTags,
+  categoryTags = [],
   statusColors,
   defaultProjectId,
   canEdit = true,
@@ -80,6 +88,7 @@ export function TaskModal({
   members: Member[];
   formatTags: Tag[];
   channelTags: Tag[];
+  categoryTags?: Tag[];
   statusColors: StatusColor[];
   defaultProjectId: string;
   canEdit?: boolean;
@@ -120,8 +129,12 @@ export function TaskModal({
   }
 
   function catalogFor(kind: TagKind): Tag[] {
-    return kind === "formato" ? formatTags : channelTags;
+    if (kind === "formato") return formatTags;
+    if (kind === "categoria") return categoryTags;
+    return channelTags;
   }
+
+  const isPlanItem = Boolean(task?.planId);
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -139,7 +152,11 @@ export function TaskModal({
       driveLink: draft.driveLink,
       formatTagIds: draft.formatTagIds,
       channelTagIds: draft.channelTagIds,
-      lists: draft.lists,
+      categoryTagIds: draft.categoryTagIds,
+      scriptText: draft.scriptText,
+      directionText: draft.directionText,
+      referenceText: draft.referenceText,
+      captionText: draft.captionText,
       status: draft.status,
     };
     const response = await fetch(isEditing ? `/api/tasks/${task!.id}` : "/api/tasks", {
@@ -205,10 +222,6 @@ export function TaskModal({
 
   function removeImage(url: string) {
     update("images", draft.images.filter((item) => item !== url));
-  }
-
-  function toggleList(kind: TaskListKind) {
-    update("lists", draft.lists.includes(kind) ? draft.lists.filter((item) => item !== kind) : [...draft.lists, kind]);
   }
 
   async function sendComment(event: React.FormEvent<HTMLFormElement>) {
@@ -376,21 +389,16 @@ export function TaskModal({
                 )}
               </MetaRow>
 
-              <MetaRow icon={<ListChecks size={13} />} label="Listas">
-                <div className="list-toggle-group">
-                  {TASK_LIST_KINDS.map((kind) => (
-                    <button
-                      key={kind.value}
-                      type="button"
-                      className={`list-toggle-pill ${draft.lists.includes(kind.value) ? "active" : ""}`}
-                      disabled={!canEdit}
-                      onClick={() => toggleList(kind.value)}
-                    >
-                      {draft.lists.includes(kind.value) ? <Check size={11} /> : null} {kind.label}
-                    </button>
-                  ))}
-                </div>
-              </MetaRow>
+              {isPlanItem ? (
+                <TagPicker
+                  kind="categoria"
+                  label="Categoria"
+                  catalog={catalogFor("categoria")}
+                  selectedIds={draft.categoryTagIds}
+                  onChange={(ids) => update("categoryTagIds", ids)}
+                  onCatalogUpdate={onTagCreated}
+                />
+              ) : null}
             </div>
 
             <div className="task-modal-pane-desc">
@@ -452,6 +460,52 @@ export function TaskModal({
                   {draft.description ? renderDescription(draft.description) : <span className="meta-empty">Vazio — clique para escrever a descrição</span>}
                 </button>
               )}
+
+              {isPlanItem ? (
+                <div className="plan-item-fields">
+                  <span className="meta-row-label task-desc-label"><Clapperboard size={13} /> Conteúdo do plano</span>
+                  <label className="field">
+                    <span>Roteiro</span>
+                    <textarea
+                      className="task-desc-textarea"
+                      value={draft.scriptText}
+                      disabled={!canEdit}
+                      onChange={(e) => update("scriptText", e.target.value)}
+                      placeholder="Roteiro / ideia do conteúdo"
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Direcionamento</span>
+                    <textarea
+                      className="task-desc-textarea"
+                      value={draft.directionText}
+                      disabled={!canEdit}
+                      onChange={(e) => update("directionText", e.target.value)}
+                      placeholder="Direcionamento de gravação/produção"
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Referência</span>
+                    <textarea
+                      className="task-desc-textarea"
+                      value={draft.referenceText}
+                      disabled={!canEdit}
+                      onChange={(e) => update("referenceText", e.target.value)}
+                      placeholder="Links ou descrição de referência"
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Legenda</span>
+                    <textarea
+                      className="task-desc-textarea"
+                      value={draft.captionText}
+                      disabled={!canEdit}
+                      onChange={(e) => update("captionText", e.target.value)}
+                      placeholder="Legenda de publicação"
+                    />
+                  </label>
+                </div>
+              ) : null}
             </div>
           </form>
 

@@ -1,21 +1,23 @@
 "use client";
 
-import { BarChart3, BookOpen, CheckSquare, Folders, LogOut, Menu, Sparkles, Users, X } from "lucide-react";
+import { BarChart3, BookOpen, CheckSquare, ClipboardList, Folders, LogOut, Menu, Sparkles, Users, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { AiAssistant } from "@/components/ai-assistant";
+import { AnnouncementGate } from "@/components/announcement-gate";
 import type { CurrentUser } from "@/lib/current-user";
 import { PageContextProvider } from "@/lib/page-context";
 import { createClient } from "@/lib/supabase/browser-client";
 
-export type AdminShellActive = "dashboard" | "projetos" | "tarefas" | "membros" | "conhecimento" | "assistente";
+export type AdminShellActive = "dashboard" | "projetos" | "tarefas" | "planos" | "membros" | "conhecimento" | "assistente";
 
 const PAGE_LABELS: Record<AdminShellActive, string> = {
   dashboard: "Página atual: Dashboard (visão geral de métricas, prazos e ranking do time).",
   projetos: "Página atual: Projetos.",
   tarefas: "Página atual: Tarefas.",
+  planos: "Página atual: Planos (conteúdos e processos organizados por cliente).",
   membros: "Página atual: Membros.",
   conhecimento: "Página atual: Base de conhecimento.",
   assistente: "Página atual: Assistente (chat completo).",
@@ -70,6 +72,10 @@ export function AdminShell({
             <CheckSquare size={18} />
             <span>Tarefas</span>
           </Link>
+          <Link className={active === "planos" ? "active" : ""} href="/planos" onClick={() => setMenuOpen(false)}>
+            <ClipboardList size={18} />
+            <span>Planos</span>
+          </Link>
           {user.role === "dono" ? (
             <Link className={active === "membros" ? "active" : ""} href="/membros" onClick={() => setMenuOpen(false)}>
               <Users size={18} />
@@ -110,6 +116,7 @@ export function AdminShell({
       {/* Na página do chat completo o widget seria redundante — e o botão
           flutuante cobre o "Enviar" do composer. */}
       {user.aiEnabled && active !== "assistente" ? <AiAssistant /> : null}
+      <AnnouncementGate />
     </div>
     </PageContextProvider>
   );

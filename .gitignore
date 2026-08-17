@@ -8,3 +8,6 @@ next-env.d.ts
 *.tsbuildinfo
 data/db.json
 public/uploads
+test-results
+playwright-report
+tests/.fixtures.json

@@ -130,3 +130,205 @@ create table if not exists status_colors (
   color text not null,
   updated_at timestamptz not null default now()
 );
+
+-- ---------- Planos, conteúdo, avisos (unificação com o vizantu-planos) ----------
+-- Container "Plano" (conjunto de conteúdos ou de passos de um processo).
+-- kind=presentation nunca vira linhas estruturadas — continua 100% no
+-- pipeline de blob do vizantu-planos.
+create table if not exists plans (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects(id) on delete cascade,
+  title text not null,
+  kind text not null check (kind in ('content', 'process', 'presentation')),
+  status text not null default 'draft' check (status in ('draft', 'active', 'completed', 'archived')),
+  approval_deadline timestamptz,
+  approval_period_days int,
+  -- planos "presentation" (e planos legados ainda não migrados) continuam
+  -- servidos pelo storage.ts de blob do vizantu-planos; estas colunas fazem
+  -- a ponte sem forçar os dois mundos numa mesma forma.
+  legacy_slug text unique,
+  html_blob_key text,
+  source text not null default 'native' check (source in ('native', 'legacy_blob')),
+  created_by uuid references members(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists plans_project_id_idx on plans(project_id);
+alter table plans enable row level security;
+
+-- Agrupamento de captação ("1ª Captação", "2ª Captação"...) — tabela em vez
+-- de texto solto pra não quebrar o agrupamento por variação de digitação.
+-- Só existe pra planos kind=content; label e quantidade são livres.
+create table if not exists plan_captacoes (
+  id uuid primary key default gen_random_uuid(),
+  plan_id uuid not null references plans(id) on delete cascade,
+  label text not null,
+  sequence_order int not null default 0,
+  created_at timestamptz not null default now()
+);
+create index if not exists plan_captacoes_plan_id_idx on plan_captacoes(plan_id);
+alter table plan_captacoes enable row level security;
+
+-- Um item de conteúdo de um Plano (vídeo/post/carrossel) OU um passo de um
+-- Plano de processo é uma linha de tasks — reaproveita responsável, status,
+-- status_history, comentários, IA, anexos que já existem. Colunas novas são
+-- todas nullable: zero impacto nas tarefas existentes que não pertencem a
+-- nenhum plano.
+alter table tasks
+  add column if not exists plan_id uuid references plans(id) on delete cascade,
+  add column if not exists captacao_id uuid references plan_captacoes(id) on delete set null,
+  add column if not exists category_tag_ids uuid[] not null default '{}',
+  add column if not exists script_text text,       -- roteiro
+  add column if not exists direction_text text,     -- direcionamento
+  add column if not exists reference_text text,     -- referência
+  add column if not exists caption_text text,        -- legenda
+  add column if not exists sequence_order int;       -- ordem de exibição (planos de processo)
+
+create index if not exists tasks_plan_id_idx on tasks(plan_id);
+create index if not exists tasks_captacao_id_idx on tasks(captacao_id);
+
+-- Categorias de conteúdo (trends/collab/autoridade/educação, livre) —
+-- reaproveita o mecanismo de tags que já existe pra formato/canal, inclusive
+-- resolve-ou-cria por nome que a IA já usa.
+alter table tags drop constraint if exists tags_kind_check;
+alter table tags add constraint tags_kind_check check (kind in ('formato', 'canal', 'categoria'));
+
+-- Identidade do cliente que aparece no cabeçalho do dashboard
+-- ("Bem-vinda, Dra Wainny — Médica · Mineiros-GO · @handle").
+create table if not exists plan_clients (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects(id) on delete cascade,
+  name text not null,
+  role_title text,
+  city text,
+  instagram_handle text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists plan_clients_project_id_idx on plan_clients(project_id);
+alter table plan_clients enable row level security;
+
+-- Link mágico do cliente pro dashboard do vizantu-planos — token opaco,
+-- sessão própria (não é o Supabase Auth interno do time).
+create table if not exists plan_client_tokens (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references plan_clients(id) on delete cascade,
+  token text not null unique,
+  expires_at timestamptz,
+  revoked_at timestamptz,
+  last_used_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists plan_client_tokens_client_id_idx on plan_client_tokens(client_id);
+alter table plan_client_tokens enable row level security;
+
+-- Status de aprovação do CLIENTE — eixo separado do status de produção
+-- interna em tasks.status (uma tarefa pode estar "em_criacao" pra um cliente
+-- que nunca viu aquilo). 1:1 com tasks; só existe pra itens client-facing.
+create table if not exists plan_item_approvals (
+  task_id uuid primary key references tasks(id) on delete cascade,
+  status text not null default 'pending' check (status in ('pending', 'approved', 'changes_requested', 'rejected')),
+  review_version int not null default 1,
+  updated_at timestamptz not null default now()
+);
+alter table plan_item_approvals enable row level security;
+
+-- Respostas individuais (multi-revisor — várias pessoas podem responder o
+-- mesmo item via o mesmo link). Status agregado do item = pior status vence
+-- (rejected > changes_requested > approved), calculado em cima destas linhas.
+create table if not exists plan_approval_responses (
+  id uuid primary key default gen_random_uuid(),
+  task_id uuid not null references tasks(id) on delete cascade,
+  client_id uuid references plan_clients(id) on delete set null,
+  reviewer_name text not null,
+  status text not null check (status in ('approved', 'changes_requested', 'rejected')),
+  comment text,
+  review_version int not null default 1,
+  created_at timestamptz not null default now()
+);
+create index if not exists plan_approval_responses_task_id_idx on plan_approval_responses(task_id);
+alter table plan_approval_responses enable row level security;
+
+-- Histórico completo (timeline de versões no dashboard interno).
+create table if not exists plan_approval_events (
+  id uuid primary key default gen_random_uuid(),
+  task_id uuid not null references tasks(id) on delete cascade,
+  action text not null check (action in ('approved', 'changes_requested', 'rejected', 'commented', 'reopened')),
+  status text not null,
+  previous_status text not null,
+  comment text,
+  client_id uuid references plan_clients(id) on delete set null,
+  reviewer_name text,
+  review_version int,
+  created_at timestamptz not null default now()
+);
+create index if not exists plan_approval_events_task_id_idx on plan_approval_events(task_id);
+alter table plan_approval_events enable row level security;
+
+-- "Nota da vizantu" (satisfação) do dashboard — sem equivalente hoje.
+create table if not exists client_satisfaction_scores (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects(id) on delete cascade,
+  client_id uuid references plan_clients(id) on delete set null,
+  score int not null check (score between 0 and 10),
+  created_at timestamptz not null default now()
+);
+create index if not exists client_satisfaction_scores_project_id_idx on client_satisfaction_scores(project_id);
+alter table client_satisfaction_scores enable row level security;
+
+-- Entradas de calendário que não são conteúdo (ex: "LOJA APPLE — Projeção ·
+-- Apresentação") — aparecem junto com os conteúdos no calendário do cliente.
+create table if not exists plan_events (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects(id) on delete cascade,
+  title text not null,
+  event_type text not null default 'reuniao',
+  event_date date not null,
+  created_by uuid references members(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+create index if not exists plan_events_project_id_idx on plan_events(project_id);
+alter table plan_events enable row level security;
+
+-- Aviso: broadcast pra todos / uma categoria (role) / um usuário específico.
+-- Some da tela do destinatário só quando ele confirma explicitamente — ver
+-- announcement_acknowledgements.
+create table if not exists announcements (
+  id uuid primary key default gen_random_uuid(),
+  title text,
+  body text not null,
+  created_by uuid references members(id) on delete set null,
+  scope text not null check (scope in ('all', 'role', 'member')),
+  scope_role text check (scope_role in ('dono', 'editor', 'visualizador')),
+  scope_member_id uuid references members(id) on delete cascade,
+  active boolean not null default true,
+  expires_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists announcements_active_idx on announcements(active) where active;
+alter table announcements enable row level security;
+
+create table if not exists announcement_acknowledgements (
+  announcement_id uuid not null references announcements(id) on delete cascade,
+  member_id uuid not null references members(id) on delete cascade,
+  acknowledged_at timestamptz not null default now(),
+  primary key (announcement_id, member_id)
+);
+alter table announcement_acknowledgements enable row level security;
+
+-- ---------- Rename: listas interna/externa -> estrategica/criativa ----------
+-- Mesmo conceito de antes, ganhando movimentação automática por status (ver
+-- deriveListsForStatus em src/lib/storage.ts). Rodado uma única vez em
+-- produção com member_list_access e tasks.lists ainda vazios — os UPDATEs
+-- abaixo continuam corretos caso este arquivo seja reaplicado do zero num
+-- banco novo (tornam-se no-ops).
+update tasks set lists = array(
+  select case elem when 'interna' then 'estrategica' when 'externa' then 'criativa' else elem end
+  from unnest(lists) as elem
+) where lists && array['interna', 'externa'];
+
+alter table member_list_access drop constraint if exists member_list_access_list_kind_check;
+update member_list_access set list_kind = 'estrategica' where list_kind = 'interna';
+update member_list_access set list_kind = 'criativa' where list_kind = 'externa';
+alter table member_list_access add constraint member_list_access_list_kind_check
+  check (list_kind in ('estrategica', 'criativa'));

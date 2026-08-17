@@ -2,12 +2,27 @@ import { isOverdue } from "./dates";
 import { getSupabase } from "./supabase-client";
 import { DEFAULT_STATUS_COLORS, TASK_STATUSES } from "./types";
 import type {
+  Announcement,
+  AnnouncementScope,
   AssistantConversation,
   AssistantMessage,
+  ClientSatisfactionScore,
   KnowledgeDoc,
   Member,
+  Plan,
+  PlanApprovalEvent,
+  PlanApprovalResponse,
+  PlanApprovalStatus,
+  PlanCaptacao,
+  PlanClient,
+  PlanClientToken,
+  PlanEvent,
+  PlanItemApproval,
+  PlanKind,
+  PlanStatus,
   Project,
   StatusColor,
+  StatusGroup,
   StatusHistoryEntry,
   Tag,
   TagKind,
@@ -269,8 +284,15 @@ export type TaskInput = {
   driveLink?: string;
   formatTagIds?: string[];
   channelTagIds?: string[];
-  lists?: TaskListKind[];
+  categoryTagIds?: string[];
   status?: TaskStatus;
+  planId?: string;
+  captacaoId?: string;
+  scriptText?: string;
+  directionText?: string;
+  referenceText?: string;
+  captionText?: string;
+  sequenceOrder?: number;
 };
 
 type TaskRow = {
@@ -284,10 +306,18 @@ type TaskRow = {
   drive_link: string | null;
   format_tag_ids: string[];
   channel_tag_ids: string[];
+  category_tag_ids: string[];
   lists: TaskListKind[];
   status: TaskStatus;
   status_history: StatusHistoryEntry[];
   comments: Task["comments"];
+  plan_id: string | null;
+  captacao_id: string | null;
+  script_text: string | null;
+  direction_text: string | null;
+  reference_text: string | null;
+  caption_text: string | null;
+  sequence_order: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -304,13 +334,34 @@ function mapTask(row: TaskRow): Task {
     driveLink: row.drive_link ?? undefined,
     formatTagIds: row.format_tag_ids ?? [],
     channelTagIds: row.channel_tag_ids ?? [],
+    categoryTagIds: row.category_tag_ids ?? [],
     lists: row.lists ?? [],
     status: row.status,
     statusHistory: row.status_history ?? [],
     comments: row.comments ?? [],
+    planId: row.plan_id ?? undefined,
+    captacaoId: row.captacao_id ?? undefined,
+    scriptText: row.script_text ?? undefined,
+    directionText: row.direction_text ?? undefined,
+    referenceText: row.reference_text ?? undefined,
+    captionText: row.caption_text ?? undefined,
+    sequenceOrder: row.sequence_order ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+// ---------- Automação estratégica ⇄ criativa ----------
+// 100% derivada do status — não existe mais um valor manual independente.
+// Ao entrar em qualquer status dos grupos em_andamento/feita (a partir de
+// pronto_para_criacao) pela primeira vez, a tarefa vira "criativa"; ao
+// voltar pra qualquer status do grupo nao_iniciada, volta a "estrategica".
+const STATUS_GROUP_BY_VALUE: Record<TaskStatus, StatusGroup> = Object.fromEntries(
+  TASK_STATUSES.map((s) => [s.value, s.group]),
+) as Record<TaskStatus, StatusGroup>;
+
+function deriveListsForStatus(status: TaskStatus): TaskListKind[] {
+  return STATUS_GROUP_BY_VALUE[status] === "nao_iniciada" ? ["estrategica"] : ["criativa"];
 }
 
 function dedupeIds(ids: string[]): string[] {
@@ -360,10 +411,21 @@ export async function createTask(input: TaskInput): Promise<Task> {
         drive_link: input.driveLink?.trim() || null,
         format_tag_ids: dedupeIds(input.formatTagIds ?? []),
         channel_tag_ids: dedupeIds(input.channelTagIds ?? []),
-        lists: Array.from(new Set(input.lists ?? [])),
+        category_tag_ids: dedupeIds(input.categoryTagIds ?? []),
+        // lists é sempre derivado do status inicial — um valor manual em
+        // input.lists seria sobrescrito na primeira troca de status mesmo,
+        // então nem aceitamos ele aqui (ver deriveListsForStatus acima).
+        lists: deriveListsForStatus(status),
         status,
         status_history: openStatusHistory(status, now),
         comments: [],
+        plan_id: input.planId || null,
+        captacao_id: input.captacaoId || null,
+        script_text: input.scriptText?.trim() || null,
+        direction_text: input.directionText?.trim() || null,
+        reference_text: input.referenceText?.trim() || null,
+        caption_text: input.captionText?.trim() || null,
+        sequence_order: input.sequenceOrder ?? null,
         created_at: now,
         updated_at: now,
       })
@@ -389,8 +451,15 @@ export async function duplicateTask(id: string): Promise<Task | undefined> {
     driveLink: current.driveLink,
     formatTagIds: current.formatTagIds,
     channelTagIds: current.channelTagIds,
-    lists: current.lists,
+    categoryTagIds: current.categoryTagIds,
     status: current.status,
+    planId: current.planId,
+    captacaoId: current.captacaoId,
+    scriptText: current.scriptText,
+    directionText: current.directionText,
+    referenceText: current.referenceText,
+    captionText: current.captionText,
+    sequenceOrder: current.sequenceOrder,
   });
 }
 
@@ -420,11 +489,21 @@ export async function updateTask(
   if (patch.driveLink !== undefined) update.drive_link = patch.driveLink.trim() || null;
   if (patch.formatTagIds !== undefined) update.format_tag_ids = dedupeIds(patch.formatTagIds);
   if (patch.channelTagIds !== undefined) update.channel_tag_ids = dedupeIds(patch.channelTagIds);
-  if (patch.lists !== undefined) update.lists = Array.from(new Set(patch.lists));
+  if (patch.categoryTagIds !== undefined) update.category_tag_ids = dedupeIds(patch.categoryTagIds);
+  if (patch.planId !== undefined) update.plan_id = patch.planId || null;
+  if (patch.captacaoId !== undefined) update.captacao_id = patch.captacaoId || null;
+  if (patch.scriptText !== undefined) update.script_text = patch.scriptText.trim() || null;
+  if (patch.directionText !== undefined) update.direction_text = patch.directionText.trim() || null;
+  if (patch.referenceText !== undefined) update.reference_text = patch.referenceText.trim() || null;
+  if (patch.captionText !== undefined) update.caption_text = patch.captionText.trim() || null;
+  if (patch.sequenceOrder !== undefined) update.sequence_order = patch.sequenceOrder;
 
   if (patch.status !== undefined && patch.status !== current.status) {
     update.status = patch.status;
     update.status_history = transitionStatusHistory(current.statusHistory, patch.status, nowIso());
+    // lists é sempre recalculado a partir do novo status — nunca aceito
+    // manualmente (ver deriveListsForStatus).
+    update.lists = deriveListsForStatus(patch.status);
   }
 
   const row = unwrap(await getSupabase().from("tasks").update(update).eq("id", id).select().maybeSingle());
@@ -442,6 +521,496 @@ export async function addComment(taskId: string, input: { author: string; text: 
   const comments = [...current.comments, { id: newId(), author: input.author.trim() || "Equipe", text: input.text.trim(), createdAt: nowIso() }];
   const row = unwrap(await getSupabase().from("tasks").update({ comments, updated_at: nowIso() }).eq("id", taskId).select().maybeSingle());
   return row ? mapTask(row as TaskRow) : undefined;
+}
+
+// ---------- Planos ----------
+// Um Plano é só o container (título/projeto/kind) — os itens em si são
+// Tasks com plan_id setado (ver createTask/updateTask acima). kind=content
+// agrupa itens por PlanCaptacao; kind=process usa sequence_order; kind=
+// presentation nunca tem Tasks (fica só no blob do vizantu-planos).
+
+type PlanRow = {
+  id: string;
+  project_id: string;
+  title: string;
+  kind: PlanKind;
+  status: PlanStatus;
+  approval_deadline: string | null;
+  approval_period_days: number | null;
+  legacy_slug: string | null;
+  html_blob_key: string | null;
+  source: "native" | "legacy_blob";
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+function mapPlan(row: PlanRow): Plan {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    title: row.title,
+    kind: row.kind,
+    status: row.status,
+    approvalDeadline: row.approval_deadline ?? undefined,
+    approvalPeriodDays: row.approval_period_days ?? undefined,
+    legacySlug: row.legacy_slug ?? undefined,
+    htmlBlobKey: row.html_blob_key ?? undefined,
+    source: row.source,
+    createdBy: row.created_by ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function listPlans(projectId?: string): Promise<Plan[]> {
+  let query = getSupabase().from("plans").select("*").order("created_at", { ascending: false });
+  if (projectId) query = query.eq("project_id", projectId);
+  const rows = unwrap(await query);
+  return (rows as PlanRow[]).map(mapPlan);
+}
+
+export async function getPlan(id: string): Promise<Plan | undefined> {
+  const row = unwrap(await getSupabase().from("plans").select("*").eq("id", id).maybeSingle());
+  return row ? mapPlan(row as PlanRow) : undefined;
+}
+
+export async function createPlan(input: {
+  projectId: string;
+  title: string;
+  kind: PlanKind;
+  approvalDeadline?: string;
+  approvalPeriodDays?: number;
+  createdBy?: string;
+}): Promise<Plan> {
+  const now = nowIso();
+  const row = unwrap(
+    await getSupabase()
+      .from("plans")
+      .insert({
+        id: newId(),
+        project_id: input.projectId,
+        title: input.title.trim(),
+        kind: input.kind,
+        status: "draft",
+        approval_deadline: input.approvalDeadline || null,
+        approval_period_days: input.approvalPeriodDays ?? null,
+        source: "native",
+        created_by: input.createdBy || null,
+        created_at: now,
+        updated_at: now,
+      })
+      .select()
+      .single(),
+  );
+  return mapPlan(row as PlanRow);
+}
+
+export async function updatePlan(
+  id: string,
+  patch: Partial<Pick<Plan, "title" | "status" | "approvalDeadline" | "approvalPeriodDays">>,
+): Promise<Plan | undefined> {
+  const update: Record<string, unknown> = { updated_at: nowIso() };
+  if (patch.title !== undefined) update.title = patch.title.trim();
+  if (patch.status !== undefined) update.status = patch.status;
+  if (patch.approvalDeadline !== undefined) update.approval_deadline = patch.approvalDeadline || null;
+  if (patch.approvalPeriodDays !== undefined) update.approval_period_days = patch.approvalPeriodDays ?? null;
+  const row = unwrap(await getSupabase().from("plans").update(update).eq("id", id).select().maybeSingle());
+  return row ? mapPlan(row as PlanRow) : undefined;
+}
+
+export async function deletePlan(id: string): Promise<boolean> {
+  // plan_id em tasks tem "on delete cascade" — apagar o plano já leva os
+  // itens (tasks) dele junto.
+  const rows = unwrap(await getSupabase().from("plans").delete().eq("id", id).select("id"));
+  return (rows as unknown[]).length > 0;
+}
+
+// ---------- Captações (agrupamento livre dentro de um Plano de conteúdo) ----------
+
+type PlanCaptacaoRow = { id: string; plan_id: string; label: string; sequence_order: number; created_at: string };
+
+function mapPlanCaptacao(row: PlanCaptacaoRow): PlanCaptacao {
+  return { id: row.id, planId: row.plan_id, label: row.label, sequenceOrder: row.sequence_order, createdAt: row.created_at };
+}
+
+export async function listPlanCaptacoes(planId: string): Promise<PlanCaptacao[]> {
+  const rows = unwrap(await getSupabase().from("plan_captacoes").select("*").eq("plan_id", planId).order("sequence_order"));
+  return (rows as PlanCaptacaoRow[]).map(mapPlanCaptacao);
+}
+
+export async function createPlanCaptacao(input: { planId: string; label: string; sequenceOrder?: number }): Promise<PlanCaptacao> {
+  const row = unwrap(
+    await getSupabase()
+      .from("plan_captacoes")
+      .insert({ id: newId(), plan_id: input.planId, label: input.label.trim(), sequence_order: input.sequenceOrder ?? 0, created_at: nowIso() })
+      .select()
+      .single(),
+  );
+  return mapPlanCaptacao(row as PlanCaptacaoRow);
+}
+
+export async function deletePlanCaptacao(id: string): Promise<boolean> {
+  const rows = unwrap(await getSupabase().from("plan_captacoes").delete().eq("id", id).select("id"));
+  return (rows as unknown[]).length > 0;
+}
+
+// Lista as tasks de um plano já agrupadas — usado tanto pela view interna do
+// Plano quanto pelo dashboard do cliente no vizantu-planos.
+export async function listPlanTasks(planId: string): Promise<Task[]> {
+  const rows = unwrap(await getSupabase().from("tasks").select("*").eq("plan_id", planId)) as TaskRow[];
+  return rows.map(mapTask).sort((a, b) => (a.sequenceOrder ?? 0) - (b.sequenceOrder ?? 0));
+}
+
+// ---------- Clientes e link mágico (consumidos pelo vizantu-planos) ----------
+
+type PlanClientRow = {
+  id: string;
+  project_id: string;
+  name: string;
+  role_title: string | null;
+  city: string | null;
+  instagram_handle: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+function mapPlanClient(row: PlanClientRow): PlanClient {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    name: row.name,
+    roleTitle: row.role_title ?? undefined,
+    city: row.city ?? undefined,
+    instagramHandle: row.instagram_handle ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function listPlanClients(projectId?: string): Promise<PlanClient[]> {
+  let query = getSupabase().from("plan_clients").select("*");
+  if (projectId) query = query.eq("project_id", projectId);
+  const rows = unwrap(await query);
+  return (rows as PlanClientRow[]).map(mapPlanClient);
+}
+
+export async function getPlanClient(id: string): Promise<PlanClient | undefined> {
+  const row = unwrap(await getSupabase().from("plan_clients").select("*").eq("id", id).maybeSingle());
+  return row ? mapPlanClient(row as PlanClientRow) : undefined;
+}
+
+export async function createPlanClient(input: {
+  projectId: string;
+  name: string;
+  roleTitle?: string;
+  city?: string;
+  instagramHandle?: string;
+}): Promise<PlanClient> {
+  const now = nowIso();
+  const row = unwrap(
+    await getSupabase()
+      .from("plan_clients")
+      .insert({
+        id: newId(),
+        project_id: input.projectId,
+        name: input.name.trim(),
+        role_title: input.roleTitle?.trim() || null,
+        city: input.city?.trim() || null,
+        instagram_handle: input.instagramHandle?.trim() || null,
+        created_at: now,
+        updated_at: now,
+      })
+      .select()
+      .single(),
+  );
+  return mapPlanClient(row as PlanClientRow);
+}
+
+function randomToken(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Buffer.from(bytes).toString("base64url");
+}
+
+type PlanClientTokenRow = {
+  id: string;
+  client_id: string;
+  token: string;
+  expires_at: string | null;
+  revoked_at: string | null;
+  last_used_at: string | null;
+  created_at: string;
+};
+
+function mapPlanClientToken(row: PlanClientTokenRow): PlanClientToken {
+  return {
+    id: row.id,
+    clientId: row.client_id,
+    token: row.token,
+    expiresAt: row.expires_at ?? undefined,
+    revokedAt: row.revoked_at ?? undefined,
+    lastUsedAt: row.last_used_at ?? undefined,
+    createdAt: row.created_at,
+  };
+}
+
+export async function createPlanClientToken(input: { clientId: string; expiresAt?: string }): Promise<PlanClientToken> {
+  const row = unwrap(
+    await getSupabase()
+      .from("plan_client_tokens")
+      .insert({ id: newId(), client_id: input.clientId, token: randomToken(), expires_at: input.expiresAt || null, created_at: nowIso() })
+      .select()
+      .single(),
+  );
+  return mapPlanClientToken(row as PlanClientTokenRow);
+}
+
+export async function listPlanClientTokens(clientId: string): Promise<PlanClientToken[]> {
+  const rows = unwrap(await getSupabase().from("plan_client_tokens").select("*").eq("client_id", clientId).order("created_at", { ascending: false }));
+  return (rows as PlanClientTokenRow[]).map(mapPlanClientToken);
+}
+
+// Resolve um token pra um cliente, validando revogação/expiração, e marca
+// o uso — usado pela rota /c/[token] do vizantu-planos.
+export async function resolvePlanClientToken(token: string): Promise<PlanClient | undefined> {
+  const row = unwrap(await getSupabase().from("plan_client_tokens").select("*").eq("token", token).maybeSingle()) as PlanClientTokenRow | null;
+  if (!row) return undefined;
+  if (row.revoked_at) return undefined;
+  if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) return undefined;
+  unwrap(await getSupabase().from("plan_client_tokens").update({ last_used_at: nowIso() }).eq("id", row.id));
+  return getPlanClient(row.client_id);
+}
+
+export async function revokePlanClientToken(id: string): Promise<void> {
+  unwrap(await getSupabase().from("plan_client_tokens").update({ revoked_at: nowIso() }).eq("id", id));
+}
+
+// ---------- Aprovação do cliente (eixo separado de tasks.status) ----------
+
+type PlanItemApprovalRow = { task_id: string; status: PlanApprovalStatus; review_version: number; updated_at: string };
+
+function mapPlanItemApproval(row: PlanItemApprovalRow): PlanItemApproval {
+  return { taskId: row.task_id, status: row.status, reviewVersion: row.review_version, updatedAt: row.updated_at };
+}
+
+export async function listPlanItemApprovals(taskIds: string[]): Promise<PlanItemApproval[]> {
+  if (!taskIds.length) return [];
+  const rows = unwrap(await getSupabase().from("plan_item_approvals").select("*").in("task_id", taskIds));
+  return (rows as PlanItemApprovalRow[]).map(mapPlanItemApproval);
+}
+
+// Recalcula o status agregado do item a partir das respostas de todos os
+// revisores daquela versão — pior status vence: rejected > changes_requested
+// > approved (mesma regra que o vizantu-planos já usava em cima do blob).
+function aggregateResponses(responses: { status: PlanApprovalResponse["status"] }[]): PlanApprovalStatus {
+  if (responses.some((r) => r.status === "rejected")) return "rejected";
+  if (responses.some((r) => r.status === "changes_requested")) return "changes_requested";
+  if (responses.some((r) => r.status === "approved")) return "approved";
+  return "pending";
+}
+
+type PlanApprovalResponseRow = {
+  id: string;
+  task_id: string;
+  client_id: string | null;
+  reviewer_name: string;
+  status: PlanApprovalResponse["status"];
+  comment: string | null;
+  review_version: number;
+  created_at: string;
+};
+
+function mapPlanApprovalResponse(row: PlanApprovalResponseRow): PlanApprovalResponse {
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    clientId: row.client_id ?? undefined,
+    reviewerName: row.reviewer_name,
+    status: row.status,
+    comment: row.comment ?? undefined,
+    reviewVersion: row.review_version,
+    createdAt: row.created_at,
+  };
+}
+
+export async function listPlanApprovalResponses(taskId: string): Promise<PlanApprovalResponse[]> {
+  const rows = unwrap(await getSupabase().from("plan_approval_responses").select("*").eq("task_id", taskId).order("created_at"));
+  return (rows as PlanApprovalResponseRow[]).map(mapPlanApprovalResponse);
+}
+
+export async function submitPlanApprovalResponse(input: {
+  taskId: string;
+  clientId?: string;
+  reviewerName: string;
+  status: PlanApprovalResponse["status"];
+  comment?: string;
+}): Promise<PlanItemApproval> {
+  const db = getSupabase();
+  const existingRow = unwrap(await db.from("plan_item_approvals").select("*").eq("task_id", input.taskId).maybeSingle()) as PlanItemApprovalRow | null;
+  const reviewVersion = existingRow?.review_version ?? 1;
+  const previousStatus = existingRow?.status ?? "pending";
+
+  // Upsert da resposta deste revisor (por reviewer_name + task_id + versão) —
+  // reenviar substitui a resposta anterior da mesma pessoa na mesma versão.
+  const priorResponses = unwrap(
+    await db.from("plan_approval_responses").select("*").eq("task_id", input.taskId).eq("review_version", reviewVersion),
+  ) as PlanApprovalResponseRow[];
+  const ownPrior = priorResponses.find((r) => r.reviewer_name === input.reviewerName);
+  if (ownPrior) {
+    unwrap(
+      await db
+        .from("plan_approval_responses")
+        .update({ status: input.status, comment: input.comment?.trim() || null })
+        .eq("id", ownPrior.id),
+    );
+  } else {
+    unwrap(
+      await db.from("plan_approval_responses").insert({
+        id: newId(),
+        task_id: input.taskId,
+        client_id: input.clientId || null,
+        reviewer_name: input.reviewerName,
+        status: input.status,
+        comment: input.comment?.trim() || null,
+        review_version: reviewVersion,
+        created_at: nowIso(),
+      }),
+    );
+  }
+
+  const allResponses = unwrap(
+    await db.from("plan_approval_responses").select("status").eq("task_id", input.taskId).eq("review_version", reviewVersion),
+  ) as { status: PlanApprovalResponse["status"] }[];
+  const aggregated = aggregateResponses(allResponses);
+
+  unwrap(
+    await db
+      .from("plan_item_approvals")
+      .upsert({ task_id: input.taskId, status: aggregated, review_version: reviewVersion, updated_at: nowIso() }),
+  );
+
+  unwrap(
+    await db.from("plan_approval_events").insert({
+      id: newId(),
+      task_id: input.taskId,
+      action: input.status,
+      status: aggregated,
+      previous_status: previousStatus,
+      comment: input.comment?.trim() || null,
+      client_id: input.clientId || null,
+      reviewer_name: input.reviewerName,
+      review_version: reviewVersion,
+      created_at: nowIso(),
+    }),
+  );
+
+  return { taskId: input.taskId, status: aggregated, reviewVersion, updatedAt: nowIso() };
+}
+
+type PlanApprovalEventRow = {
+  id: string;
+  task_id: string;
+  action: PlanApprovalEvent["action"];
+  status: string;
+  previous_status: string;
+  comment: string | null;
+  client_id: string | null;
+  reviewer_name: string | null;
+  review_version: number | null;
+  created_at: string;
+};
+
+function mapPlanApprovalEvent(row: PlanApprovalEventRow): PlanApprovalEvent {
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    action: row.action,
+    status: row.status,
+    previousStatus: row.previous_status,
+    comment: row.comment ?? undefined,
+    clientId: row.client_id ?? undefined,
+    reviewerName: row.reviewer_name ?? undefined,
+    reviewVersion: row.review_version ?? undefined,
+    createdAt: row.created_at,
+  };
+}
+
+export async function listPlanApprovalEvents(taskId: string): Promise<PlanApprovalEvent[]> {
+  const rows = unwrap(await getSupabase().from("plan_approval_events").select("*").eq("task_id", taskId).order("created_at"));
+  return (rows as PlanApprovalEventRow[]).map(mapPlanApprovalEvent);
+}
+
+// ---------- Dashboard do cliente ----------
+
+type ClientSatisfactionScoreRow = { id: string; project_id: string; client_id: string | null; score: number; created_at: string };
+
+function mapSatisfactionScore(row: ClientSatisfactionScoreRow): ClientSatisfactionScore {
+  return { id: row.id, projectId: row.project_id, clientId: row.client_id ?? undefined, score: row.score, createdAt: row.created_at };
+}
+
+export async function listSatisfactionScores(projectId: string): Promise<ClientSatisfactionScore[]> {
+  const rows = unwrap(
+    await getSupabase().from("client_satisfaction_scores").select("*").eq("project_id", projectId).order("created_at", { ascending: false }),
+  );
+  return (rows as ClientSatisfactionScoreRow[]).map(mapSatisfactionScore);
+}
+
+export async function addSatisfactionScore(input: { projectId: string; clientId?: string; score: number }): Promise<ClientSatisfactionScore> {
+  const row = unwrap(
+    await getSupabase()
+      .from("client_satisfaction_scores")
+      .insert({ id: newId(), project_id: input.projectId, client_id: input.clientId || null, score: input.score, created_at: nowIso() })
+      .select()
+      .single(),
+  );
+  return mapSatisfactionScore(row as ClientSatisfactionScoreRow);
+}
+
+type PlanEventRow = {
+  id: string;
+  project_id: string;
+  title: string;
+  event_type: string;
+  event_date: string;
+  created_by: string | null;
+  created_at: string;
+};
+
+function mapPlanEvent(row: PlanEventRow): PlanEvent {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    title: row.title,
+    eventType: row.event_type,
+    eventDate: row.event_date,
+    createdBy: row.created_by ?? undefined,
+    createdAt: row.created_at,
+  };
+}
+
+export async function listPlanEvents(projectId: string): Promise<PlanEvent[]> {
+  const rows = unwrap(await getSupabase().from("plan_events").select("*").eq("project_id", projectId).order("event_date"));
+  return (rows as PlanEventRow[]).map(mapPlanEvent);
+}
+
+export async function createPlanEvent(input: { projectId: string; title: string; eventType?: string; eventDate: string; createdBy?: string }): Promise<PlanEvent> {
+  const row = unwrap(
+    await getSupabase()
+      .from("plan_events")
+      .insert({
+        id: newId(),
+        project_id: input.projectId,
+        title: input.title.trim(),
+        event_type: input.eventType || "reuniao",
+        event_date: input.eventDate,
+        created_by: input.createdBy || null,
+        created_at: nowIso(),
+      })
+      .select()
+      .single(),
+  );
+  return mapPlanEvent(row as PlanEventRow);
 }
 
 // ---------- Base de conhecimento ----------
@@ -579,4 +1148,110 @@ export async function setStatusColors(colors: Partial<Record<TaskStatus, string>
     );
   }
   return listStatusColors();
+}
+
+// ---------- Aviso (broadcast com confirmação obrigatória) ----------
+// Nunca some da tela do destinatário por timeout ou fechar sem clicar — só
+// quando ele confirma explicitamente (ver acknowledgeAnnouncement). Ver
+// AdminShell (o único componente presente em toda página autenticada) pra
+// onde isso é renderizado como modal bloqueante.
+
+type AnnouncementRow = {
+  id: string;
+  title: string | null;
+  body: string;
+  created_by: string | null;
+  scope: AnnouncementScope;
+  scope_role: UserRole | null;
+  scope_member_id: string | null;
+  active: boolean;
+  expires_at: string | null;
+  created_at: string;
+};
+
+function mapAnnouncement(row: AnnouncementRow): Announcement {
+  return {
+    id: row.id,
+    title: row.title ?? undefined,
+    body: row.body,
+    createdBy: row.created_by ?? undefined,
+    scope: row.scope,
+    scopeRole: row.scope_role ?? undefined,
+    scopeMemberId: row.scope_member_id ?? undefined,
+    active: row.active,
+    expiresAt: row.expires_at ?? undefined,
+    createdAt: row.created_at,
+  };
+}
+
+export async function listAnnouncements(): Promise<Announcement[]> {
+  const rows = unwrap(await getSupabase().from("announcements").select("*").order("created_at", { ascending: false }));
+  return (rows as AnnouncementRow[]).map(mapAnnouncement);
+}
+
+export async function createAnnouncement(input: {
+  title?: string;
+  body: string;
+  createdBy?: string;
+  scope: AnnouncementScope;
+  scopeRole?: UserRole;
+  scopeMemberId?: string;
+  expiresAt?: string;
+}): Promise<Announcement> {
+  const row = unwrap(
+    await getSupabase()
+      .from("announcements")
+      .insert({
+        id: newId(),
+        title: input.title?.trim() || null,
+        body: input.body.trim(),
+        created_by: input.createdBy || null,
+        scope: input.scope,
+        scope_role: input.scope === "role" ? input.scopeRole : null,
+        scope_member_id: input.scope === "member" ? input.scopeMemberId : null,
+        active: true,
+        expires_at: input.expiresAt || null,
+        created_at: nowIso(),
+      })
+      .select()
+      .single(),
+  );
+  return mapAnnouncement(row as AnnouncementRow);
+}
+
+export async function deactivateAnnouncement(id: string): Promise<void> {
+  unwrap(await getSupabase().from("announcements").update({ active: false }).eq("id", id));
+}
+
+// Só os avisos ainda pendentes de confirmação PARA ESTE usuário específico —
+// escopo (all/role/member) e ack já filtrados, é isso que o AdminShell busca
+// no mount pra decidir se mostra o modal bloqueante.
+export async function listPendingAnnouncementsForMember(member: { id: string; role: UserRole }): Promise<Announcement[]> {
+  const db = getSupabase();
+  const now = nowIso();
+  const activeRows = unwrap(await db.from("announcements").select("*").eq("active", true)) as AnnouncementRow[];
+  const notExpired = activeRows.filter((row) => !row.expires_at || row.expires_at > now);
+  const inScope = notExpired.filter(
+    (row) => row.scope === "all" || (row.scope === "role" && row.scope_role === member.role) || (row.scope === "member" && row.scope_member_id === member.id),
+  );
+  if (!inScope.length) return [];
+
+  const ackRows = unwrap(
+    await db
+      .from("announcement_acknowledgements")
+      .select("announcement_id")
+      .eq("member_id", member.id)
+      .in("announcement_id", inScope.map((row) => row.id)),
+  ) as { announcement_id: string }[];
+  const ackedIds = new Set(ackRows.map((r) => r.announcement_id));
+
+  return inScope.filter((row) => !ackedIds.has(row.id)).map(mapAnnouncement).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+export async function acknowledgeAnnouncement(announcementId: string, memberId: string): Promise<void> {
+  unwrap(
+    await getSupabase()
+      .from("announcement_acknowledgements")
+      .upsert({ announcement_id: announcementId, member_id: memberId, acknowledged_at: nowIso() }),
+  );
 }

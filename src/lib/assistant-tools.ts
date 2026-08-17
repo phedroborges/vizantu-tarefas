@@ -2,12 +2,20 @@ import type { ChatCompletionTool } from "openai/resources/chat/completions";
 import { formatDuration, isOverdue, summarizeStatusDurations, todayIso } from "./dates";
 import {
   addComment,
+  createAnnouncement,
   createKnowledgeDoc,
+  createPlan,
+  createPlanCaptacao,
   createTag,
   createTask,
+  getPlan,
   getTask,
+  listAnnouncements,
   listKnowledgeDocs,
   listMembers,
+  listPlanCaptacoes,
+  listPlans,
+  listPlanTasks,
   listProjects,
   listTags,
   listTasks,
@@ -16,7 +24,18 @@ import {
   DueDateLockedError,
 } from "./storage";
 import type { CurrentUser } from "./current-user";
-import { DONE_STATUSES, TASK_STATUSES, type Member, type Project, type TagKind, type Task, type TaskStatus } from "./types";
+import {
+  ANNOUNCEMENT_SCOPES,
+  DONE_STATUSES,
+  PLAN_KINDS,
+  TASK_STATUSES,
+  USER_ROLES,
+  type Member,
+  type Project,
+  type TagKind,
+  type Task,
+  type TaskStatus,
+} from "./types";
 
 // Marcador especial: quando o modelo pede pra excluir uma tarefa, NÃO apagamos
 // aqui — devolvemos isso pro endpoint decidir cortar o loop e pedir confirmação
@@ -354,6 +373,140 @@ async function toolListMembers() {
   return { members: members.filter((m) => m.active).map((m) => m.name) };
 }
 
+// ---------- Planos ----------
+
+async function toolListPlans(args: { projectName?: string }, caller: CurrentUser) {
+  const { projects } = await loadContext(caller);
+  const projectId = await resolveProjectId(args.projectName, projects);
+  const plans = await listPlans(projectId);
+  const visible = caller.accessibleProjectIds === "all" ? plans : plans.filter((p) => (caller.accessibleProjectIds as string[]).includes(p.projectId));
+  const projectById = new Map(projects.map((p) => [p.id, p]));
+  return { plans: visible.map((p) => ({ id: p.id, title: p.title, kind: p.kind, status: p.status, project: projectById.get(p.projectId)?.name || null })) };
+}
+
+async function toolGetPlan(args: { planId: string }, caller: CurrentUser) {
+  const plan = await getPlan(args.planId);
+  if (!plan) return { error: "Plano não encontrado." };
+  if (caller.accessibleProjectIds !== "all" && !caller.accessibleProjectIds.includes(plan.projectId)) {
+    return { error: "Esse plano está fora do seu acesso." };
+  }
+  const [captacoes, tasks] = await Promise.all([listPlanCaptacoes(plan.id), listPlanTasks(plan.id)]);
+  const captacaoById = new Map(captacoes.map((c) => [c.id, c.label]));
+  return {
+    id: plan.id,
+    title: plan.title,
+    kind: plan.kind,
+    status: plan.status,
+    captacoes: captacoes.map((c) => c.label),
+    items: tasks.map((t) => ({
+      id: t.id,
+      name: t.name,
+      captacao: t.captacaoId ? captacaoById.get(t.captacaoId) || null : null,
+      status: statusLabel(t.status),
+      hasScript: Boolean(t.scriptText),
+    })),
+  };
+}
+
+async function toolCreatePlan(args: { title: string; projectName: string; kind: string }, caller: CurrentUser) {
+  const { projects } = await loadContext(caller);
+  const projectId = await resolveProjectId(args.projectName, projects);
+  if (!projectId) return { error: `Projeto "${args.projectName}" não encontrado. Projetos existentes: ${projects.map((p) => p.name).join(", ")}` };
+  const kind = PLAN_KINDS.find((k) => k.value === args.kind)?.value;
+  if (!kind) return { error: `Tipo de plano inválido. Use um de: ${PLAN_KINDS.map((k) => k.value).join(", ")}` };
+  const plan = await createPlan({ projectId, title: args.title, kind, createdBy: caller.id });
+  return { created: { id: plan.id, title: plan.title, kind: plan.kind } };
+}
+
+async function toolAddPlanItem(
+  args: { planId: string; name: string; captacaoLabel?: string; formatLabels?: string[]; scriptText?: string; directionText?: string; referenceText?: string; captionText?: string },
+  caller: CurrentUser,
+) {
+  const plan = await getPlan(args.planId);
+  if (!plan) return { error: "Plano não encontrado." };
+  if (caller.accessibleProjectIds !== "all" && !caller.accessibleProjectIds.includes(plan.projectId)) {
+    return { error: "Esse plano está fora do seu acesso." };
+  }
+  let captacaoId: string | undefined;
+  if (args.captacaoLabel) {
+    const captacoes = await listPlanCaptacoes(plan.id);
+    const existing = findByName(captacoes, args.captacaoLabel, (c) => c.label);
+    captacaoId = existing ? existing.id : (await createPlanCaptacao({ planId: plan.id, label: args.captacaoLabel, sequenceOrder: captacoes.length })).id;
+  }
+  const formatTagIds = await resolveTagIds(args.formatLabels, "formato");
+  const task = await createTask({
+    projectId: plan.projectId,
+    name: args.name,
+    planId: plan.id,
+    captacaoId,
+    formatTagIds,
+    scriptText: args.scriptText,
+    directionText: args.directionText,
+    referenceText: args.referenceText,
+    captionText: args.captionText,
+  });
+  return { created: { id: task.id, name: task.name, planId: task.planId } };
+}
+
+async function toolUpdatePlanItem(
+  args: { taskId: string; scriptText?: string; directionText?: string; referenceText?: string; captionText?: string; status?: string },
+  caller: CurrentUser,
+) {
+  const patch: Parameters<typeof updateTask>[1] = {};
+  if (args.scriptText !== undefined) patch.scriptText = args.scriptText;
+  if (args.directionText !== undefined) patch.directionText = args.directionText;
+  if (args.referenceText !== undefined) patch.referenceText = args.referenceText;
+  if (args.captionText !== undefined) patch.captionText = args.captionText;
+  if (args.status !== undefined) {
+    const status = TASK_STATUSES.find((item) => item.value === args.status || item.label.toLowerCase() === args.status?.toLowerCase())?.value;
+    if (!status) return { error: `Status "${args.status}" inválido.` };
+    patch.status = status;
+  }
+  try {
+    const task = await updateTask(args.taskId, patch);
+    if (!task) return { error: "Item não encontrado." };
+    return { updated: { id: task.id, name: task.name, status: statusLabel(task.status) } };
+  } catch (error) {
+    if (error instanceof DueDateLockedError) return { error: error.message };
+    throw error;
+  }
+}
+
+// ---------- Avisos ----------
+
+async function toolListAnnouncements() {
+  const announcements = await listAnnouncements();
+  return { announcements: announcements.filter((a) => a.active).map((a) => ({ id: a.id, title: a.title || null, body: a.body, scope: a.scope })) };
+}
+
+async function toolCreateAnnouncement(args: { title?: string; body: string; scope: string; scopeRole?: string; scopeMemberName?: string }, caller: CurrentUser) {
+  if (!ANNOUNCEMENT_SCOPES.some((s) => s.value === args.scope)) {
+    return { error: `Escopo inválido. Use um de: ${ANNOUNCEMENT_SCOPES.map((s) => s.value).join(", ")}` };
+  }
+  if (args.scope === "all" && caller.role !== "dono") {
+    return { error: "Só o dono pode criar um aviso para todos os usuários." };
+  }
+  let scopeMemberId: string | undefined;
+  if (args.scope === "member") {
+    const members = await listMembers();
+    const member = args.scopeMemberName ? findByName(members, args.scopeMemberName, (m) => m.name) : undefined;
+    if (!member) return { error: `Usuário "${args.scopeMemberName}" não encontrado.` };
+    scopeMemberId = member.id;
+  }
+  if (args.scope === "role" && !USER_ROLES.some((r) => r.value === args.scopeRole)) {
+    return { error: `Categoria inválida. Use uma de: ${USER_ROLES.map((r) => r.value).join(", ")}` };
+  }
+  const announcement = await createAnnouncement({
+    title: args.title,
+    body: args.body,
+    createdBy: caller.id,
+    scope: args.scope as "all" | "role" | "member",
+    scopeRole: args.scope === "role" ? (args.scopeRole as CurrentUser["role"]) : undefined,
+    scopeMemberId,
+  });
+  return { created: { id: announcement.id, body: announcement.body, scope: announcement.scope } };
+}
+
 // ---------- Schemas (OpenAI tool calling) ----------
 
 export const ASSISTANT_TOOLS: ChatCompletionTool[] = [
@@ -515,11 +668,122 @@ export const ASSISTANT_TOOLS: ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "list_plans",
+      description: "Lista os Planos (conjuntos de conteúdos ou de passos de processo), opcionalmente filtrados por projeto.",
+      parameters: { type: "object", properties: { projectName: { type: "string" } } },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_plan",
+      description: "Detalhe de um Plano: captações e itens (com status e se já tem roteiro preenchido).",
+      parameters: { type: "object", properties: { planId: { type: "string" } }, required: ["planId"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "create_plan",
+      description:
+        "Cria um novo Plano — container de um conjunto de conteúdos (vídeos/posts/carrosséis) ou de passos de um processo (ex.: onboarding de ads). Os itens em si são adicionados depois com add_plan_item.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          projectName: { type: "string" },
+          kind: { type: "string", description: "Um de: " + PLAN_KINDS.map((k) => k.value).join(", ") },
+        },
+        required: ["title", "projectName", "kind"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "add_plan_item",
+      description:
+        "Adiciona um item (vídeo, post, carrossel ou passo de processo) a um Plano existente. Para planos de conteúdo, pode indicar a captação (ex.: '1ª Captação') e já preencher roteiro/direcionamento/referência/legenda.",
+      parameters: {
+        type: "object",
+        properties: {
+          planId: { type: "string" },
+          name: { type: "string" },
+          captacaoLabel: { type: "string", description: "Ex.: '1ª Captação' — cria a captação se ainda não existir." },
+          formatLabels: { type: "array", items: { type: "string" }, description: "Ex.: Vídeo, Carrossel, Estático." },
+          scriptText: { type: "string", description: "Roteiro do conteúdo." },
+          directionText: { type: "string", description: "Direcionamento de gravação/produção." },
+          referenceText: { type: "string", description: "Referência (link ou descrição)." },
+          captionText: { type: "string", description: "Legenda de publicação." },
+        },
+        required: ["planId", "name"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_plan_item",
+      description: "Edita roteiro, direcionamento, referência, legenda ou status de um item de Plano já existente (é uma tarefa — use o mesmo taskId de list_tasks/get_task).",
+      parameters: {
+        type: "object",
+        properties: {
+          taskId: { type: "string" },
+          scriptText: { type: "string" },
+          directionText: { type: "string" },
+          referenceText: { type: "string" },
+          captionText: { type: "string" },
+          status: { type: "string", description: "Um dos: " + TASK_STATUSES.map((s) => s.value).join(", ") },
+        },
+        required: ["taskId"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_announcements",
+      description: "Lista os Avisos (broadcasts) ativos no sistema.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "create_announcement",
+      description:
+        "Cria um Aviso — mensagem que fica bloqueando a tela do(s) destinatário(s) até eles clicarem em confirmar. Escopo 'all' (todos os usuários) só pode ser criado pelo dono.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          body: { type: "string" },
+          scope: { type: "string", description: "Um de: " + ANNOUNCEMENT_SCOPES.map((s) => s.value).join(", ") },
+          scopeRole: { type: "string", description: "Obrigatório se scope='role'. Um de: " + USER_ROLES.map((r) => r.value).join(", ") },
+          scopeMemberName: { type: "string", description: "Obrigatório se scope='member' — nome do usuário." },
+        },
+        required: ["body", "scope"],
+      },
+    },
+  },
 ];
 
 // Ferramentas que alteram dado — bloqueadas de vez pra "visualizador" antes
 // mesmo de decidir qual é (um guard só, não um if por função).
-const MUTATING_TOOLS = new Set(["create_task", "update_task", "delete_task", "add_comment", "upsert_knowledge_doc"]);
+const MUTATING_TOOLS = new Set([
+  "create_task",
+  "update_task",
+  "delete_task",
+  "add_comment",
+  "upsert_knowledge_doc",
+  "create_plan",
+  "add_plan_item",
+  "update_plan_item",
+  "create_announcement",
+]);
 
 export async function executeTool(name: string, rawArgs: string, caller: CurrentUser): Promise<unknown> {
   if (MUTATING_TOOLS.has(name) && caller.role === "visualizador") {
@@ -553,6 +817,20 @@ export async function executeTool(name: string, rawArgs: string, caller: Current
       return toolGetKnowledgeDoc(args);
     case "upsert_knowledge_doc":
       return toolUpsertKnowledgeDoc(args);
+    case "list_plans":
+      return toolListPlans(args, caller);
+    case "get_plan":
+      return toolGetPlan(args, caller);
+    case "create_plan":
+      return toolCreatePlan(args, caller);
+    case "add_plan_item":
+      return toolAddPlanItem(args, caller);
+    case "update_plan_item":
+      return toolUpdatePlanItem(args, caller);
+    case "list_announcements":
+      return toolListAnnouncements();
+    case "create_announcement":
+      return toolCreateAnnouncement(args, caller);
     default:
       return { error: `Ferramenta desconhecida: ${name}` };
   }

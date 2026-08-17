@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, CalendarDays, Check, CheckSquare, Eye, EyeOff, List, Plus, Search } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarDays, CheckSquare, Eye, EyeOff, List, Plus, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
   currentMonthKey,
@@ -138,30 +138,6 @@ function InlineDueDateCell({ task, locked, onChange, onLockedClick }: { task: Ta
     >
       {formatDueDate(task.dueDate)}
     </button>
-  );
-}
-
-function InlineListsCell({ task, onChange }: { task: Task; onChange: (lists: TaskListKind[]) => void }) {
-  const [open, setOpen] = useState(false);
-  function toggle(kind: TaskListKind) {
-    onChange(task.lists.includes(kind) ? task.lists.filter((item) => item !== kind) : [...task.lists, kind]);
-  }
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger className="cell-trigger meta-value-trigger" onClick={(event) => event.stopPropagation()}>
-        {task.lists.length ? task.lists.map((kind) => <span className="badge list" key={kind}>{LIST_LABELS[kind]}</span>) : <span className="meta-empty">—</span>}
-      </PopoverTrigger>
-      <PopoverContent className="!w-44 !rounded-none !p-0 !gap-0" align="start" onClick={(event) => event.stopPropagation()}>
-        <div className="tag-popover-list">
-          {TASK_LIST_KINDS.map((kind) => (
-            <button key={kind.value} type="button" className={`tag-popover-row ${task.lists.includes(kind.value) ? "selected" : ""}`} onClick={() => toggle(kind.value)}>
-              {kind.label}
-              {task.lists.includes(kind.value) ? <Check size={13} /> : null}
-            </button>
-          ))}
-        </div>
-      </PopoverContent>
-    </Popover>
   );
 }
 
@@ -435,8 +411,6 @@ export function TarefasView({
             onChange={(status) => patchTask(task.id, { status })}
           />
         );
-      case "lists":
-        return <InlineListsCell task={task} onChange={(lists) => patchTask(task.id, { lists })} />;
       default:
         return renderColumn(key, task);
     }

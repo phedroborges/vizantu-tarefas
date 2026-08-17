@@ -1,12 +1,12 @@
 "use client";
 
-import { Check, Plus, Radio, Shapes } from "lucide-react";
+import { Check, Plus, Radio, Shapes, Tag as TagIcon } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { MetaRow } from "@/components/meta-row";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { Tag, TagKind } from "@/lib/types";
 
-const KIND_ICON = { formato: Shapes, canal: Radio };
+const KIND_ICON = { formato: Shapes, canal: Radio, categoria: TagIcon };
 
 // Núcleo reutilizado tanto pelo TagPicker do modal (dentro de um MetaRow) quanto
 // pela edição inline na tabela de tarefas — só muda o que aciona o popover.
