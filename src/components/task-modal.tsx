@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { MetaRow } from "@/components/meta-row";
 import { TagPicker } from "@/components/tag-picker";
 import { TaskStatusControl } from "@/components/task-status-control";
+import { AutoTextarea } from "@/components/auto-textarea";
 import { useConfirm } from "@/components/confirm-dialog";
 import { DESCRIPTION_SECTIONS, parseDescription, serializeDescription } from "@/lib/description-sections";
 import { formatDateTime, isOverdue, todayIso } from "@/lib/dates";
@@ -508,31 +509,29 @@ export function TaskModal({
                   é o padrão da casa, não markdown que alguém precisa lembrar
                   de digitar. Tarefa comum segue com a descrição livre. */}
               {isPlanItem ? (
-                <div className="desc-sections">
+                <div className="desc-doc">
                   {sections.livre.trim() ? (
-                    <div className="desc-section">
-                      <span className="desc-section-label">Anotações</span>
-                      <textarea
-                        className="desc-section-input"
+                    <section className="desc-block">
+                      <h4 className="desc-block-title">Anotações</h4>
+                      <AutoTextarea
+                        className="desc-block-text"
                         value={sections.livre}
                         disabled={!canEdit}
                         onChange={(e) => updateSection("livre", e.target.value)}
-                        rows={2}
                       />
-                    </div>
+                    </section>
                   ) : null}
                   {DESCRIPTION_SECTIONS.map((section) => (
-                    <div className="desc-section" key={section.key}>
-                      <span className="desc-section-label">{section.label}</span>
-                      <textarea
-                        className="desc-section-input"
+                    <section className="desc-block" key={section.key}>
+                      <h4 className="desc-block-title">{section.label}</h4>
+                      <AutoTextarea
+                        className="desc-block-text"
                         value={sections[section.key]}
                         disabled={!canEdit}
                         onChange={(e) => updateSection(section.key, e.target.value)}
                         placeholder={section.placeholder}
-                        rows={3}
                       />
-                    </div>
+                    </section>
                   ))}
                 </div>
               ) : editingDescription ? (

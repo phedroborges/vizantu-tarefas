@@ -603,17 +603,28 @@ a.upcoming-item { color: inherit; text-decoration: none; }
 }
 .qt-hint { color: var(--muted-text); font-size: 10.5px; }
 
-/* Padrão de descrição dos itens de plano: as mesmas seções em toda tarefa. */
-.desc-sections { display: flex; flex-direction: column; gap: 14px; margin-top: 4px; }
-.desc-section { display: flex; flex-direction: column; gap: 5px; }
-.desc-section-label { font-size: 10px; font-weight: 730; text-transform: uppercase; letter-spacing: .05em; color: var(--brand-strong); }
-.desc-section-input {
-  width: 100%; padding: 9px 11px; border: 1px solid var(--line); background: #fff;
-  color: var(--dark); font: inherit; font-size: 12.5px; line-height: 1.55; resize: vertical;
+/* Padrão de descrição dos itens de plano: um documento só, com as mesmas
+   seções em toda tarefa — não são campos de formulário. Sem caixa, sem borda
+   e sem altura fixa: o texto cresce junto com o roteiro e quem rola é o
+   corpo do modal (uma barra só, em vez de uma por caixinha). */
+.desc-doc { display: flex; flex-direction: column; }
+
+.desc-block { padding: 2px 0 14px; }
+.desc-block + .desc-block { border-top: 1px solid #f0f2ef; padding-top: 14px; }
+
+.desc-block-title {
+  margin: 0 0 4px; font-size: 10px; font-weight: 730; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--brand-strong);
 }
-.desc-section-input:focus { border-color: var(--brand-strong); }
-.desc-section-input::placeholder { color: #a8b0a8; }
-.desc-section-input:disabled { background: #fafbf9; color: var(--muted-text); }
+
+.desc-block-text {
+  display: block; width: 100%; padding: 0; border: 0; background: transparent;
+  color: var(--dark); font: inherit; font-size: 13px; line-height: 1.65;
+  resize: none; overflow: hidden; /* a altura é ajustada por JS (AutoTextarea) */
+}
+.desc-block-text:focus { outline: none; }
+.desc-block-text::placeholder { color: #b6bdb6; }
+.desc-block-text:disabled { color: var(--muted-text); }
 
 /* ---------- Plano (captações, itens, cliente/link mágico) ---------- */
 
