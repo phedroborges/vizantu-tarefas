@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { AiAssistant } from "@/components/ai-assistant";
+import { AnnouncementComposer } from "@/components/announcement-composer";
 import { AnnouncementGate } from "@/components/announcement-gate";
 import type { CurrentUser } from "@/lib/current-user";
 import { PageContextProvider } from "@/lib/page-context";
@@ -106,6 +107,8 @@ export function AdminShell({
         </div>
       </aside>
       <div className="admin-main">
+        {/* Enviar aviso é ação de qualquer lugar, não de uma tela específica. */}
+        {user.role !== "visualizador" ? <AnnouncementComposer currentUserRole={user.role} /> : null}
         <header className="admin-mobile-bar">
           <button type="button" aria-label="Abrir menu" onClick={() => setMenuOpen(true)}><Menu size={21} /></button>
           <Image className="admin-mobile-logo" src="/brand/vizantu-dark.svg" width={1518} height={296} alt="Vizantu" priority />
