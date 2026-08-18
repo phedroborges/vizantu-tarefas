@@ -1,6 +1,6 @@
 "use client";
 
-import { Folders, Pencil, Search, Trash2, X } from "lucide-react";
+import { Copy, Folders, Link2, Pencil, Search, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useConfirm } from "@/components/confirm-dialog";
 import { PROJECT_STATUSES } from "@/lib/types";
@@ -22,6 +22,10 @@ export function ProjetosView({
   const [projects, setProjects] = useState(initialProjects);
   const [name, setName] = useState("");
   const [client, setClient] = useState("");
+  const [clientRole, setClientRole] = useState("");
+  const [clientCity, setClientCity] = useState("");
+  const [clientInstagram, setClientInstagram] = useState("");
+  const [linksByProject, setLinksByProject] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<ProjectStatus>("ativo");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -56,6 +60,9 @@ export function ProjetosView({
     setEditingId(null);
     setName("");
     setClient("");
+    setClientRole("");
+    setClientCity("");
+    setClientInstagram("");
     setStatus("ativo");
     setError("");
   }
@@ -64,6 +71,9 @@ export function ProjetosView({
     setEditingId(project.id);
     setName(project.name);
     setClient(project.client || "");
+    setClientRole(project.clientRole || "");
+    setClientCity(project.clientCity || "");
+    setClientInstagram(project.clientInstagram || "");
     setStatus(project.status);
     setError("");
   }
@@ -76,7 +86,7 @@ export function ProjetosView({
     const response = await fetch(editingId ? `/api/projects/${editingId}` : "/api/projects", {
       method: editingId ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, client, status }),
+      body: JSON.stringify({ name, client, clientRole, clientCity, clientInstagram, status }),
     });
     const result = await response.json();
     setIsSaving(false);
@@ -90,6 +100,23 @@ export function ProjetosView({
     });
     showToast(editingId ? "Projeto atualizado." : "Projeto criado.");
     resetForm();
+  }
+
+  // O painel do cliente vive no mesmo app (/c/[token]) — o link é só um
+  // token que resolve pro projeto.
+  async function generateLink(project: Project) {
+    const response = await fetch(`/api/projects/${project.id}/link`, { method: "POST" });
+    const result = await response.json();
+    if (!response.ok) return showToast("Não foi possível gerar o link.");
+    const url = `${window.location.origin}/c/${result.link.token}`;
+    setLinksByProject((current) => ({ ...current, [project.id]: url }));
+    await navigator.clipboard.writeText(url).catch(() => {});
+    showToast("Link gerado e copiado.");
+  }
+
+  function copyExisting(project: Project) {
+    const url = linksByProject[project.id];
+    if (url) navigator.clipboard.writeText(url).then(() => showToast("Link copiado."));
   }
 
   async function remove(project: Project) {
@@ -134,6 +161,18 @@ export function ProjetosView({
                   <input id="project-client" value={client} onChange={(e) => setClient(e.target.value)} placeholder="Opcional" maxLength={120} />
                 </div>
                 <div className="field">
+                  <label htmlFor="project-role">Cargo / área do cliente</label>
+                  <input id="project-role" value={clientRole} onChange={(e) => setClientRole(e.target.value)} placeholder="Ex.: Médica" maxLength={80} />
+                </div>
+                <div className="field">
+                  <label htmlFor="project-city">Cidade</label>
+                  <input id="project-city" value={clientCity} onChange={(e) => setClientCity(e.target.value)} placeholder="Ex.: Mineiros - GO" maxLength={80} />
+                </div>
+                <div className="field">
+                  <label htmlFor="project-insta">Instagram</label>
+                  <input id="project-insta" value={clientInstagram} onChange={(e) => setClientInstagram(e.target.value)} placeholder="@perfil" maxLength={80} />
+                </div>
+                <div className="field">
                   <label htmlFor="project-status">Status</label>
                   <select id="project-status" value={status} onChange={(e) => setStatus(e.target.value as ProjectStatus)}>
                     {PROJECT_STATUSES.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}
@@ -171,6 +210,11 @@ export function ProjetosView({
                         <span className={`status ${project.status === "concluido" ? "feita" : project.status === "pausado" ? "atrasada" : "em_andamento"}`}>{statusLabel(project.status)}</span>
                         {canEdit ? (
                           <>
+                            {linksByProject[project.id] ? (
+                              <button className="icon-button" type="button" onClick={() => copyExisting(project)} title="Copiar link do cliente" aria-label={`Copiar link de ${project.name}`}><Copy size={14} /></button>
+                            ) : (
+                              <button className="icon-button" type="button" onClick={() => generateLink(project)} title="Gerar link do cliente" aria-label={`Gerar link de ${project.name}`}><Link2 size={14} /></button>
+                            )}
                             <button className="icon-button" type="button" onClick={() => startEdit(project)} title="Editar" aria-label={`Editar ${project.name}`}><Pencil size={14} /></button>
                             <button className="icon-button" type="button" onClick={() => remove(project)} title="Excluir" aria-label={`Excluir ${project.name}`}><Trash2 size={14} /></button>
                           </>

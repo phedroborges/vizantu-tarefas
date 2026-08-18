@@ -8,6 +8,16 @@ import { NextResponse, type NextRequest } from "next/server";
 
 const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password", "/auth/confirm"];
 
+// O painel do cliente (/c/[token] e as rotas /api/c/*) é público por
+// natureza — quem entra é o cliente, com o link mágico, sem conta no
+// sistema. A autorização dele é o token/cookie de sessão próprio, checado
+// em cada rota (ver lib/client-session.ts), não o login do time.
+const CLIENT_PATHS = ["/c", "/api/c"];
+
+function isClientPath(pathname: string): boolean {
+  return CLIENT_PATHS.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+}
+
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
 
@@ -30,7 +40,7 @@ export async function proxy(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
   const isApi = pathname.startsWith("/api/");
-  const isPublicPath = PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
+  const isPublicPath = PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`)) || isClientPath(pathname);
 
   if (isApi) {
     // /api/** só recebe o cookie renovado aqui — 401/403 é responsabilidade de

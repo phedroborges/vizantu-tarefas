@@ -10,6 +10,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const project = await updateProject(id, {
     name: body.name,
     client: body.client,
+    clientRole: body.clientRole,
+    clientCity: body.clientCity,
+    clientInstagram: body.clientInstagram,
     status: body.status,
   });
   if (!project) return NextResponse.json({ error: "Projeto não encontrado." }, { status: 404 });

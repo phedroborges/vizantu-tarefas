@@ -14,8 +14,7 @@ import type {
   PlanApprovalResponse,
   PlanApprovalStatus,
   PlanCaptacao,
-  PlanClient,
-  PlanClientToken,
+  ClientLink,
   PlanEvent,
   PlanItemApproval,
   PlanKind,
@@ -56,10 +55,20 @@ function sortByLocale<T>(items: T[], getValue: (item: T) => string): T[] {
 
 // ---------- Projetos ----------
 
-type ProjectRow = { id: string; name: string; client: string | null; status: Project["status"]; created_at: string; updated_at: string };
+type ProjectRow = { id: string; name: string; client: string | null; client_role: string | null; client_city: string | null; client_instagram: string | null; status: Project["status"]; created_at: string; updated_at: string };
 
 function mapProject(row: ProjectRow): Project {
-  return { id: row.id, name: row.name, client: row.client ?? undefined, status: row.status, createdAt: row.created_at, updatedAt: row.updated_at };
+  return {
+    id: row.id,
+    name: row.name,
+    client: row.client ?? undefined,
+    clientRole: row.client_role ?? undefined,
+    clientCity: row.client_city ?? undefined,
+    clientInstagram: row.client_instagram ?? undefined,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
 }
 
 export async function listProjects(): Promise<Project[]> {
@@ -84,10 +93,13 @@ export async function createProject(input: { name: string; client?: string; stat
   return mapProject(row as ProjectRow);
 }
 
-export async function updateProject(id: string, patch: Partial<Pick<Project, "name" | "client" | "status">>): Promise<Project | undefined> {
+export async function updateProject(id: string, patch: Partial<Pick<Project, "name" | "client" | "clientRole" | "clientCity" | "clientInstagram" | "status">>): Promise<Project | undefined> {
   const update: Record<string, unknown> = { updated_at: nowIso() };
   if (patch.name !== undefined) update.name = patch.name.trim();
   if (patch.client !== undefined) update.client = patch.client.trim() || null;
+  if (patch.clientRole !== undefined) update.client_role = patch.clientRole.trim() || null;
+  if (patch.clientCity !== undefined) update.client_city = patch.clientCity.trim() || null;
+  if (patch.clientInstagram !== undefined) update.client_instagram = patch.clientInstagram.trim().replace(/^@/, "") || null;
   if (patch.status !== undefined) update.status = patch.status;
   const row = unwrap(await getSupabase().from("projects").update(update).eq("id", id).select().maybeSingle());
   return row ? mapProject(row as ProjectRow) : undefined;
@@ -640,78 +652,17 @@ export async function listPlanTasks(planId: string): Promise<Task[]> {
 
 // ---------- Clientes e link mágico (consumidos pelo vizantu-planos) ----------
 
-type PlanClientRow = {
-  id: string;
-  project_id: string;
-  name: string;
-  role_title: string | null;
-  city: string | null;
-  instagram_handle: string | null;
-  created_at: string;
-  updated_at: string;
-};
-
-function mapPlanClient(row: PlanClientRow): PlanClient {
-  return {
-    id: row.id,
-    projectId: row.project_id,
-    name: row.name,
-    roleTitle: row.role_title ?? undefined,
-    city: row.city ?? undefined,
-    instagramHandle: row.instagram_handle ?? undefined,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
-}
-
-export async function listPlanClients(projectId?: string): Promise<PlanClient[]> {
-  let query = getSupabase().from("plan_clients").select("*");
-  if (projectId) query = query.eq("project_id", projectId);
-  const rows = unwrap(await query);
-  return (rows as PlanClientRow[]).map(mapPlanClient);
-}
-
-export async function getPlanClient(id: string): Promise<PlanClient | undefined> {
-  const row = unwrap(await getSupabase().from("plan_clients").select("*").eq("id", id).maybeSingle());
-  return row ? mapPlanClient(row as PlanClientRow) : undefined;
-}
-
-export async function createPlanClient(input: {
-  projectId: string;
-  name: string;
-  roleTitle?: string;
-  city?: string;
-  instagramHandle?: string;
-}): Promise<PlanClient> {
-  const now = nowIso();
-  const row = unwrap(
-    await getSupabase()
-      .from("plan_clients")
-      .insert({
-        id: newId(),
-        project_id: input.projectId,
-        name: input.name.trim(),
-        role_title: input.roleTitle?.trim() || null,
-        city: input.city?.trim() || null,
-        instagram_handle: input.instagramHandle?.trim() || null,
-        created_at: now,
-        updated_at: now,
-      })
-      .select()
-      .single(),
-  );
-  return mapPlanClient(row as PlanClientRow);
-}
-
 function randomToken(): string {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
   return Buffer.from(bytes).toString("base64url");
 }
 
-type PlanClientTokenRow = {
+// Link de acesso do cliente — pendura no PROJETO (o projeto já É a conta do
+// cliente; não existe entidade "cliente" separada).
+type ClientLinkRow = {
   id: string;
-  client_id: string;
+  project_id: string;
   token: string;
   expires_at: string | null;
   revoked_at: string | null;
@@ -719,10 +670,10 @@ type PlanClientTokenRow = {
   created_at: string;
 };
 
-function mapPlanClientToken(row: PlanClientTokenRow): PlanClientToken {
+function mapClientLink(row: ClientLinkRow): ClientLink {
   return {
     id: row.id,
-    clientId: row.client_id,
+    projectId: row.project_id,
     token: row.token,
     expiresAt: row.expires_at ?? undefined,
     revokedAt: row.revoked_at ?? undefined,
@@ -731,35 +682,113 @@ function mapPlanClientToken(row: PlanClientTokenRow): PlanClientToken {
   };
 }
 
-export async function createPlanClientToken(input: { clientId: string; expiresAt?: string }): Promise<PlanClientToken> {
+export async function listClientLinks(projectId: string): Promise<ClientLink[]> {
+  const rows = unwrap(await getSupabase().from("client_links").select("*").eq("project_id", projectId).order("created_at", { ascending: false }));
+  return (rows as ClientLinkRow[]).map(mapClientLink);
+}
+
+export async function createClientLink(projectId: string, expiresAt?: string): Promise<ClientLink> {
   const row = unwrap(
     await getSupabase()
-      .from("plan_client_tokens")
-      .insert({ id: newId(), client_id: input.clientId, token: randomToken(), expires_at: input.expiresAt || null, created_at: nowIso() })
+      .from("client_links")
+      .insert({ id: newId(), project_id: projectId, token: randomToken(), expires_at: expiresAt || null, created_at: nowIso() })
       .select()
       .single(),
   );
-  return mapPlanClientToken(row as PlanClientTokenRow);
+  return mapClientLink(row as ClientLinkRow);
 }
 
-export async function listPlanClientTokens(clientId: string): Promise<PlanClientToken[]> {
-  const rows = unwrap(await getSupabase().from("plan_client_tokens").select("*").eq("client_id", clientId).order("created_at", { ascending: false }));
-  return (rows as PlanClientTokenRow[]).map(mapPlanClientToken);
+export async function revokeClientLink(id: string): Promise<void> {
+  unwrap(await getSupabase().from("client_links").update({ revoked_at: nowIso() }).eq("id", id));
 }
 
-// Resolve um token pra um cliente, validando revogação/expiração, e marca
-// o uso — usado pela rota /c/[token] do vizantu-planos.
-export async function resolvePlanClientToken(token: string): Promise<PlanClient | undefined> {
-  const row = unwrap(await getSupabase().from("plan_client_tokens").select("*").eq("token", token).maybeSingle()) as PlanClientTokenRow | null;
+// Resolve o token pro PROJETO dono dele, validando revogação/expiração —
+// usado pela rota pública /c/[token].
+export async function resolveClientLink(token: string): Promise<Project | undefined> {
+  const row = unwrap(await getSupabase().from("client_links").select("*").eq("token", token).maybeSingle()) as ClientLinkRow | null;
   if (!row) return undefined;
   if (row.revoked_at) return undefined;
   if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) return undefined;
-  unwrap(await getSupabase().from("plan_client_tokens").update({ last_used_at: nowIso() }).eq("id", row.id));
-  return getPlanClient(row.client_id);
+  unwrap(await getSupabase().from("client_links").update({ last_used_at: nowIso() }).eq("id", row.id));
+  return getProject(row.project_id);
 }
 
-export async function revokePlanClientToken(id: string): Promise<void> {
-  unwrap(await getSupabase().from("plan_client_tokens").update({ revoked_at: nowIso() }).eq("id", id));
+// Itens de plano de um projeto, enriquecidos com formato/categoria/captação
+// e o status de aprovação do CLIENTE — é o que alimenta o painel público
+// em /c/[token]. Nunca usa o status interno de produção.
+export type ProjectPlanItem = {
+  id: string;
+  name: string;
+  status: string;
+  dueDate: string | null;
+  captacaoLabel: string | null;
+  formatLabel: string | null;
+  categoryLabel: string | null;
+  description: string | null;
+  approvalStatus: PlanApprovalStatus;
+  reviewVersion: number;
+  updatedAt: string;
+};
+
+export async function listProjectPlanItems(projectId: string): Promise<ProjectPlanItem[]> {
+  const db = getSupabase();
+  const plans = unwrap(await db.from("plans").select("id, kind").eq("project_id", projectId).eq("source", "native")) as { id: string; kind: string }[];
+  const planIds = plans.filter((p) => p.kind === "content" || p.kind === "process").map((p) => p.id);
+  if (!planIds.length) return [];
+
+  const rows = unwrap(
+    await db
+      .from("tasks")
+      .select("id, captacao_id, name, status, due_date, format_tag_ids, category_tag_ids, description, updated_at")
+      .in("plan_id", planIds),
+  ) as {
+    id: string;
+    captacao_id: string | null;
+    name: string;
+    status: string;
+    due_date: string | null;
+    format_tag_ids: string[];
+    category_tag_ids: string[];
+    description: string | null;
+    updated_at: string;
+  }[];
+  if (!rows.length) return [];
+
+  const taskIds = rows.map((t) => t.id);
+  const captacaoIds = Array.from(new Set(rows.map((t) => t.captacao_id).filter((v): v is string => Boolean(v))));
+  const tagIds = Array.from(new Set(rows.flatMap((t) => [...t.format_tag_ids, ...t.category_tag_ids])));
+
+  const [captacoes, tags, approvals] = await Promise.all([
+    captacaoIds.length ? (unwrap(await db.from("plan_captacoes").select("id, label").in("id", captacaoIds)) as { id: string; label: string }[]) : Promise.resolve([]),
+    tagIds.length ? (unwrap(await db.from("tags").select("id, label, kind").in("id", tagIds)) as { id: string; label: string; kind: string }[]) : Promise.resolve([]),
+    unwrap(await db.from("plan_item_approvals").select("task_id, status, review_version").in("task_id", taskIds)) as {
+      task_id: string;
+      status: PlanApprovalStatus;
+      review_version: number;
+    }[],
+  ]);
+
+  const captacaoById = new Map(captacoes.map((c) => [c.id, c.label]));
+  const tagById = new Map(tags.map((t) => [t.id, t]));
+  const approvalByTask = new Map(approvals.map((a) => [a.task_id, a]));
+
+  return rows.map((t) => {
+    const formatId = t.format_tag_ids.find((id) => tagById.get(id)?.kind === "formato");
+    const approval = approvalByTask.get(t.id);
+    return {
+      id: t.id,
+      name: t.name,
+      status: t.status,
+      dueDate: t.due_date,
+      captacaoLabel: t.captacao_id ? captacaoById.get(t.captacao_id) || null : null,
+      formatLabel: formatId ? tagById.get(formatId)?.label || null : null,
+      categoryLabel: t.category_tag_ids[0] ? tagById.get(t.category_tag_ids[0])?.label || null : null,
+      description: t.description,
+      approvalStatus: approval?.status || "pending",
+      reviewVersion: approval?.review_version || 1,
+      updatedAt: t.updated_at,
+    };
+  });
 }
 
 // ---------- Aprovação do cliente (eixo separado de tasks.status) ----------
@@ -789,7 +818,6 @@ function aggregateResponses(responses: { status: PlanApprovalResponse["status"] 
 type PlanApprovalResponseRow = {
   id: string;
   task_id: string;
-  client_id: string | null;
   reviewer_name: string;
   status: PlanApprovalResponse["status"];
   comment: string | null;
@@ -801,7 +829,6 @@ function mapPlanApprovalResponse(row: PlanApprovalResponseRow): PlanApprovalResp
   return {
     id: row.id,
     taskId: row.task_id,
-    clientId: row.client_id ?? undefined,
     reviewerName: row.reviewer_name,
     status: row.status,
     comment: row.comment ?? undefined,
@@ -845,7 +872,6 @@ export async function submitPlanApprovalResponse(input: {
       await db.from("plan_approval_responses").insert({
         id: newId(),
         task_id: input.taskId,
-        client_id: input.clientId || null,
         reviewer_name: input.reviewerName,
         status: input.status,
         comment: input.comment?.trim() || null,
@@ -874,7 +900,6 @@ export async function submitPlanApprovalResponse(input: {
       status: aggregated,
       previous_status: previousStatus,
       comment: input.comment?.trim() || null,
-      client_id: input.clientId || null,
       reviewer_name: input.reviewerName,
       review_version: reviewVersion,
       created_at: nowIso(),
@@ -891,7 +916,6 @@ type PlanApprovalEventRow = {
   status: string;
   previous_status: string;
   comment: string | null;
-  client_id: string | null;
   reviewer_name: string | null;
   review_version: number | null;
   created_at: string;
@@ -905,7 +929,6 @@ function mapPlanApprovalEvent(row: PlanApprovalEventRow): PlanApprovalEvent {
     status: row.status,
     previousStatus: row.previous_status,
     comment: row.comment ?? undefined,
-    clientId: row.client_id ?? undefined,
     reviewerName: row.reviewer_name ?? undefined,
     reviewVersion: row.review_version ?? undefined,
     createdAt: row.created_at,
@@ -919,10 +942,10 @@ export async function listPlanApprovalEvents(taskId: string): Promise<PlanApprov
 
 // ---------- Dashboard do cliente ----------
 
-type ClientSatisfactionScoreRow = { id: string; project_id: string; client_id: string | null; score: number; created_at: string };
+type ClientSatisfactionScoreRow = { id: string; project_id: string; score: number; created_at: string };
 
 function mapSatisfactionScore(row: ClientSatisfactionScoreRow): ClientSatisfactionScore {
-  return { id: row.id, projectId: row.project_id, clientId: row.client_id ?? undefined, score: row.score, createdAt: row.created_at };
+  return { id: row.id, projectId: row.project_id, score: row.score, createdAt: row.created_at };
 }
 
 export async function listSatisfactionScores(projectId: string): Promise<ClientSatisfactionScore[]> {
@@ -932,11 +955,11 @@ export async function listSatisfactionScores(projectId: string): Promise<ClientS
   return (rows as ClientSatisfactionScoreRow[]).map(mapSatisfactionScore);
 }
 
-export async function addSatisfactionScore(input: { projectId: string; clientId?: string; score: number }): Promise<ClientSatisfactionScore> {
+export async function addSatisfactionScore(input: { projectId: string; score: number }): Promise<ClientSatisfactionScore> {
   const row = unwrap(
     await getSupabase()
       .from("client_satisfaction_scores")
-      .insert({ id: newId(), project_id: input.projectId, client_id: input.clientId || null, score: input.score, created_at: nowIso() })
+      .insert({ id: newId(), project_id: input.projectId, score: input.score, created_at: nowIso() })
       .select()
       .single(),
   );

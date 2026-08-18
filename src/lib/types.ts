@@ -1,9 +1,15 @@
 export type ProjectStatus = "ativo" | "pausado" | "concluido";
 
+// O projeto É a conta do cliente — os dados de exibição do cliente moram
+// aqui, não numa entidade paralela. Aparecem no cabeçalho do painel que o
+// cliente acessa pelo link mágico.
 export type Project = {
   id: string;
   name: string;
   client?: string;
+  clientRole?: string;
+  clientCity?: string;
+  clientInstagram?: string;
   status: ProjectStatus;
   createdAt: string;
   updatedAt: string;
@@ -210,20 +216,10 @@ export type PlanCaptacao = {
 
 // ---------- Clientes e link mágico (vizantu-planos) ----------
 
-export type PlanClient = {
+// Link de acesso do cliente ao painel — um por projeto, sem senha.
+export type ClientLink = {
   id: string;
   projectId: string;
-  name: string;
-  roleTitle?: string;
-  city?: string;
-  instagramHandle?: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type PlanClientToken = {
-  id: string;
-  clientId: string;
   token: string;
   expiresAt?: string;
   revokedAt?: string;
@@ -245,7 +241,6 @@ export type PlanItemApproval = {
 export type PlanApprovalResponse = {
   id: string;
   taskId: string;
-  clientId?: string;
   reviewerName: string;
   status: "approved" | "changes_requested" | "rejected";
   comment?: string;
@@ -260,7 +255,6 @@ export type PlanApprovalEvent = {
   status: string;
   previousStatus: string;
   comment?: string;
-  clientId?: string;
   reviewerName?: string;
   reviewVersion?: number;
   createdAt: string;
@@ -271,7 +265,6 @@ export type PlanApprovalEvent = {
 export type ClientSatisfactionScore = {
   id: string;
   projectId: string;
-  clientId?: string;
   score: number;
   createdAt: string;
 };

@@ -201,34 +201,6 @@ create index if not exists tasks_captacao_id_idx on tasks(captacao_id);
 alter table tags drop constraint if exists tags_kind_check;
 alter table tags add constraint tags_kind_check check (kind in ('formato', 'canal', 'categoria'));
 
--- Identidade do cliente que aparece no cabeçalho do dashboard
--- ("Bem-vinda, Dra Wainny — Médica · Mineiros-GO · @handle").
-create table if not exists plan_clients (
-  id uuid primary key default gen_random_uuid(),
-  project_id uuid not null references projects(id) on delete cascade,
-  name text not null,
-  role_title text,
-  city text,
-  instagram_handle text,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-create index if not exists plan_clients_project_id_idx on plan_clients(project_id);
-alter table plan_clients enable row level security;
-
--- Link mágico do cliente pro dashboard do vizantu-planos — token opaco,
--- sessão própria (não é o Supabase Auth interno do time).
-create table if not exists plan_client_tokens (
-  id uuid primary key default gen_random_uuid(),
-  client_id uuid not null references plan_clients(id) on delete cascade,
-  token text not null unique,
-  expires_at timestamptz,
-  revoked_at timestamptz,
-  last_used_at timestamptz,
-  created_at timestamptz not null default now()
-);
-create index if not exists plan_client_tokens_client_id_idx on plan_client_tokens(client_id);
-alter table plan_client_tokens enable row level security;
 
 -- Status de aprovação do CLIENTE — eixo separado do status de produção
 -- interna em tasks.status (uma tarefa pode estar "em_criacao" pra um cliente
@@ -247,7 +219,6 @@ alter table plan_item_approvals enable row level security;
 create table if not exists plan_approval_responses (
   id uuid primary key default gen_random_uuid(),
   task_id uuid not null references tasks(id) on delete cascade,
-  client_id uuid references plan_clients(id) on delete set null,
   reviewer_name text not null,
   status text not null check (status in ('approved', 'changes_requested', 'rejected')),
   comment text,
@@ -265,7 +236,6 @@ create table if not exists plan_approval_events (
   status text not null,
   previous_status text not null,
   comment text,
-  client_id uuid references plan_clients(id) on delete set null,
   reviewer_name text,
   review_version int,
   created_at timestamptz not null default now()
@@ -277,7 +247,6 @@ alter table plan_approval_events enable row level security;
 create table if not exists client_satisfaction_scores (
   id uuid primary key default gen_random_uuid(),
   project_id uuid not null references projects(id) on delete cascade,
-  client_id uuid references plan_clients(id) on delete set null,
   score int not null check (score between 0 and 10),
   created_at timestamptz not null default now()
 );
@@ -340,3 +309,29 @@ update member_list_access set list_kind = 'estrategica' where list_kind = 'inter
 update member_list_access set list_kind = 'criativa' where list_kind = 'externa';
 alter table member_list_access add constraint member_list_access_list_kind_check
   check (list_kind in ('estrategica', 'criativa'));
+
+-- ---------- O cliente É o projeto ----------
+-- Não existe entidade "cliente" separada: os 8 projetos são as 8 contas de
+-- cliente. Os dados de exibição (o que aparece no cabeçalho do painel que o
+-- cliente acessa) moram no próprio projeto, e o link de acesso pendura nele.
+-- Uma versão anterior deste schema criou plan_clients/plan_client_tokens —
+-- os drops abaixo existem pra bancos que passaram por aquela versão.
+alter table projects
+  add column if not exists client_role text,
+  add column if not exists client_city text,
+  add column if not exists client_instagram text;
+
+create table if not exists client_links (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects(id) on delete cascade,
+  token text not null unique,
+  expires_at timestamptz,
+  revoked_at timestamptz,
+  last_used_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists client_links_project_id_idx on client_links(project_id);
+alter table client_links enable row level security;
+
+drop table if exists plan_client_tokens;
+drop table if exists plan_clients;

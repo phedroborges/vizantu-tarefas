@@ -1,18 +1,14 @@
 "use client";
 
-import { CalendarDays, Camera, ClipboardList, Copy, Link2, Plus, Trash2, Users as UsersIcon } from "lucide-react";
+import { CalendarDays, Camera, ClipboardList, Plus, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { TaskModal } from "@/components/task-modal";
 import { useConfirm } from "@/components/confirm-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatDueDate } from "@/lib/dates";
 import { TASK_STATUSES } from "@/lib/types";
-import type { Member, Plan, PlanCaptacao, PlanClient, Project, StatusColor, Tag, Task } from "@/lib/types";
+import type { Member, Plan, PlanCaptacao, Project, StatusColor, Tag, Task } from "@/lib/types";
 
-// URL pública onde o vizantu-planos serve o dashboard do cliente
-// (/c/[token]) — configurável porque os dois apps ficam em domínios
-// diferentes; sem a env, mostra só o token pro time copiar manualmente.
-const PLANOS_PUBLIC_URL = process.env.NEXT_PUBLIC_PLANOS_URL || "";
 const NO_CAPTACAO = "none";
 const NO_FORMAT_KEY = "__sem_formato__";
 
@@ -34,7 +30,6 @@ export function PlanoDetailView({
   channelTags,
   categoryTags,
   statusColors,
-  initialClients,
   currentUserId,
   canEdit = true,
 }: {
@@ -47,20 +42,15 @@ export function PlanoDetailView({
   channelTags: Tag[];
   categoryTags: Tag[];
   statusColors: StatusColor[];
-  initialClients: PlanClient[];
   currentUserId: string;
   canEdit?: boolean;
 }) {
   const [captacoes, setCaptacoes] = useState(initialCaptacoes);
   const [tasks, setTasks] = useState(initialTasks);
-  const [clients, setClients] = useState(initialClients);
   const [newCaptacaoLabel, setNewCaptacaoLabel] = useState("");
   const [newItemName, setNewItemName] = useState("");
   const [newItemFormatId, setNewItemFormatId] = useState(formatTags[0]?.id || "");
-  const [newClientName, setNewClientName] = useState("");
-  const [addingClient, setAddingClient] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null | undefined>(undefined);
-  const [tokensByClient, setTokensByClient] = useState<Record<string, string[]>>({});
   const [toast, setToast] = useState("");
   const { confirm, ConfirmDialog } = useConfirm();
 
@@ -159,34 +149,6 @@ export function PlanoDetailView({
 
   const doneCount = tasks.filter((t) => statusGroup(t.status) === "feita").length;
   const progressRate = tasks.length ? Math.round((doneCount / tasks.length) * 100) : 0;
-
-  async function createClient(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!newClientName.trim()) return;
-    const response = await fetch("/api/plan-clients", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ projectId: plan.projectId, name: newClientName }),
-    });
-    const result = await response.json();
-    if (!response.ok) return showToast(result.error || "Não foi possível criar o cliente.");
-    setClients((current) => [...current, result.client]);
-    setNewClientName("");
-    setAddingClient(false);
-  }
-
-  async function generateToken(clientId: string) {
-    const response = await fetch(`/api/plan-clients/${clientId}/tokens`, { method: "POST" });
-    const result = await response.json();
-    if (!response.ok) return showToast("Não foi possível gerar o link.");
-    setTokensByClient((current) => ({ ...current, [clientId]: [...(current[clientId] || []), result.token.token] }));
-    showToast("Link gerado.");
-  }
-
-  function copyLink(token: string) {
-    const url = PLANOS_PUBLIC_URL ? `${PLANOS_PUBLIC_URL}/c/${token}` : `/c/${token}`;
-    navigator.clipboard.writeText(url).then(() => showToast("Link copiado."));
-  }
 
   const captacaoLabels: Record<string, string> = {
     [NO_CAPTACAO]: "Sem captação",
@@ -334,63 +296,6 @@ export function PlanoDetailView({
           </section>
         </div>
 
-        <section className="panel" style={{ marginTop: 18 }}>
-          <div className="panel-head">
-            <div>
-              <h2><UsersIcon size={15} style={{ verticalAlign: -2 }} /> Cliente e link mágico</h2>
-              <p>O link dá acesso ao dashboard de aprovação em vizantu-planos — sem senha, um token por cliente.</p>
-            </div>
-          </div>
-          <div className="plan-client-grid">
-            {clients.map((client) => {
-              const tokens = tokensByClient[client.id] || [];
-              return (
-                <div className="plan-client-card" key={client.id}>
-                  <strong>{client.name}</strong>
-                  {tokens.length ? (
-                    <div className="plan-client-tokens">
-                      {tokens.map((token) => (
-                        <button key={token} type="button" className="secondary-button" onClick={() => copyLink(token)}>
-                          <Copy size={12} /> Copiar link
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <span className="plan-item-empty"><Link2 size={11} /> Nenhum link gerado ainda</span>
-                  )}
-                  {canEdit ? (
-                    <button type="button" className="secondary-button" onClick={() => generateToken(client.id)} style={{ alignSelf: "flex-start" }}>
-                      Gerar novo link
-                    </button>
-                  ) : null}
-                </div>
-              );
-            })}
-            {canEdit ? (
-              addingClient ? (
-                <form className="plan-client-card" onSubmit={createClient}>
-                  <input
-                    autoFocus
-                    value={newClientName}
-                    onChange={(e) => setNewClientName(e.target.value)}
-                    onKeyDown={(e) => e.key === "Escape" && setAddingClient(false)}
-                    placeholder="Nome do cliente"
-                    maxLength={120}
-                  />
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button type="submit" className="primary-button" style={{ flex: 1 }}>Criar</button>
-                    <button type="button" className="secondary-button" onClick={() => setAddingClient(false)}>Cancelar</button>
-                  </div>
-                </form>
-              ) : (
-                <button type="button" className="plan-client-add" onClick={() => setAddingClient(true)}>
-                  <Plus size={16} /> Novo cliente
-                </button>
-              )
-            ) : null}
-            {!clients.length && !canEdit ? <span className="plan-item-empty">Nenhum cliente cadastrado ainda.</span> : null}
-          </div>
-        </section>
       </main>
 
       {editingTask !== undefined ? (
