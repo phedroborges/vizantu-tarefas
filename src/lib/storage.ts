@@ -495,7 +495,41 @@ export async function updateTask(
   }
 
   const row = unwrap(await getSupabase().from("tasks").update(update).eq("id", id).select().maybeSingle());
-  return row ? mapTask(row as TaskRow) : undefined;
+  if (!row) return undefined;
+  const updated = mapTask(row as TaskRow);
+  await syncApprovalRoundFromTask(updated);
+  return updated;
+}
+
+async function reopenApproval(taskId: string, reviewVersion: number) {
+  const db = getSupabase();
+  const previous = unwrap(await db.from("plan_item_approvals").select("status").eq("task_id", taskId).maybeSingle()) as { status: PlanApprovalStatus } | null;
+  unwrap(await db.from("plan_item_approvals").upsert({ task_id: taskId, status: "pending", review_version: reviewVersion, updated_at: nowIso() }));
+  unwrap(await db.from("plan_approval_events").insert({ id: newId(), task_id: taskId, action: "reopened", status: "pending", previous_status: previous?.status || "pending", review_version: reviewVersion, created_at: nowIso() }));
+}
+
+async function maybeOpenCreativeApprovals(planId: string) {
+  const db = getSupabase();
+  const tasks = (unwrap(await db.from("tasks").select("id, status, drive_link").eq("plan_id", planId)) || []) as { id: string; status: TaskStatus; drive_link: string | null }[];
+  if (!tasks.length) return;
+  const approvals = unwrap(await db.from("plan_item_approvals").select("task_id, status, review_version").in("task_id", tasks.map((task) => task.id))) as PlanItemApprovalRow[];
+  const byTask = new Map(approvals.map((approval) => [approval.task_id, approval]));
+  const allCopyApproved = tasks.every((task) => { const approval = byTask.get(task.id); return Boolean(approval && (approval.review_version >= 100 || approval.status === "approved")); });
+  if (!allCopyApproved) return;
+  for (const task of tasks) {
+    const approval = byTask.get(task.id);
+    if (task.status === "para_aprovacao" && task.drive_link && (!approval || approval.review_version < 100)) await reopenApproval(task.id, 100);
+  }
+}
+
+async function syncApprovalRoundFromTask(task: Task) {
+  if (!task.planId) return;
+  const current = unwrap(await getSupabase().from("plan_item_approvals").select("status, review_version").eq("task_id", task.id).maybeSingle()) as { status: PlanApprovalStatus; review_version: number } | null;
+  if (task.status === "aprovacao_copy" && current && current.review_version < 100 && current.status !== "pending") await reopenApproval(task.id, current.review_version + 1);
+  if (task.status === "para_aprovacao" && task.driveLink) {
+    await maybeOpenCreativeApprovals(task.planId);
+    if (current && current.review_version >= 100 && current.status !== "pending") await reopenApproval(task.id, current.review_version + 1);
+  }
 }
 
 export async function deleteTask(id: string): Promise<boolean> {
@@ -755,6 +789,7 @@ export type ProjectPlanItem = {
   formatLabel: string | null;
   categoryLabel: string | null;
   description: string | null;
+  materialLink: string | null;
   approvalStatus: PlanApprovalStatus;
   reviewVersion: number;
   updatedAt: string;
@@ -769,7 +804,7 @@ export async function listProjectPlanItems(projectId: string): Promise<ProjectPl
   const rows = unwrap(
     await db
       .from("tasks")
-      .select("id, captacao_id, name, status, due_date, format_tag_ids, category_tag_ids, description, updated_at")
+      .select("id, captacao_id, name, status, due_date, format_tag_ids, category_tag_ids, description, drive_link, updated_at")
       .in("plan_id", planIds),
   ) as {
     id: string;
@@ -780,6 +815,7 @@ export async function listProjectPlanItems(projectId: string): Promise<ProjectPl
     format_tag_ids: string[];
     category_tag_ids: string[];
     description: string | null;
+    drive_link: string | null;
     updated_at: string;
   }[];
   if (!rows.length) return [];
@@ -814,6 +850,7 @@ export async function listProjectPlanItems(projectId: string): Promise<ProjectPl
       formatLabel: formatId ? tagById.get(formatId)?.label || null : null,
       categoryLabel: t.category_tag_ids[0] ? tagById.get(t.category_tag_ids[0])?.label || null : null,
       description: t.description,
+      materialLink: t.drive_link,
       approvalStatus: approval?.status || "pending",
       reviewVersion: approval?.review_version || 1,
       updatedAt: t.updated_at,
@@ -936,17 +973,22 @@ export async function submitPlanApprovalResponse(input: {
       .upsert({ task_id: input.taskId, status: aggregated, review_version: reviewVersion, updated_at: nowIso() }),
   );
 
+  const isCreativeStage = reviewVersion >= 100;
   const nextTaskStatus: TaskStatus = aggregated === "rejected"
     ? "problema"
     : aggregated === "changes_requested"
       ? "ajuste"
-      : task.captacaoId
-        ? "aguardando_captacao"
-        : "pronto_para_criacao";
+      : isCreativeStage
+        ? "aprovado"
+        : task.captacaoId
+          ? "aguardando_captacao"
+          : "pronto_para_criacao";
   await updateTask(task.id, { status: nextTaskStatus });
   if (input.comment?.trim() && (input.status === "changes_requested" || input.status === "rejected")) {
-    await addComment(task.id, { author: input.reviewerName, text: input.status === "rejected" ? `❌ Reprovação do cliente: ${input.comment.trim()}` : `✏️ Ajuste solicitado pelo cliente: ${input.comment.trim()}` });
+    const stage = isCreativeStage ? "criação" : "texto";
+    await addComment(task.id, { author: input.reviewerName, text: input.status === "rejected" ? `❌ Reprovação de ${stage}: ${input.comment.trim()}` : `✏️ Ajuste de ${stage} solicitado pelo cliente: ${input.comment.trim()}` });
   }
+  if (!isCreativeStage && aggregated === "approved" && task.planId) await maybeOpenCreativeApprovals(task.planId);
 
   unwrap(
     await db.from("plan_approval_events").insert({

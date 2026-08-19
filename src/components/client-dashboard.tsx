@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clapperboard, Clock3, ImageIcon, Images, MessageCircleMore, Play, Sparkles, X } from "lucide-react";
+import { ArrowRight, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clapperboard, Clock3, ExternalLink, ImageIcon, Images, MessageCircleMore, Play, Sparkles, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { renderMarkdownLite } from "@/components/markdown-lite";
 import { burst } from "@/lib/confetti";
@@ -15,6 +15,7 @@ export type DashboardItem = {
   formatLabel: string | null;
   categoryLabel: string | null;
   description: string | null;
+  materialLink: string | null;
   approvalStatus: "pending" | "approved" | "changes_requested" | "rejected";
   reviewVersion: number;
   updatedAt: string;
@@ -25,6 +26,8 @@ export type DashboardEvent = { id: string; title: string; date: string; eventTyp
 const STATUS_LABEL: Record<string, string> = { pending: "pendente", approved: "aprovado", changes_requested: "em ajuste", rejected: "reprovado" };
 const REVIEWER_KEY = "vizantu-client-reviewer-name";
 const WEEKDAYS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+const isCreativeStage = (item: DashboardItem) => item.reviewVersion >= 100;
+const copyStatus = (item: DashboardItem) => isCreativeStage(item) ? "approved" : item.approvalStatus;
 
 function ContentIcon({ format, size = 13 }: { format?: string | null; size?: number }) {
   const value = (format || "").toLowerCase();
@@ -89,12 +92,14 @@ export function ClientDashboard({
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
   const [reviewerName, setReviewerName] = useState(() => (typeof window !== "undefined" ? window.localStorage.getItem(REVIEWER_KEY) || "" : ""));
 
-  const approvedCount = items.filter((i) => i.approvalStatus === "approved").length;
+  const approvedCount = items.filter((i) => copyStatus(i) === "approved").length;
+  const creativeApprovedCount = items.filter((i) => isCreativeStage(i) && i.approvalStatus === "approved").length;
+  const creativeAvailableCount = items.filter(isCreativeStage).length;
   const adjustmentCount = items.filter((i) => i.approvalStatus === "changes_requested" || i.approvalStatus === "rejected").length;
   const pendingCount = items.filter((i) => i.approvalStatus === "pending").length;
   const approvalRate = items.length ? Math.round((approvedCount / items.length) * 100) : 0;
   const lastDeliveries = useMemo(
-    () => [...items].filter((i) => i.approvalStatus === "approved").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 3),
+    () => [...items].filter((i) => isCreativeStage(i) && i.approvalStatus === "approved").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 3),
     [items],
   );
 
@@ -215,6 +220,7 @@ export function ClientDashboard({
               <span>{approvedCount} de {items.length} aprovados</span>
             </div>
             <div className="cd-approval-bar-track"><div className="cd-approval-bar-fill" style={{ width: `${approvalRate}%` }} /></div>
+            <div className="cd-stage-progress"><span>Texto: {approvedCount}/{items.length}</span><span>Criação: {creativeApprovedCount}/{creativeAvailableCount || items.length}</span></div>
           </div>
 
           <div className="cd-groups">
@@ -228,7 +234,8 @@ export function ClientDashboard({
                       <span className="cd-group-item-name">{item.name}</span>
                       <span className="cd-item-tags">
                         {item.categoryLabel ? <span className="cd-pill tag">{item.categoryLabel}</span> : null}
-                        <span className={`cd-pill status-${item.approvalStatus}`}>{STATUS_LABEL[item.approvalStatus]}</span>
+                        <span className={`cd-pill status-${copyStatus(item)}`}>Texto: {STATUS_LABEL[copyStatus(item)]}</span>
+                        <span className={`cd-pill ${isCreativeStage(item) ? `status-${item.approvalStatus}` : "stage-locked"}`}>Criação: {isCreativeStage(item) ? STATUS_LABEL[item.approvalStatus] : "aguardando"}</span>
                       </span>
                     </span>
                     <ArrowRight size={17} className="cd-item-arrow" />
@@ -360,6 +367,7 @@ function ApprovalModal({
   const [dateSent, setDateSent] = useState(false);
   const approveRef = useRef<HTMLButtonElement>(null);
   const justApproved = item.approvalStatus === "approved";
+  const creativeStage = isCreativeStage(item);
 
   async function requestDateChange() {
     if (!requestedDate || !reviewerName.trim()) return;
@@ -374,7 +382,14 @@ function ApprovalModal({
         <h3>{item.name}</h3>
         <div className="cd-meta">{[item.formatLabel, item.captacaoLabel].filter(Boolean).join(" · ") || "Conteúdo"}</div>
 
+        <div className="cd-approval-steps">
+          <span className={copyStatus(item) === "approved" ? "is-done" : "is-current"}>{copyStatus(item) === "approved" ? <Check size={13} /> : null} 1. Texto</span>
+          <span className={creativeStage ? "is-current" : "is-locked"}>2. Criação</span>
+        </div>
+
         {item.description ? <div className="cd-item-description">{renderMarkdownLite(item.description)}</div> : <div className="cd-item-description cd-description-empty">Este conteúdo ainda não tem descrição.</div>}
+
+        {creativeStage && item.materialLink ? <a className="cd-material-link" href={item.materialLink} target="_blank" rel="noreferrer"><ExternalLink size={16} /><span><strong>Abrir material para revisar</strong><small>Confira o {item.formatLabel || "material"} antes de responder.</small></span></a> : !creativeStage && justApproved ? <div className="cd-material-wait"><Clock3 size={15} /> Texto aprovado. A criação aparecerá quando estiver pronta.</div> : null}
 
         <label className="cd-reviewer-field">
           <span>Seu nome</span>
@@ -411,11 +426,11 @@ function ApprovalModal({
                 disabled={!reviewerName.trim()}
                 onClick={() => onSubmit(item, "approved", "", approveRef.current || undefined)}
               >
-                Aprovar
+                {creativeStage ? "Aprovar criação" : "Aprovar texto"}
               </button>
               {pendingAction === "changes_requested" ? (
                 <button type="button" className="cd-btn request" disabled={!comment.trim() || !reviewerName.trim()} onClick={() => onSubmit(item, "changes_requested", comment)}>
-                  Enviar pedido de ajuste
+                  Enviar ajuste de {creativeStage ? "criação" : "texto"}
                 </button>
               ) : (
                 <button type="button" className="cd-btn request" onClick={() => setPendingAction("changes_requested")}>Pedir ajuste</button>
