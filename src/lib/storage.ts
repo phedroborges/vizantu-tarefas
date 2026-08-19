@@ -511,6 +511,15 @@ export async function addComment(taskId: string, input: { author: string; text: 
   return row ? mapTask(row as TaskRow) : undefined;
 }
 
+export async function requestTaskDateChange(input: { projectId: string; taskId: string; reviewerName: string; requestedDate: string; reason?: string }): Promise<Task | undefined> {
+  const current = await getTask(input.taskId);
+  if (!current || current.projectId !== input.projectId) return undefined;
+  const date = new Date(`${input.requestedDate}T12:00:00`).toLocaleDateString("pt-BR");
+  const cleanReason = input.reason?.trim();
+  const reason = cleanReason ? ` Motivo: ${cleanReason}` : "";
+  return addComment(input.taskId, { author: input.reviewerName.trim() || "Cliente", text: `📅 Pedido de alteração de data para ${date}.${reason}` });
+}
+
 // ---------- Planos ----------
 // Um Plano é só o container (título/projeto/kind) — os itens em si são
 // Tasks com plan_id setado (ver createTask/updateTask acima). kind=content

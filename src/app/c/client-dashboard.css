@@ -93,20 +93,28 @@
 .cd-calendar-cell { min-width: 0; min-height: 92px; display: flex; flex-direction: column; gap: 4px; padding: 6px; border-right: 1px solid #eceeea; border-bottom: 1px solid #eceeea; }
 .cd-calendar-cell.is-muted { background: #fafbf9; }
 .cd-calendar-daynum { color: var(--cd-muted); font-size: 9px; }
-.cd-cal-item { overflow: hidden; padding: 3px 5px; color: #fff; font-size: 8.5px; font-weight: 650; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.cd-cal-item { width: 100%; overflow: hidden; display: flex; align-items: center; gap: 4px; padding: 4px 6px; color: #fff; border: 0; text-align: left; font-size: 8.5px; font-weight: 650; line-height: 1.35; cursor: pointer; white-space: nowrap; }
+.cd-cal-item span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.cd-cal-item:disabled { cursor: default; }
 .cd-cal-item.status-approved { background: #6aa329; }
 .cd-cal-item.status-changes_requested { background: #d89a17; }
 .cd-cal-item.status-rejected { background: #bc342c; }
 .cd-cal-item.status-pending { background: var(--cd-purple); }
 .cd-cal-item.status-event { background: #16788a; }
+.cd-cal-item.status-capture { color: #4f278f; background: #eadfff; border: 1px dashed #9a63f3; }
 .cd-mobile-agenda { display: grid; background: #fff; border: 1px solid var(--cd-line); }
-.cd-mobile-agenda button { min-height: 58px; display: grid; grid-template-columns: 58px 1fr 9px; align-items: center; gap: 10px; padding: 10px 13px; text-align: left; color: var(--cd-ink); background: #fff; border: 0; border-top: 1px solid #eceeea; font-size: 12px; cursor: pointer; }
+.cd-mobile-agenda button { min-height: 58px; display: grid; grid-template-columns: 58px 1fr 18px; align-items: center; gap: 10px; padding: 10px 13px; text-align: left; color: var(--cd-ink); background: #fff; border: 0; border-top: 1px solid #eceeea; font-size: 12px; cursor: pointer; }
 .cd-mobile-agenda button:first-child { border-top: 0; }
 .cd-agenda-date { color: var(--cd-purple-strong); font-size: 10px; font-weight: 750; text-transform: uppercase; }
+.cd-agenda-title { display: flex; align-items: center; gap: 6px; }
+.cd-agenda-title svg { flex: none; color: var(--cd-purple-strong); }
 .cd-agenda-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--cd-purple); }
 .cd-agenda-dot.status-approved { background: #6aa329; }
 .cd-agenda-dot.status-changes_requested { background: #d89a17; }
 .cd-agenda-dot.status-rejected { background: #bc342c; }
+.cd-agenda-dot.status-capture { background: #16788a; }
+.cd-agenda-state.approved { color: #6aa329; }
+.cd-agenda-state.rejected { color: #bc342c; }
 
 .cd-overlay { position: fixed; z-index: 60; inset: 0; display: flex; align-items: flex-end; justify-content: center; padding: 0; background: rgba(16, 10, 22, .68); backdrop-filter: blur(4px); }
 .cd-approval-modal { position: relative; width: 100%; max-height: 92dvh; display: flex; flex-direction: column; padding: 22px 18px max(20px, env(safe-area-inset-bottom)); background: #fff; border-top: 4px solid var(--cd-purple); box-shadow: 0 -20px 60px rgba(16, 10, 22, .18); }
@@ -128,10 +136,16 @@
 .cd-btn.approve { color: #fff; background: #5b8f22; }
 .cd-btn.request { color: #3c2800; background: #efb629; }
 .cd-btn.reject { color: #a22d27; background: #fff; border: 1px solid #e4b7b3; }
+.cd-btn.date { color: #fff; background: var(--cd-purple-strong); }
 .cd-btn.ghost { min-width: 44px; color: var(--cd-purple-strong); background: #f1ebff; }
 .cd-btn:disabled { opacity: .45; cursor: not-allowed; }
 .cd-celebrate-icon { animation: cdCheckPop .5s cubic-bezier(.34,1.56,.64,1); }
 .cd-confetti-canvas { position: fixed; z-index: 80; inset: 0; pointer-events: none; }
+.cd-date-change-toggle { min-height: 42px; display: flex; align-items: center; justify-content: center; gap: 7px; color: var(--cd-purple-strong); background: #f4efff; border: 1px solid #d7c5ff; font-size: 12px; font-weight: 700; cursor: pointer; }
+.cd-date-change-form { display: grid; gap: 10px; padding: 12px; background: #faf8ff; border: 1px solid #d7c5ff; }
+.cd-date-change-form label { display: grid; gap: 5px; color: var(--cd-muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+.cd-date-change-form input { min-height: 44px; padding: 0 10px; border: 1px solid var(--cd-line); background: #fff; font-size: 16px; }
+.cd-date-change-form textarea { margin: 0; min-height: 72px; }
 
 @keyframes cdCheckPop { 0% { transform: scale(.4); opacity: 0; } 60% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(1); } }
 
