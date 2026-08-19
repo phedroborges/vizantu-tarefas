@@ -687,6 +687,27 @@ export async function listClientLinks(projectId: string): Promise<ClientLink[]> 
   return (rows as ClientLinkRow[]).map(mapClientLink);
 }
 
+// O link do cliente é PERSISTENTE: o mesmo endereço fica com o cliente por
+// meses. Gerar um token novo a cada clique em "gerar link" deixava vários
+// tokens válidos por projeto e ninguém sabia qual tinha sido enviado — então o
+// caminho normal é reaproveitar o link ativo mais recente. Rotacionar (revogar
+// o antigo e emitir outro) é uma ação explícita, ver rotateClientLink.
+export async function getOrCreateClientLink(projectId: string): Promise<ClientLink> {
+  const active = (await listClientLinks(projectId)).find(
+    (link) => !link.revokedAt && (!link.expiresAt || new Date(link.expiresAt).getTime() > Date.now()),
+  );
+  return active ?? createClientLink(projectId);
+}
+
+// Invalida o link atual e emite outro — pra quando o endereço vazou.
+export async function rotateClientLink(projectId: string): Promise<ClientLink> {
+  const links = await listClientLinks(projectId);
+  for (const link of links) {
+    if (!link.revokedAt) await revokeClientLink(link.id);
+  }
+  return createClientLink(projectId);
+}
+
 export async function createClientLink(projectId: string, expiresAt?: string): Promise<ClientLink> {
   const row = unwrap(
     await getSupabase()
@@ -842,7 +863,16 @@ export async function listPlanApprovalResponses(taskId: string): Promise<PlanApp
   return (rows as PlanApprovalResponseRow[]).map(mapPlanApprovalResponse);
 }
 
+export async function listPlanApprovalResponsesForTasks(taskIds: string[]): Promise<PlanApprovalResponse[]> {
+  if (!taskIds.length) return [];
+  const rows = unwrap(
+    await getSupabase().from("plan_approval_responses").select("*").in("task_id", taskIds).order("created_at", { ascending: false }),
+  );
+  return (rows as PlanApprovalResponseRow[]).map(mapPlanApprovalResponse);
+}
+
 export async function submitPlanApprovalResponse(input: {
+  projectId: string;
   taskId: string;
   clientId?: string;
   reviewerName: string;
@@ -850,6 +880,12 @@ export async function submitPlanApprovalResponse(input: {
   comment?: string;
 }): Promise<PlanItemApproval> {
   const db = getSupabase();
+  // O cookie público autoriza somente o projeto do link. Sem esta checagem,
+  // alguém que descobrisse outro UUID poderia responder por outro cliente.
+  const task = unwrap(
+    await db.from("tasks").select("id").eq("id", input.taskId).eq("project_id", input.projectId).maybeSingle(),
+  );
+  if (!task) throw new Error("Conteúdo não encontrado neste projeto.");
   const existingRow = unwrap(await db.from("plan_item_approvals").select("*").eq("task_id", input.taskId).maybeSingle()) as PlanItemApprovalRow | null;
   const reviewVersion = existingRow?.review_version ?? 1;
   const previousStatus = existingRow?.status ?? "pending";

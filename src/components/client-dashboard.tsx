@@ -2,6 +2,7 @@
 
 import { Check, ChevronLeft, ChevronRight, Sparkles, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
+import { renderMarkdownLite } from "@/components/markdown-lite";
 import { burst } from "@/lib/confetti";
 import "../app/c/client-dashboard.css";
 
@@ -46,16 +47,6 @@ function isoDate(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-// A descrição do item vem em markdown-lite do vizantu-tarefas — as seções
-// (Direcionamento, Roteiro, Referência, Legenda) são escritas como **negrito**
-// pela equipe. Renderiza só o negrito, como nós de texto (nada de HTML
-// injetado); quebras de linha ficam por conta do pre-wrap do container.
-function renderDescription(text: string) {
-  return text.split(/(\*\*[^*\n]+\*\*)/g).map((part, index) => {
-    const bold = /^\*\*([^*\n]+)\*\*$/.exec(part);
-    return bold ? <strong key={index}>{bold[1]}</strong> : <span key={index}>{part}</span>;
-  });
-}
 
 export function ClientDashboard({
   clientName,
@@ -167,7 +158,7 @@ export function ClientDashboard({
             </button>
           </div>
           <div className="cd-card">
-            <h3>Conteúdos publicados</h3>
+            <h3>Conteúdos aprovados</h3>
             <div className="cd-big-number">{approvedCount}</div>
           </div>
           <div className="cd-card">
@@ -187,7 +178,7 @@ export function ClientDashboard({
           </div>
         </div>
 
-        <h2 className="cd-section-title">Conteúdos orgânicos</h2>
+        <h2 className="cd-section-title">Calendário do planejamento</h2>
         <div className="cd-calendar">
           <div className="cd-calendar-head">
             <button type="button" onClick={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))} aria-label="Mês anterior"><ChevronLeft size={16} /></button>
@@ -214,17 +205,21 @@ export function ClientDashboard({
 
         <div className="cd-approval-bar-wrap">
           <div className="cd-approval-bar-label">
-            <span>barrinha da aprovação</span>
+            <span>Progresso da aprovação</span>
             <span>{approvedCount} de {items.length} conteúdos aprovados ({approvalRate}%)</span>
           </div>
           <div className="cd-approval-bar-track"><div className="cd-approval-bar-fill" style={{ width: `${approvalRate}%` }} /></div>
         </div>
 
         <div className="cd-groups">
+          <div className="cd-review-heading">
+            <span>Conteúdos para revisar</span>
+            <small>Clique em um conteúdo para ler, aprovar ou solicitar mudanças.</small>
+          </div>
           {groups.map(([label, groupItems]) => (
             <div className="cd-group" key={label}>
               <h4>{label}</h4>
-              {groupItems.slice(0, 5).map((item) => (
+              {groupItems.map((item) => (
                 <div className="cd-group-item" key={item.id} onClick={() => setActiveItemId(item.id)}>
                   <span className="cd-group-item-name">{item.name}</span>
                   {item.categoryLabel ? <span className="cd-pill tag">{item.categoryLabel}</span> : null}
@@ -290,7 +285,7 @@ function ApprovalModal({
         <h3>{item.name}</h3>
         <div className="cd-meta">{[item.formatLabel, item.captacaoLabel].filter(Boolean).join(" · ") || "Conteúdo"}</div>
 
-        {item.description ? <div className="cd-item-description">{renderDescription(item.description)}</div> : null}
+        {item.description ? <div className="cd-item-description">{renderMarkdownLite(item.description)}</div> : null}
 
         {justApproved ? (
           <p style={{ display: "flex", alignItems: "center", gap: 6, color: "#2f8f4e", fontWeight: 700, marginTop: 14 }}>

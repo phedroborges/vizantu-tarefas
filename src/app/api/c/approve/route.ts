@@ -25,6 +25,7 @@ export async function POST(request: NextRequest) {
   }
 
   const result = await submitPlanApprovalResponse({
+    projectId,
     taskId: body.taskId,
     reviewerName: body.reviewerName.trim(),
     status: body.status,

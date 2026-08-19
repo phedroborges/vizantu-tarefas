@@ -1,13 +1,14 @@
 "use client";
 
-import { CalendarDays, Camera, ClipboardList, Plus, Trash2 } from "lucide-react";
+import { CalendarDays, Camera, CheckCircle2, ClipboardList, MessageSquareText, Plus, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { TaskModal } from "@/components/task-modal";
+import { ClientLinkPanel } from "@/components/client-link-panel";
 import { useConfirm } from "@/components/confirm-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatDueDate } from "@/lib/dates";
 import { TASK_STATUSES } from "@/lib/types";
-import type { Member, Plan, PlanCaptacao, Project, StatusColor, Tag, Task } from "@/lib/types";
+import type { Member, Plan, PlanApprovalResponse, PlanCaptacao, PlanItemApproval, Project, StatusColor, Tag, Task } from "@/lib/types";
 
 const NO_CAPTACAO = "none";
 const NO_FORMAT_KEY = "__sem_formato__";
@@ -25,6 +26,8 @@ export function PlanoDetailView({
   project,
   initialCaptacoes,
   initialTasks,
+  initialApprovals,
+  approvalResponses,
   members,
   formatTags,
   channelTags,
@@ -37,6 +40,8 @@ export function PlanoDetailView({
   project: Project;
   initialCaptacoes: PlanCaptacao[];
   initialTasks: Task[];
+  initialApprovals: PlanItemApproval[];
+  approvalResponses: PlanApprovalResponse[];
   members: Member[];
   formatTags: Tag[];
   channelTags: Tag[];
@@ -55,6 +60,13 @@ export function PlanoDetailView({
   const { confirm, ConfirmDialog } = useConfirm();
 
   const isContent = plan.kind === "content";
+  const approvalByTask = useMemo(() => new Map(initialApprovals.map((approval) => [approval.taskId, approval])), [initialApprovals]);
+  const responsesByTask = useMemo(() => {
+    const map = new Map<string, PlanApprovalResponse[]>();
+    approvalResponses.forEach((response) => map.set(response.taskId, [...(map.get(response.taskId) || []), response]));
+    return map;
+  }, [approvalResponses]);
+  const approvalLabels = { pending: "Pendente", approved: "Aprovado", changes_requested: "Ajuste solicitado", rejected: "Reprovado" } as const;
 
   function showToast(message: string) {
     setToast(message);
@@ -129,7 +141,6 @@ export function PlanoDetailView({
     setEditingTask(undefined);
   }
 
-  const formatTagById = useMemo(() => new Map(formatTags.map((t) => [t.id, t])), [formatTags]);
   const categoryTagById = useMemo(() => new Map(categoryTags.map((t) => [t.id, t])), [categoryTags]);
   const memberById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
   const captacaoById = useMemo(() => new Map(captacoes.map((c) => [c.id, c])), [captacoes]);
@@ -158,6 +169,9 @@ export function PlanoDetailView({
   function renderTaskRow(task: Task) {
     const categories = task.categoryTagIds.map((id) => categoryTagById.get(id)?.label).filter(Boolean);
     const assignee = task.assigneeId ? memberById.get(task.assigneeId)?.name : undefined;
+    const approval = approvalByTask.get(task.id);
+    const clientResponses = responsesByTask.get(task.id) || [];
+    const approvalStatus = approval?.status || "pending";
     return (
       <li key={task.id} className="plan-item-row">
         <div className="plan-item-row-main" onClick={() => setEditingTask(task)}>
@@ -166,9 +180,11 @@ export function PlanoDetailView({
             {categories.map((label) => <span className="badge channel" key={label}>{label}</span>)}
             {assignee ? <span className="plan-item-assignee">{assignee}</span> : null}
             {task.dueDate ? <span className="plan-item-due"><CalendarDays size={11} /> {formatDueDate(task.dueDate)}</span> : null}
+            {clientResponses[0]?.comment ? <span className="plan-client-comment" title={clientResponses[0].comment}><MessageSquareText size={11} /> {clientResponses[0].reviewerName}: {clientResponses[0].comment}</span> : null}
           </div>
         </div>
         <div className="plan-item-row-side">
+          <span className={`approval-status approval-${approvalStatus}`}>{approvalLabels[approvalStatus]}</span>
           {isContent ? (
             canEdit ? (
               <Select items={captacaoLabels} value={task.captacaoId || NO_CAPTACAO} onValueChange={(value) => setItemCaptacao(task.id, value ?? NO_CAPTACAO)}>
@@ -221,6 +237,15 @@ export function PlanoDetailView({
             <div className="plan-progress-fill" style={{ width: `${progressRate}%` }} />
           </div>
         ) : null}
+
+        <ClientLinkPanel projectId={project.id} projectName={project.client || project.name} canEdit={canEdit} onToast={showToast} />
+
+        <section className="approval-summary" aria-label="Resumo da aprovação do cliente">
+          <div><CheckCircle2 size={17} /><strong>{initialApprovals.filter((item) => item.status === "approved").length}</strong><span>aprovados</span></div>
+          <div><strong>{initialApprovals.filter((item) => item.status === "changes_requested").length}</strong><span>com ajuste</span></div>
+          <div><strong>{initialApprovals.filter((item) => item.status === "rejected").length}</strong><span>reprovados</span></div>
+          <div><strong>{tasks.length - initialApprovals.length + initialApprovals.filter((item) => item.status === "pending").length}</strong><span>pendentes</span></div>
+        </section>
 
         {isContent ? (
           <section className="panel" style={{ marginBottom: 18 }}>

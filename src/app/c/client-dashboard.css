@@ -226,6 +226,17 @@
   gap: 12px;
 }
 
+.cd-review-heading {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.cd-review-heading span { font-size: 18px; font-weight: 750; }
+.cd-review-heading small { color: #777770; font-size: 12px; }
+
 @media (max-width: 720px) {
   .cd-groups { grid-template-columns: 1fr; }
 }
@@ -316,6 +327,8 @@
 }
 
 .cd-item-description strong { display: inline-block; margin-top: 6px; color: #101010; }
+.cd-item-description .markdown-lite-h3 { margin: 16px 0 6px; font-size: 14px; }
+.cd-item-description .markdown-lite-line { white-space: pre-wrap; }
 
 .cd-approval-modal textarea {
   width: 100%;

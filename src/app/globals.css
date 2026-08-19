@@ -626,7 +626,36 @@ a.upcoming-item { color: inherit; text-decoration: none; }
 .desc-block-text::placeholder { color: #b6bdb6; }
 .desc-block-text:disabled { color: var(--muted-text); }
 
+/* Modo de exibição do RichTextField: mesma métrica do textarea que ele
+   substitui (13px/1.65, sem padding e sem borda), pra não haver salto de
+   layout ao clicar e entrar em edição. */
+.rich-text-view {
+  white-space: pre-wrap; overflow-wrap: anywhere; cursor: text;
+  min-height: calc(1.65em * 2); /* mesmo piso do minRows=2 do AutoTextarea */
+}
+.rich-text-view:focus { outline: none; }
+.rich-text-view.is-empty { color: #b6bdb6; }
+.rich-text-view.is-disabled { color: var(--muted-text); cursor: default; }
+.rich-text-view strong { font-weight: 700; color: var(--dark); }
+.markdown-lite-h3 { margin: 14px 0 5px; font-size: 15px; line-height: 1.35; font-weight: 750; color: var(--dark); }
+.markdown-lite-h3:first-child { margin-top: 0; }
+.markdown-lite-line { white-space: pre-wrap; }
+
 /* ---------- Plano (captações, itens, cliente/link mágico) ---------- */
+
+.client-link-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 0 25px 22px; }
+.client-link-url { flex: 1; min-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 10px 12px; background: #f6f5f2; border: 1px solid var(--line); font-size: 11px; }
+.approval-summary { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); background: var(--line); gap: 1px; margin-bottom: 18px; }
+.approval-summary > div { background: white; padding: 15px 18px; display: flex; align-items: center; gap: 7px; }
+.approval-summary strong { font-size: 19px; }
+.approval-summary span { color: var(--muted-text); font-size: 11px; }
+.approval-status { font-size: 10px; font-weight: 700; padding: 4px 8px; border-radius: 999px; white-space: nowrap; }
+.approval-approved { color: #247541; background: #e5f5e9; }
+.approval-changes_requested { color: #946500; background: #fff2cc; }
+.approval-rejected { color: #a33931; background: #fde8e5; }
+.approval-pending { color: #71716c; background: #eeeeeb; }
+.plan-client-comment { display: inline-flex; align-items: center; gap: 4px; max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #a66a00; }
+@media (max-width: 720px) { .approval-summary { grid-template-columns: repeat(2, 1fr); } .client-link-url { min-width: 100%; } }
 
 .plan-progress-track { height: 8px; background: var(--line); overflow: hidden; }
 .plan-progress-fill { height: 100%; background: var(--brand); transition: width .4s ease; }

@@ -8,8 +8,13 @@ import { useEffect, useRef } from "react";
 export function AutoTextarea({
   value,
   minRows = 2,
+  ref: forwardedRef,
   ...props
-}: React.TextareaHTMLAttributes<HTMLTextAreaElement> & { value: string; minRows?: number }) {
+}: React.TextareaHTMLAttributes<HTMLTextAreaElement> & {
+  value: string;
+  minRows?: number;
+  ref?: React.Ref<HTMLTextAreaElement>;
+}) {
   const ref = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -19,5 +24,18 @@ export function AutoTextarea({
     el.style.height = `${el.scrollHeight}px`;
   }, [value]);
 
-  return <textarea ref={ref} value={value} rows={minRows} {...props} />;
+  // O ref interno controla a altura; quem usa o componente ainda pode pedir o
+  // seu próprio ref (o RichTextField precisa dele pra focar ao entrar em edição).
+  return (
+    <textarea
+      ref={(node) => {
+        ref.current = node;
+        if (typeof forwardedRef === "function") forwardedRef(node);
+        else if (forwardedRef) forwardedRef.current = node;
+      }}
+      value={value}
+      rows={minRows}
+      {...props}
+    />
+  );
 }

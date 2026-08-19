@@ -7,7 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { MetaRow } from "@/components/meta-row";
 import { TagPicker } from "@/components/tag-picker";
 import { TaskStatusControl } from "@/components/task-status-control";
-import { AutoTextarea } from "@/components/auto-textarea";
+import { RichTextField } from "@/components/rich-text-field";
+import { renderMarkdownLite } from "@/components/markdown-lite";
 import { useConfirm } from "@/components/confirm-dialog";
 import { DESCRIPTION_SECTIONS, parseDescription, serializeDescription } from "@/lib/description-sections";
 import { formatDateTime, isOverdue, todayIso } from "@/lib/dates";
@@ -33,14 +34,8 @@ const NO_PROJECT = "none";
 const AUTOSAVE_DEBOUNCE_MS = 700;
 
 // A IA escreve as descrições em Markdown; sem tratar, os **negritos** apareciam
-// crus, com asteriscos. Renderiza só o negrito, como nós de texto React (nada de
-// HTML injetado) — as listas e quebras de linha já vêm do pre-wrap do container.
-function renderDescription(text: string) {
-  return text.split(/(\*\*[^*\n]+\*\*)/g).map((part, index) => {
-    const bold = /^\*\*([^*\n]+)\*\*$/.exec(part);
-    return bold ? <strong key={index}>{bold[1]}</strong> : <span key={index}>{part}</span>;
-  });
-}
+// crus, com asteriscos. O negrito é renderizado por renderMarkdownLite, que é o
+// mesmo renderizador usado no painel do cliente.
 
 // Numa tarefa nova, pré-preenche entrega (hoje) e responsável (quem está
 // criando) — menos campo pra preencher no caso mais comum. Numa tarefa
@@ -513,22 +508,22 @@ export function TaskModal({
                   {sections.livre.trim() ? (
                     <section className="desc-block">
                       <h4 className="desc-block-title">Anotações</h4>
-                      <AutoTextarea
+                      <RichTextField
                         className="desc-block-text"
                         value={sections.livre}
                         disabled={!canEdit}
-                        onChange={(e) => updateSection("livre", e.target.value)}
+                        onChange={(value) => updateSection("livre", value)}
                       />
                     </section>
                   ) : null}
                   {DESCRIPTION_SECTIONS.map((section) => (
                     <section className="desc-block" key={section.key}>
                       <h4 className="desc-block-title">{section.label}</h4>
-                      <AutoTextarea
+                      <RichTextField
                         className="desc-block-text"
                         value={sections[section.key]}
                         disabled={!canEdit}
-                        onChange={(e) => updateSection(section.key, e.target.value)}
+                        onChange={(value) => updateSection(section.key, value)}
                         placeholder={section.placeholder}
                       />
                     </section>
@@ -552,7 +547,7 @@ export function TaskModal({
                 />
               ) : (
                 <button type="button" className="task-desc-display" onClick={() => setEditingDescription(true)}>
-                  {draft.description ? renderDescription(draft.description) : <span className="meta-empty">Vazio — clique para escrever a descrição</span>}
+                  {draft.description ? renderMarkdownLite(draft.description) : <span className="meta-empty">Vazio — clique para escrever a descrição</span>}
                 </button>
               )}
             </div>
