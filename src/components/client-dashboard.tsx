@@ -86,6 +86,7 @@ export function ClientDashboard({
       .sort((a, b) => (a.dueDate || "").localeCompare(b.dueDate || ""))[0]?.dueDate;
     return firstScheduled ? new Date(`${firstScheduled}T12:00:00`) : new Date();
   });
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
   const [reviewerName, setReviewerName] = useState(() => (typeof window !== "undefined" ? window.localStorage.getItem(REVIEWER_KEY) || "" : ""));
 
   const approvedCount = items.filter((i) => i.approvalStatus === "approved").length;
@@ -126,9 +127,7 @@ export function ClientDashboard({
     return map;
   }, [items, events]);
 
-  const mobileAgenda = useMemo(() => Array.from(cellsByDay.entries())
-    .flatMap(([date, entries]) => entries.filter((entry) => entry.kind !== "event").map((entry) => ({ ...entry, date })))
-    .sort((a, b) => a.date.localeCompare(b.date)), [cellsByDay]);
+  const selectedDayItems = selectedCalendarDate ? cellsByDay.get(selectedCalendarDate) || [] : [];
 
   function updateItemLocal(id: string, patch: Partial<DashboardItem>) {
     setItems((current) => current.map((i) => (i.id === id ? { ...i, ...patch } : i)));
@@ -283,14 +282,40 @@ export function ClientDashboard({
             })}
           </div>
         </div>
-        <div className="cd-mobile-agenda">
-          {mobileAgenda.map((item) => (
-            <button type="button" key={`${item.date}-${item.label}`} onClick={() => item.itemId && setActiveItemId(item.itemId)}>
-              <span className="cd-agenda-date">{new Date(`${item.date}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}</span>
-              <span className="cd-agenda-title">{item.kind === "capture" ? <Clapperboard size={13} /> : <ContentIcon format={item.format} size={12} />} {item.label}</span>
-              {item.approvalStatus === "approved" ? <Check size={14} className="cd-agenda-state approved" /> : item.approvalStatus === "rejected" ? <X size={14} className="cd-agenda-state rejected" /> : <span className={`cd-agenda-dot status-${item.kind === "capture" ? "capture" : item.approvalStatus}`} />}
-            </button>
-          ))}
+        <div className="cd-mobile-calendar">
+          <div className="cd-mobile-calendar-head">
+            <button type="button" onClick={() => { setMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1)); setSelectedCalendarDate(null); }} aria-label="Mês anterior"><ChevronLeft size={17} /></button>
+            <strong>{month.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</strong>
+            <button type="button" onClick={() => { setMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1)); setSelectedCalendarDate(null); }} aria-label="Próximo mês"><ChevronRight size={17} /></button>
+          </div>
+          <div className="cd-mobile-calendar-grid">
+            {WEEKDAYS.map((weekday) => <span className="cd-mobile-weekday" key={weekday}>{weekday.slice(0, 1)}</span>)}
+            {grid.map((cell, index) => {
+              const date = cell.date ? isoDate(cell.date) : null;
+              const entries = date ? cellsByDay.get(date) || [] : [];
+              const selected = date === selectedCalendarDate;
+              return <button type="button" key={index} className={`${!cell.date ? "is-empty" : ""}${selected ? " is-selected" : ""}`} disabled={!cell.date} onClick={() => date && setSelectedCalendarDate(date)}>
+                {cell.date ? <span className="cd-mobile-day-number">{cell.date.getDate()}</span> : null}
+                <span className="cd-mobile-day-icons">
+                  {entries.slice(0, 4).map((entry, entryIndex) => <span key={entryIndex} className={`cd-mobile-format-icon status-${entry.kind === "capture" || entry.kind === "event" ? entry.kind : entry.approvalStatus}`}>
+                    {entry.kind === "capture" ? <Clapperboard size={10} /> : entry.kind === "event" ? <CalendarDays size={10} /> : <ContentIcon format={entry.format} size={9} />}
+                  </span>)}
+                  {entries.length > 4 ? <small>+{entries.length - 4}</small> : null}
+                </span>
+              </button>;
+            })}
+          </div>
+          {selectedCalendarDate ? <div className="cd-mobile-day-detail">
+            <div className="cd-mobile-day-detail-head">
+              <strong>{new Date(`${selectedCalendarDate}T12:00:00`).toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" })}</strong>
+              <button type="button" onClick={() => setSelectedCalendarDate(null)} aria-label="Fechar lista"><X size={15} /></button>
+            </div>
+            {selectedDayItems.length ? selectedDayItems.map((entry, index) => <button type="button" className="cd-mobile-day-item" key={index} disabled={!entry.itemId} onClick={() => entry.itemId && setActiveItemId(entry.itemId)}>
+              <span className={`cd-mobile-format-icon status-${entry.kind === "capture" || entry.kind === "event" ? entry.kind : entry.approvalStatus}`}>{entry.kind === "capture" ? <Clapperboard size={12} /> : entry.kind === "event" ? <CalendarDays size={12} /> : <ContentIcon format={entry.format} size={11} />}</span>
+              <span>{entry.label}</span>
+              {entry.approvalStatus === "approved" ? <Check size={14} /> : entry.approvalStatus === "rejected" ? <X size={14} /> : entry.itemId ? <ArrowRight size={14} /> : null}
+            </button>) : <p>Nenhum conteúdo neste dia.</p>}
+          </div> : <p className="cd-mobile-calendar-hint">Toque em um dia para ver os conteúdos.</p>}
         </div>
       </div>
 
