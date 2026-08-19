@@ -655,6 +655,7 @@ a.upcoming-item { color: inherit; text-decoration: none; }
 .approval-rejected { color: #a33931; background: #fde8e5; }
 .approval-pending { color: #71716c; background: #eeeeeb; }
 .plan-client-comment { display: inline-flex; align-items: center; gap: 4px; max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #a66a00; }
+.plan-captacao-chip input[type="date"] { width: 128px; height: 28px; margin-left: 5px; padding: 0 6px; border: 1px solid var(--line); background: white; font-size: 10px; }
 @media (max-width: 720px) { .approval-summary { grid-template-columns: repeat(2, 1fr); } .client-link-url { min-width: 100%; } }
 
 .plan-progress-track { height: 8px; background: var(--line); overflow: hidden; }

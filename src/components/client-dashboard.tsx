@@ -20,7 +20,7 @@ export type DashboardItem = {
   updatedAt: string;
 };
 
-export type DashboardEvent = { id: string; title: string; date: string };
+export type DashboardEvent = { id: string; title: string; date: string; eventType: string };
 
 const STATUS_LABEL: Record<string, string> = { pending: "pendente", approved: "aprovado", changes_requested: "em ajuste", rejected: "reprovado" };
 const REVIEWER_KEY = "vizantu-client-reviewer-name";
@@ -114,16 +114,8 @@ export function ClientDashboard({
       (map.get(item.dueDate) || map.set(item.dueDate, []).get(item.dueDate)!).push({ label: item.name, kind: "content", itemId: item.id, format: item.formatLabel, approvalStatus: item.approvalStatus });
     }
     for (const ev of events) {
-      (map.get(ev.date) || map.set(ev.date, []).get(ev.date)!).push({ label: ev.title, kind: "event" });
+      (map.get(ev.date) || map.set(ev.date, []).get(ev.date)!).push({ label: ev.title, kind: ev.eventType.startsWith("captacao:") ? "capture" : "event" });
     }
-    const captures = new Map<string, DashboardItem[]>();
-    items.filter((item) => item.captacaoLabel && item.dueDate).forEach((item) => captures.set(item.captacaoLabel!, [...(captures.get(item.captacaoLabel!) || []), item]));
-    captures.forEach((captureItems, label) => {
-      const first = [...captureItems].sort((a, b) => (a.dueDate || "").localeCompare(b.dueDate || ""))[0];
-      const suggested = new Date(`${first.dueDate}T12:00:00`); suggested.setDate(suggested.getDate() - 7);
-      const date = isoDate(suggested);
-      (map.get(date) || map.set(date, []).get(date)!).push({ label: `Sugestão: ${label}`, kind: "capture", itemId: first.id });
-    });
     return map;
   }, [items, events]);
 

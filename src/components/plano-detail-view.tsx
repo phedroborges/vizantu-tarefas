@@ -8,7 +8,7 @@ import { useConfirm } from "@/components/confirm-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatDueDate } from "@/lib/dates";
 import { TASK_STATUSES } from "@/lib/types";
-import type { Member, Plan, PlanApprovalResponse, PlanCaptacao, PlanItemApproval, Project, StatusColor, Tag, Task } from "@/lib/types";
+import type { Member, Plan, PlanApprovalResponse, PlanCaptacao, PlanEvent, PlanItemApproval, Project, StatusColor, Tag, Task } from "@/lib/types";
 
 const NO_CAPTACAO = "none";
 const NO_FORMAT_KEY = "__sem_formato__";
@@ -28,6 +28,7 @@ export function PlanoDetailView({
   initialTasks,
   initialApprovals,
   approvalResponses,
+  captureSuggestions,
   members,
   formatTags,
   channelTags,
@@ -42,6 +43,7 @@ export function PlanoDetailView({
   initialTasks: Task[];
   initialApprovals: PlanItemApproval[];
   approvalResponses: PlanApprovalResponse[];
+  captureSuggestions: PlanEvent[];
   members: Member[];
   formatTags: Tag[];
   channelTags: Tag[];
@@ -51,6 +53,7 @@ export function PlanoDetailView({
   canEdit?: boolean;
 }) {
   const [captacoes, setCaptacoes] = useState(initialCaptacoes);
+  const [suggestions, setSuggestions] = useState(captureSuggestions);
   const [tasks, setTasks] = useState(initialTasks);
   const [newCaptacaoLabel, setNewCaptacaoLabel] = useState("");
   const [newItemName, setNewItemName] = useState("");
@@ -97,6 +100,14 @@ export function PlanoDetailView({
     if (!response.ok) return showToast("Não foi possível remover a captação.");
     setCaptacoes((current) => current.filter((c) => c.id !== captacao.id));
     setTasks((current) => current.map((t) => (t.captacaoId === captacao.id ? { ...t, captacaoId: undefined } : t)));
+  }
+
+  async function setSuggestionDate(captacaoId: string, suggestedDate: string) {
+    const response = await fetch(`/api/plan-captacoes/${captacaoId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ suggestedDate }) });
+    const result = await response.json();
+    if (!response.ok) return showToast(result.error || "Não foi possível salvar a sugestão.");
+    setSuggestions((current) => [...current.filter((event) => event.eventType !== `captacao:${captacaoId}`), ...(result.event ? [result.event] : [])]);
+    showToast(suggestedDate ? "Sugestão de captação salva." : "Sugestão removida.");
   }
 
   async function addItem(event: React.FormEvent<HTMLFormElement>) {
@@ -262,6 +273,7 @@ export function PlanoDetailView({
                   <span key={c.id} className="plan-captacao-chip">
                     {c.label}
                     <em>{count}</em>
+                    {canEdit ? <input type="date" aria-label={`Data sugerida para ${c.label}`} value={suggestions.find((event) => event.eventType === `captacao:${c.id}`)?.eventDate || ""} onChange={(event) => setSuggestionDate(c.id, event.target.value)} /> : null}
                     {canEdit ? <button type="button" onClick={() => removeCaptacao(c)} aria-label={`Remover ${c.label}`}><Trash2 size={11} /></button> : null}
                   </span>
                 );

@@ -82,7 +82,7 @@ export const STATUS_GROUPS: { value: StatusGroup; label: string }[] = [
 export const TASK_STATUSES: { value: TaskStatus; label: string; group: StatusGroup }[] = [
   { value: "rascunho", label: "Rascunho", group: "nao_iniciada" },
   { value: "aguardando_informacao", label: "Aguardando informação", group: "nao_iniciada" },
-  { value: "aprovacao_copy", label: "Aprovação de copy", group: "nao_iniciada" },
+  { value: "aprovacao_copy", label: "Aprovação de texto", group: "nao_iniciada" },
   { value: "aguardando_captacao", label: "Aguardando captação", group: "nao_iniciada" },
   { value: "pronto_para_criacao", label: "Pronto para criação", group: "em_andamento" },
   { value: "em_criacao", label: "Em criação", group: "em_andamento" },

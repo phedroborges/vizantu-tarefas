@@ -396,7 +396,7 @@ export async function getTask(id: string): Promise<Task | undefined> {
 
 export async function createTask(input: TaskInput): Promise<Task> {
   const now = nowIso();
-  const status = input.status || "rascunho";
+  const status = input.status || (input.planId ? "aprovacao_copy" : "rascunho");
   const row = unwrap(
     await getSupabase()
       .from("tasks")
@@ -891,9 +891,8 @@ export async function submitPlanApprovalResponse(input: {
   const db = getSupabase();
   // O cookie público autoriza somente o projeto do link. Sem esta checagem,
   // alguém que descobrisse outro UUID poderia responder por outro cliente.
-  const task = unwrap(
-    await db.from("tasks").select("id").eq("id", input.taskId).eq("project_id", input.projectId).maybeSingle(),
-  );
+  const taskRow = unwrap(await db.from("tasks").select("*").eq("id", input.taskId).eq("project_id", input.projectId).maybeSingle()) as TaskRow | null;
+  const task = taskRow ? mapTask(taskRow) : undefined;
   if (!task) throw new Error("Conteúdo não encontrado neste projeto.");
   const existingRow = unwrap(await db.from("plan_item_approvals").select("*").eq("task_id", input.taskId).maybeSingle()) as PlanItemApprovalRow | null;
   const reviewVersion = existingRow?.review_version ?? 1;
@@ -936,6 +935,18 @@ export async function submitPlanApprovalResponse(input: {
       .from("plan_item_approvals")
       .upsert({ task_id: input.taskId, status: aggregated, review_version: reviewVersion, updated_at: nowIso() }),
   );
+
+  const nextTaskStatus: TaskStatus = aggregated === "rejected"
+    ? "problema"
+    : aggregated === "changes_requested"
+      ? "ajuste"
+      : task.captacaoId
+        ? "aguardando_captacao"
+        : "pronto_para_criacao";
+  await updateTask(task.id, { status: nextTaskStatus });
+  if (input.comment?.trim() && (input.status === "changes_requested" || input.status === "rejected")) {
+    await addComment(task.id, { author: input.reviewerName, text: input.status === "rejected" ? `❌ Reprovação do cliente: ${input.comment.trim()}` : `✏️ Ajuste solicitado pelo cliente: ${input.comment.trim()}` });
+  }
 
   unwrap(
     await db.from("plan_approval_events").insert({
@@ -1055,6 +1066,24 @@ export async function createPlanEvent(input: { projectId: string; title: string;
       .single(),
   );
   return mapPlanEvent(row as PlanEventRow);
+}
+
+export async function setCaptureSuggestion(captacaoId: string, eventDate?: string): Promise<PlanEvent | undefined> {
+  const db = getSupabase();
+  const captacao = unwrap(await db.from("plan_captacoes").select("id, label, plan_id").eq("id", captacaoId).maybeSingle()) as { id: string; label: string; plan_id: string } | null;
+  if (!captacao) return undefined;
+  const plan = unwrap(await db.from("plans").select("project_id").eq("id", captacao.plan_id).single()) as { project_id: string };
+  const eventType = `captacao:${captacao.id}`;
+  const existing = unwrap(await db.from("plan_events").select("*").eq("project_id", plan.project_id).eq("event_type", eventType).maybeSingle()) as PlanEventRow | null;
+  if (!eventDate) {
+    if (existing) unwrap(await db.from("plan_events").delete().eq("id", existing.id));
+    return undefined;
+  }
+  if (existing) {
+    const row = unwrap(await db.from("plan_events").update({ title: `Sugestão: ${captacao.label}`, event_date: eventDate }).eq("id", existing.id).select().single());
+    return mapPlanEvent(row as PlanEventRow);
+  }
+  return createPlanEvent({ projectId: plan.project_id, title: `Sugestão: ${captacao.label}`, eventType, eventDate });
 }
 
 // ---------- Base de conhecimento ----------

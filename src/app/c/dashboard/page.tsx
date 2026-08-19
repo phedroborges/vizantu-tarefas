@@ -36,7 +36,7 @@ export default async function ClientDashboardPage() {
       city={project.clientCity ?? null}
       instagramHandle={project.clientInstagram ?? null}
       initialItems={items}
-      events={events.map((e: { id: string; title: string; eventDate: string }) => ({ id: e.id, title: e.title, date: e.eventDate }))}
+      events={events.map((e: { id: string; title: string; eventDate: string; eventType: string }) => ({ id: e.id, title: e.title, date: e.eventDate, eventType: e.eventType }))}
       initialScore={scores[0]?.score ?? null}
     />
   );

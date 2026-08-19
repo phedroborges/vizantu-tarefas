@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { AdminShell } from "@/components/admin-shell";
 import { PlanoDetailView } from "@/components/plano-detail-view";
 import { getCurrentUser } from "@/lib/current-user";
-import { getPlan, getProject, listMembers, listPlanApprovalResponsesForTasks, listPlanCaptacoes, listPlanItemApprovals, listPlanTasks, listStatusColors, listTags } from "@/lib/storage";
+import { getPlan, getProject, listMembers, listPlanApprovalResponsesForTasks, listPlanCaptacoes, listPlanEvents, listPlanItemApprovals, listPlanTasks, listStatusColors, listTags } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
@@ -26,9 +26,10 @@ export default async function PlanoDetailPage({ params }: { params: Promise<{ id
     listStatusColors(),
   ]);
   if (!project) notFound();
-  const [approvals, approvalResponses] = await Promise.all([
+  const [approvals, approvalResponses, planEvents] = await Promise.all([
     listPlanItemApprovals(tasks.map((task) => task.id)),
     listPlanApprovalResponsesForTasks(tasks.map((task) => task.id)),
+    listPlanEvents(plan.projectId),
   ]);
 
   return (
@@ -40,6 +41,7 @@ export default async function PlanoDetailPage({ params }: { params: Promise<{ id
         initialTasks={tasks}
         initialApprovals={approvals}
         approvalResponses={approvalResponses}
+        captureSuggestions={planEvents.filter((event) => event.eventType.startsWith("captacao:"))}
         members={members}
         formatTags={formatTags}
         channelTags={channelTags}
