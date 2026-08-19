@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronLeft, ChevronRight, Sparkles, X } from "lucide-react";
+import { ArrowRight, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, MessageCircleMore, Sparkles, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { renderMarkdownLite } from "@/components/markdown-lite";
 import { burst } from "@/lib/confetti";
@@ -73,10 +73,17 @@ export function ClientDashboard({
   // preso a um snapshot de antes da resposta chegar.
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
   const activeItem = items.find((i) => i.id === activeItemId) || null;
-  const [month, setMonth] = useState(() => new Date());
+  const [month, setMonth] = useState(() => {
+    const firstScheduled = [...initialItems]
+      .filter((item) => item.dueDate)
+      .sort((a, b) => (a.dueDate || "").localeCompare(b.dueDate || ""))[0]?.dueDate;
+    return firstScheduled ? new Date(`${firstScheduled}T12:00:00`) : new Date();
+  });
   const [reviewerName, setReviewerName] = useState(() => (typeof window !== "undefined" ? window.localStorage.getItem(REVIEWER_KEY) || "" : ""));
 
   const approvedCount = items.filter((i) => i.approvalStatus === "approved").length;
+  const adjustmentCount = items.filter((i) => i.approvalStatus === "changes_requested" || i.approvalStatus === "rejected").length;
+  const pendingCount = items.filter((i) => i.approvalStatus === "pending").length;
   const approvalRate = items.length ? Math.round((approvedCount / items.length) * 100) : 0;
   const lastDeliveries = useMemo(
     () => [...items].filter((i) => i.approvalStatus === "approved").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 3),
@@ -103,6 +110,12 @@ export function ClientDashboard({
     }
     return map;
   }, [items, events]);
+
+  const mobileAgenda = useMemo(() => (
+    [...items]
+      .filter((item) => item.dueDate)
+      .sort((a, b) => (a.dueDate || "").localeCompare(b.dueDate || ""))
+  ), [items]);
 
   function updateItemLocal(id: string, patch: Partial<DashboardItem>) {
     setItems((current) => current.map((i) => (i.id === id ? { ...i, ...patch } : i)));
@@ -138,19 +151,20 @@ export function ClientDashboard({
   return (
     <div className="cd-root">
       <div className="cd-shell">
-        <div className="cd-header">
+        <header className="cd-header">
           <div>
-            <h1>Bem-vindo(a), {clientName}</h1>
-            <p>Este é o seu painel de conteúdo com a Vizantu.</p>
+            <span className="cd-eyebrow">Portal do cliente · Vizantu</span>
+            <h1>Olá, {clientName}</h1>
+            <p>Revise seu planejamento, leia cada conteúdo e deixe sua decisão.</p>
           </div>
           <div className="cd-header-meta">
             {[roleTitle, city].filter(Boolean).join(" · ")}
             {instagramHandle ? <div>@{instagramHandle.replace(/^@/, "")}</div> : null}
           </div>
-        </div>
+        </header>
 
         <div className="cd-stats">
-          <div className="cd-card">
+          <div className="cd-card cd-score-card">
             <h3>Nota da vizantu</h3>
             <div className="cd-score">{score !== null ? `${score}/10` : "—"}</div>
             <button type="button" className="cd-score-cta" onClick={() => setSurveyOpen(true)}>
@@ -158,8 +172,12 @@ export function ClientDashboard({
             </button>
           </div>
           <div className="cd-card">
-            <h3>Conteúdos aprovados</h3>
-            <div className="cd-big-number">{approvedCount}</div>
+            <h3>Visão geral</h3>
+            <div className="cd-status-overview">
+              <span><CheckCircle2 size={16} /> <strong>{approvedCount}</strong> aprovados</span>
+              <span><Clock3 size={16} /> <strong>{pendingCount}</strong> pendentes</span>
+              <span><MessageCircleMore size={16} /> <strong>{adjustmentCount}</strong> ajustes</span>
+            </div>
           </div>
           <div className="cd-card">
             <h3>Últimas entregas</h3>
@@ -178,7 +196,53 @@ export function ClientDashboard({
           </div>
         </div>
 
-        <h2 className="cd-section-title">Calendário do planejamento</h2>
+        <section className="cd-review-section">
+          <div className="cd-review-heading">
+            <div>
+              <span className="cd-eyebrow">Sua revisão</span>
+              <h2>Conteúdos para aprovar</h2>
+            </div>
+            <small>Toque em um conteúdo para ler e responder.</small>
+          </div>
+
+          <div className="cd-approval-bar-wrap">
+            <div className="cd-approval-bar-label">
+              <strong>{approvalRate}% concluído</strong>
+              <span>{approvedCount} de {items.length} aprovados</span>
+            </div>
+            <div className="cd-approval-bar-track"><div className="cd-approval-bar-fill" style={{ width: `${approvalRate}%` }} /></div>
+          </div>
+
+          <div className="cd-groups">
+            {groups.map(([label, groupItems]) => (
+              <div className="cd-group" key={label}>
+                <div className="cd-group-head"><h3>{label}</h3><span>{groupItems.length} {groupItems.length === 1 ? "conteúdo" : "conteúdos"}</span></div>
+                {groupItems.map((item, index) => (
+                  <button type="button" className="cd-group-item" key={item.id} onClick={() => setActiveItemId(item.id)}>
+                    <span className="cd-item-index">{String(index + 1).padStart(2, "0")}</span>
+                    <span className="cd-group-item-main">
+                      <span className="cd-group-item-name">{item.name}</span>
+                      <span className="cd-item-tags">
+                        {item.categoryLabel ? <span className="cd-pill tag">{item.categoryLabel}</span> : null}
+                        <span className={`cd-pill status-${item.approvalStatus}`}>{STATUS_LABEL[item.approvalStatus]}</span>
+                      </span>
+                    </span>
+                    <ArrowRight size={17} className="cd-item-arrow" />
+                  </button>
+                ))}
+              </div>
+            ))}
+            {!groups.length ? <div className="cd-empty-state"><CheckCircle2 size={26} /><strong>Tudo certo por aqui</strong><span>Nenhum conteúdo aguardando revisão.</span></div> : null}
+          </div>
+        </section>
+
+        <div className="cd-section-heading">
+          <div>
+            <span className="cd-eyebrow">Planejamento</span>
+            <h2>Calendário de conteúdos</h2>
+          </div>
+          <CalendarDays size={20} />
+        </div>
         <div className="cd-calendar">
           <div className="cd-calendar-head">
             <button type="button" onClick={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))} aria-label="Mês anterior"><ChevronLeft size={16} /></button>
@@ -202,33 +266,14 @@ export function ClientDashboard({
             })}
           </div>
         </div>
-
-        <div className="cd-approval-bar-wrap">
-          <div className="cd-approval-bar-label">
-            <span>Progresso da aprovação</span>
-            <span>{approvedCount} de {items.length} conteúdos aprovados ({approvalRate}%)</span>
-          </div>
-          <div className="cd-approval-bar-track"><div className="cd-approval-bar-fill" style={{ width: `${approvalRate}%` }} /></div>
-        </div>
-
-        <div className="cd-groups">
-          <div className="cd-review-heading">
-            <span>Conteúdos para revisar</span>
-            <small>Clique em um conteúdo para ler, aprovar ou solicitar mudanças.</small>
-          </div>
-          {groups.map(([label, groupItems]) => (
-            <div className="cd-group" key={label}>
-              <h4>{label}</h4>
-              {groupItems.map((item) => (
-                <div className="cd-group-item" key={item.id} onClick={() => setActiveItemId(item.id)}>
-                  <span className="cd-group-item-name">{item.name}</span>
-                  {item.categoryLabel ? <span className="cd-pill tag">{item.categoryLabel}</span> : null}
-                  <span className={`cd-pill status-${item.approvalStatus}`}>{STATUS_LABEL[item.approvalStatus]}</span>
-                </div>
-              ))}
-            </div>
+        <div className="cd-mobile-agenda">
+          {mobileAgenda.map((item) => (
+            <button type="button" key={item.id} onClick={() => setActiveItemId(item.id)}>
+              <span className="cd-agenda-date">{new Date(`${item.dueDate}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}</span>
+              <span>{item.name}</span>
+              <span className={`cd-agenda-dot status-${item.approvalStatus}`} />
+            </button>
           ))}
-          {!groups.length ? <div className="cd-card">Nenhum conteúdo publicado ainda.</div> : null}
         </div>
       </div>
 
@@ -285,7 +330,7 @@ function ApprovalModal({
         <h3>{item.name}</h3>
         <div className="cd-meta">{[item.formatLabel, item.captacaoLabel].filter(Boolean).join(" · ") || "Conteúdo"}</div>
 
-        {item.description ? <div className="cd-item-description">{renderMarkdownLite(item.description)}</div> : null}
+        {item.description ? <div className="cd-item-description">{renderMarkdownLite(item.description)}</div> : <div className="cd-item-description cd-description-empty">Este conteúdo ainda não tem descrição.</div>}
 
         {justApproved ? (
           <p style={{ display: "flex", alignItems: "center", gap: 6, color: "#2f8f4e", fontWeight: 700, marginTop: 14 }}>
@@ -293,13 +338,12 @@ function ApprovalModal({
           </p>
         ) : (
           <>
-            <label style={{ display: "block", fontSize: 11, color: "#6b6b6b", marginTop: 12 }}>
-              Seu nome
+            <label className="cd-reviewer-field">
+              <span>Seu nome</span>
               <input
                 value={reviewerName}
                 onChange={(e) => onReviewerNameChange(e.target.value)}
                 placeholder="Como podemos te identificar?"
-                style={{ display: "block", width: "100%", marginTop: 4, padding: 7, border: "1px solid #ddd", fontSize: 12.5 }}
               />
             </label>
 
