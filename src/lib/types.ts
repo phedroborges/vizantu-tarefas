@@ -158,6 +158,7 @@ export type Task = {
   name: string;
   dueDate?: string;
   assigneeId?: string;
+  assigneeSource?: "manual" | "captacao";
   description?: string;
   images: string[];
   driveLink?: string;
@@ -213,6 +214,8 @@ export type PlanCaptacao = {
   planId: string;
   label: string;
   sequenceOrder: number;
+  recordingAssigneeId?: string;
+  editingAssigneeId?: string;
   createdAt: string;
 };
 

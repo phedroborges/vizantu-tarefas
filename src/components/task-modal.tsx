@@ -20,6 +20,7 @@ type Draft = {
   name: string;
   dueDate: string;
   assigneeId: string;
+  assigneeSource: "manual" | "captacao";
   description: string;
   images: string[];
   driveLink: string;
@@ -47,6 +48,7 @@ function draftFromTask(task: Task | null, defaultProjectId: string, currentUserI
     name: task?.name || "",
     dueDate: task ? task.dueDate || "" : todayIso(),
     assigneeId: task ? task.assigneeId || NO_ASSIGNEE : currentUserId || NO_ASSIGNEE,
+    assigneeSource: task?.assigneeSource || "manual",
     description: task?.description || "",
     images: task?.images || [],
     driveLink: task?.driveLink || "",
@@ -63,6 +65,7 @@ function buildPayload(draft: Draft) {
     name: draft.name,
     dueDate: draft.dueDate || undefined,
     assigneeId: draft.assigneeId === NO_ASSIGNEE ? null : draft.assigneeId,
+    assigneeSource: draft.assigneeSource,
     description: draft.description,
     images: draft.images,
     driveLink: draft.driveLink,
@@ -202,6 +205,13 @@ export function TaskModal({
     } else {
       debounceRef.current = setTimeout(() => persist(next), AUTOSAVE_DEBOUNCE_MS);
     }
+  }
+
+  function setManualAssignee(value: string) {
+    const next = { ...draft, assigneeId: value, assigneeSource: "manual" as const };
+    setDraft(next);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    persist(next);
   }
 
   function catalogFor(kind: TagKind): Tag[] {
@@ -355,7 +365,7 @@ export function TaskModal({
               </MetaRow>
 
               <MetaRow icon={<User size={13} />} label="Responsável">
-                <Select items={assigneeLabels} value={draft.assigneeId} onValueChange={(value) => updateField("assigneeId", value ?? NO_ASSIGNEE, { immediate: true })}>
+                <Select items={assigneeLabels} value={draft.assigneeId} onValueChange={(value) => setManualAssignee(value ?? NO_ASSIGNEE)}>
                   <SelectTrigger className="meta-trigger">
                     <SelectValue placeholder="Sem responsável" />
                   </SelectTrigger>
@@ -369,6 +379,7 @@ export function TaskModal({
                     ) : null}
                   </SelectContent>
                 </Select>
+                {task?.assigneeSource === "captacao" && draft.assigneeSource === "captacao" ? <small className="meta-inheritance-hint">Herdado da edição da captação</small> : null}
               </MetaRow>
 
               <TaskStatusControl

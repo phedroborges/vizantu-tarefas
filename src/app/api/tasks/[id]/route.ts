@@ -17,6 +17,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       name: body.name,
       dueDate: body.dueDate,
       assigneeId: body.assigneeId,
+      assigneeSource: body.assigneeSource,
       description: body.description,
       images: body.images,
       driveLink: body.driveLink,

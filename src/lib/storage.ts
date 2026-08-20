@@ -1,5 +1,6 @@
 import { isOverdue } from "./dates";
 import { taskStatusAfterClientDecision } from "./approval-workflow";
+import { inheritsCaptureEditor } from "./assignee-inheritance";
 import { getSupabase } from "./supabase-client";
 import { DEFAULT_STATUS_COLORS, TASK_STATUSES } from "./types";
 import type {
@@ -292,6 +293,7 @@ export type TaskInput = {
   name: string;
   dueDate?: string;
   assigneeId?: string;
+  assigneeSource?: "manual" | "captacao";
   description?: string;
   images?: string[];
   driveLink?: string;
@@ -310,6 +312,7 @@ type TaskRow = {
   name: string;
   due_date: string | null;
   assignee_id: string | null;
+  assignee_source: "manual" | "captacao" | null;
   description: string | null;
   images: string[];
   drive_link: string | null;
@@ -334,6 +337,7 @@ function mapTask(row: TaskRow): Task {
     name: row.name,
     dueDate: row.due_date ?? undefined,
     assigneeId: row.assignee_id ?? undefined,
+    assigneeSource: row.assignee_source ?? undefined,
     description: row.description ?? undefined,
     images: row.images ?? [],
     driveLink: row.drive_link ?? undefined,
@@ -400,6 +404,13 @@ export async function createTask(input: TaskInput): Promise<Task> {
   // Um conteúdo nasce em rascunho. A aprovação só começa quando a equipe
   // aciona explicitamente "Enviar textos para aprovação" no plano.
   const status = input.status || "rascunho";
+  let assigneeId = input.assigneeId || null;
+  let assigneeSource = input.assigneeSource || (assigneeId ? "manual" : null);
+  if (!assigneeId && input.captacaoId) {
+    const capture = unwrap(await getSupabase().from("plan_captacoes").select("editing_assignee_id").eq("id", input.captacaoId).maybeSingle()) as { editing_assignee_id: string | null } | null;
+    assigneeId = capture?.editing_assignee_id || null;
+    assigneeSource = "captacao";
+  }
   const row = unwrap(
     await getSupabase()
       .from("tasks")
@@ -408,7 +419,8 @@ export async function createTask(input: TaskInput): Promise<Task> {
         project_id: input.projectId,
         name: input.name.trim(),
         due_date: input.dueDate || null,
-        assignee_id: input.assigneeId || null,
+        assignee_id: assigneeId,
+        assignee_source: assigneeSource,
         description: input.description?.trim() || null,
         images: dedupeIds(input.images ?? []),
         drive_link: input.driveLink?.trim() || null,
@@ -445,6 +457,7 @@ export async function duplicateTask(id: string): Promise<Task | undefined> {
     name: `${current.name} (cópia)`,
     dueDate: current.dueDate,
     assigneeId: current.assigneeId,
+    assigneeSource: current.assigneeSource,
     description: current.description,
     images: current.images,
     driveLink: current.driveLink,
@@ -478,7 +491,10 @@ export async function updateTask(
   if (patch.projectId !== undefined) update.project_id = patch.projectId;
   if (patch.name !== undefined) update.name = patch.name.trim();
   if (patch.dueDate !== undefined) update.due_date = patch.dueDate || null;
-  if (patch.assigneeId !== undefined) update.assignee_id = patch.assigneeId || null;
+  if (patch.assigneeId !== undefined) {
+    update.assignee_id = patch.assigneeId || null;
+    update.assignee_source = patch.assigneeSource || "manual";
+  }
   if (patch.description !== undefined) update.description = patch.description.trim() || null;
   if (patch.images !== undefined) update.images = dedupeIds(patch.images);
   if (patch.driveLink !== undefined) update.drive_link = patch.driveLink.trim() || null;
@@ -486,7 +502,16 @@ export async function updateTask(
   if (patch.channelTagIds !== undefined) update.channel_tag_ids = dedupeIds(patch.channelTagIds);
   if (patch.categoryTagIds !== undefined) update.category_tag_ids = dedupeIds(patch.categoryTagIds);
   if (patch.planId !== undefined) update.plan_id = patch.planId || null;
-  if (patch.captacaoId !== undefined) update.captacao_id = patch.captacaoId || null;
+  if (patch.captacaoId !== undefined) {
+    update.captacao_id = patch.captacaoId || null;
+    if (patch.assigneeId === undefined && inheritsCaptureEditor(current.assigneeId, current.assigneeSource)) {
+      const capture = patch.captacaoId
+        ? unwrap(await getSupabase().from("plan_captacoes").select("editing_assignee_id").eq("id", patch.captacaoId).maybeSingle()) as { editing_assignee_id: string | null } | null
+        : null;
+      update.assignee_id = capture?.editing_assignee_id || null;
+      update.assignee_source = patch.captacaoId ? "captacao" : null;
+    }
+  }
   if (patch.sequenceOrder !== undefined) update.sequence_order = patch.sequenceOrder;
 
   if (patch.status !== undefined && patch.status !== current.status) {
@@ -702,10 +727,10 @@ export async function deletePlan(id: string): Promise<boolean> {
 
 // ---------- Captações (agrupamento livre dentro de um Plano de conteúdo) ----------
 
-type PlanCaptacaoRow = { id: string; plan_id: string; label: string; sequence_order: number; created_at: string };
+type PlanCaptacaoRow = { id: string; plan_id: string; label: string; sequence_order: number; recording_assignee_id: string | null; editing_assignee_id: string | null; created_at: string };
 
 function mapPlanCaptacao(row: PlanCaptacaoRow): PlanCaptacao {
-  return { id: row.id, planId: row.plan_id, label: row.label, sequenceOrder: row.sequence_order, createdAt: row.created_at };
+  return { id: row.id, planId: row.plan_id, label: row.label, sequenceOrder: row.sequence_order, recordingAssigneeId: row.recording_assignee_id ?? undefined, editingAssigneeId: row.editing_assignee_id ?? undefined, createdAt: row.created_at };
 }
 
 export async function listPlanCaptacoes(planId: string): Promise<PlanCaptacao[]> {
@@ -713,15 +738,33 @@ export async function listPlanCaptacoes(planId: string): Promise<PlanCaptacao[]>
   return (rows as PlanCaptacaoRow[]).map(mapPlanCaptacao);
 }
 
-export async function createPlanCaptacao(input: { planId: string; label: string; sequenceOrder?: number }): Promise<PlanCaptacao> {
+export async function createPlanCaptacao(input: { planId: string; label: string; sequenceOrder?: number; recordingAssigneeId?: string; editingAssigneeId?: string }): Promise<PlanCaptacao> {
   const row = unwrap(
     await getSupabase()
       .from("plan_captacoes")
-      .insert({ id: newId(), plan_id: input.planId, label: input.label.trim(), sequence_order: input.sequenceOrder ?? 0, created_at: nowIso() })
+      .insert({ id: newId(), plan_id: input.planId, label: input.label.trim(), sequence_order: input.sequenceOrder ?? 0, recording_assignee_id: input.recordingAssigneeId || null, editing_assignee_id: input.editingAssigneeId || null, created_at: nowIso() })
       .select()
       .single(),
   );
   return mapPlanCaptacao(row as PlanCaptacaoRow);
+}
+
+export async function updatePlanCaptacao(id: string, patch: { recordingAssigneeId?: string | null; editingAssigneeId?: string | null }): Promise<PlanCaptacao | undefined> {
+  const db = getSupabase();
+  const update: Record<string, unknown> = {};
+  if (patch.recordingAssigneeId !== undefined) update.recording_assignee_id = patch.recordingAssigneeId || null;
+  if (patch.editingAssigneeId !== undefined) update.editing_assignee_id = patch.editingAssigneeId || null;
+  if (!Object.keys(update).length) return undefined;
+  const row = unwrap(await db.from("plan_captacoes").update(update).eq("id", id).select().maybeSingle()) as PlanCaptacaoRow | null;
+  if (!row) return undefined;
+  if (patch.editingAssigneeId !== undefined) {
+    // Legado sem responsável também passa a herdar. Exceções manuais nunca
+    // são sobrescritas, inclusive quando foram deixadas "Sem responsável".
+    const inherited = await db.from("tasks").update({ assignee_id: patch.editingAssigneeId || null, assignee_source: "captacao", updated_at: nowIso() }).eq("captacao_id", id).eq("assignee_source", "captacao");
+    unwrap(inherited);
+    if (patch.editingAssigneeId) unwrap(await db.from("tasks").update({ assignee_id: patch.editingAssigneeId, assignee_source: "captacao", updated_at: nowIso() }).eq("captacao_id", id).is("assignee_id", null).is("assignee_source", null));
+  }
+  return mapPlanCaptacao(row);
 }
 
 export async function deletePlanCaptacao(id: string): Promise<boolean> {

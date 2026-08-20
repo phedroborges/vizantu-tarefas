@@ -12,6 +12,6 @@ export async function POST(request: NextRequest) {
   if (!body?.label || typeof body.label !== "string" || !body.label.trim()) {
     return NextResponse.json({ error: "Informe o nome da captação." }, { status: 400 });
   }
-  const captacao = await createPlanCaptacao({ planId: body.planId, label: body.label, sequenceOrder: body.sequenceOrder });
+  const captacao = await createPlanCaptacao({ planId: body.planId, label: body.label, sequenceOrder: body.sequenceOrder, recordingAssigneeId: body.recordingAssigneeId, editingAssigneeId: body.editingAssigneeId });
   return NextResponse.json({ captacao }, { status: 201 });
 }

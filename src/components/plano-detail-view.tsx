@@ -8,10 +8,12 @@ import { useConfirm } from "@/components/confirm-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatDueDate } from "@/lib/dates";
 import { summarizeApprovalRound } from "@/lib/approval-workflow";
+import { inheritsCaptureEditor } from "@/lib/assignee-inheritance";
 import { TASK_STATUSES } from "@/lib/types";
 import type { Member, Plan, PlanApprovalResponse, PlanCaptacao, PlanEvent, PlanItemApproval, Project, StatusColor, Tag, Task } from "@/lib/types";
 
 const NO_CAPTACAO = "none";
+const NO_MEMBER = "none";
 const NO_FORMAT_KEY = "__sem_formato__";
 
 function statusGroup(status: Task["status"]): string {
@@ -128,6 +130,18 @@ export function PlanoDetailView({
     showToast(suggestedDate ? "Sugestão de captação salva." : "Sugestão removida.");
   }
 
+  async function setCaptureAssignee(captacaoId: string, field: "recordingAssigneeId" | "editingAssigneeId", memberId: string) {
+    const value = memberId === NO_MEMBER ? null : memberId;
+    const response = await fetch(`/api/plan-captacoes/${captacaoId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ [field]: value }) });
+    const result = await response.json();
+    if (!response.ok || !result.captacao) return showToast(result.error || "Não foi possível atualizar o responsável.");
+    setCaptacoes((current) => current.map((capture) => capture.id === captacaoId ? result.captacao : capture));
+    if (field === "editingAssigneeId") {
+      setTasks((current) => current.map((task) => task.captacaoId === captacaoId && inheritsCaptureEditor(task.assigneeId, task.assigneeSource) ? { ...task, assigneeId: value || undefined, assigneeSource: "captacao" } : task));
+      showToast("Editor atualizado e aplicado aos conteúdos herdados.");
+    }
+  }
+
   async function addItem(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!newItemName.trim()) return;
@@ -208,6 +222,7 @@ export function PlanoDetailView({
     [NO_CAPTACAO]: "Sem captação",
     ...Object.fromEntries(captacoes.map((c) => [c.id, c.label])),
   };
+  const memberLabels: Record<string, string> = { [NO_MEMBER]: "Sem responsável", ...Object.fromEntries(members.filter((member) => member.active).map((member) => [member.id, member.name])) };
 
   function renderTaskRow(task: Task) {
     const categories = task.categoryTagIds.map((id) => categoryTagById.get(id)?.label).filter(Boolean);
@@ -318,12 +333,14 @@ export function PlanoDetailView({
               {captacoes.map((c) => {
                 const count = tasks.filter((t) => t.captacaoId === c.id).length;
                 return (
-                  <span key={c.id} className="plan-captacao-chip">
-                    {c.label}
-                    <em>{count}</em>
-                    {canEdit ? <input type="date" aria-label={`Data sugerida para ${c.label}`} value={suggestions.find((event) => event.eventType === `captacao:${c.id}`)?.eventDate || ""} onChange={(event) => setSuggestionDate(c.id, event.target.value)} /> : null}
-                    {canEdit ? <button type="button" onClick={() => removeCaptacao(c)} aria-label={`Remover ${c.label}`}><Trash2 size={11} /></button> : null}
-                  </span>
+                  <div key={c.id} className="plan-captacao-card">
+                    <div className="plan-captacao-card-head"><strong>{c.label}</strong><em>{count} conteúdos</em>{canEdit ? <button type="button" onClick={() => removeCaptacao(c)} aria-label={`Remover ${c.label}`}><Trash2 size={13} /></button> : null}</div>
+                    <div className="plan-captacao-fields">
+                      <label><span>Data sugerida</span>{canEdit ? <input type="date" aria-label={`Data sugerida para ${c.label}`} value={suggestions.find((event) => event.eventType === `captacao:${c.id}`)?.eventDate || ""} onChange={(event) => setSuggestionDate(c.id, event.target.value)} /> : <small>{suggestions.find((event) => event.eventType === `captacao:${c.id}`)?.eventDate || "—"}</small>}</label>
+                      <label><span>Gravação</span>{canEdit ? <Select items={memberLabels} value={c.recordingAssigneeId || NO_MEMBER} onValueChange={(value) => setCaptureAssignee(c.id, "recordingAssigneeId", value ?? NO_MEMBER)}><SelectTrigger className="plan-captacao-member-select"><SelectValue /></SelectTrigger><SelectContent><SelectItem value={NO_MEMBER}>Sem responsável</SelectItem>{members.filter((member) => member.active).map((member) => <SelectItem key={member.id} value={member.id}>{member.name}</SelectItem>)}</SelectContent></Select> : <small>{memberLabels[c.recordingAssigneeId || NO_MEMBER]}</small>}</label>
+                      <label><span>Edição</span>{canEdit ? <Select items={memberLabels} value={c.editingAssigneeId || NO_MEMBER} onValueChange={(value) => setCaptureAssignee(c.id, "editingAssigneeId", value ?? NO_MEMBER)}><SelectTrigger className="plan-captacao-member-select"><SelectValue /></SelectTrigger><SelectContent><SelectItem value={NO_MEMBER}>Sem responsável</SelectItem>{members.filter((member) => member.active).map((member) => <SelectItem key={member.id} value={member.id}>{member.name}</SelectItem>)}</SelectContent></Select> : <small>{memberLabels[c.editingAssigneeId || NO_MEMBER]}</small>}</label>
+                    </div>
+                  </div>
                 );
               })}
               {!captacoes.length ? <span className="plan-item-empty">Nenhuma captação ainda.</span> : null}

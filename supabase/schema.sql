@@ -169,6 +169,12 @@ create table if not exists plan_captacoes (
 create index if not exists plan_captacoes_plan_id_idx on plan_captacoes(plan_id);
 alter table plan_captacoes enable row level security;
 
+-- Responsáveis da sessão: quem grava e quem edita. O editor é herdado pelos
+-- conteúdos da captação, salvo quando o conteúdo recebe uma exceção manual.
+alter table plan_captacoes
+  add column if not exists recording_assignee_id uuid references members(id) on delete set null,
+  add column if not exists editing_assignee_id uuid references members(id) on delete set null;
+
 -- Um item de conteúdo de um Plano (vídeo/post/carrossel) OU um passo de um
 -- Plano de processo é uma linha de tasks — reaproveita responsável, status,
 -- status_history, comentários, IA, anexos que já existem. Colunas novas são
@@ -179,6 +185,10 @@ alter table tasks
   add column if not exists captacao_id uuid references plan_captacoes(id) on delete set null,
   add column if not exists category_tag_ids uuid[] not null default '{}',
   add column if not exists sequence_order int;       -- ordem de exibição (planos de processo)
+
+alter table tasks
+  add column if not exists assignee_source text
+    check (assignee_source in ('manual', 'captacao'));
 
 -- Direcionamento, roteiro, referência e legenda NÃO são colunas próprias —
 -- são seções escritas dentro de tasks.description (markdown-lite, com os
