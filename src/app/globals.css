@@ -660,6 +660,22 @@ a.upcoming-item { color: inherit; text-decoration: none; }
 
 .plan-progress-track { height: 8px; background: var(--line); overflow: hidden; }
 .plan-progress-fill { height: 100%; background: var(--brand); transition: width .4s ease; }
+.plan-workflow-panel { display: grid; gap: 14px; margin: 18px 0; padding: 20px; background: #f5f0ff; border: 1px solid #d9c8ff; }
+.plan-workflow-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.plan-workflow-head h2 { margin: 2px 0 5px; font-size: 20px; }
+.plan-workflow-head p, .plan-workflow-hint { margin: 0; color: var(--muted-text); font-size: 11px; line-height: 1.5; }
+.plan-review-state { flex: none; padding: 8px 10px; color: #6331cc; background: #e8dcff; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.plan-review-state.is-complete { color: #416c18; background: #e8f4dc; }
+.plan-workflow-steps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: #d9c8ff; border: 1px solid #d9c8ff; }
+.plan-workflow-steps > div { min-width: 0; display: flex; align-items: center; gap: 10px; padding: 13px; background: #fff; color: #7c817c; }
+.plan-workflow-steps > div.is-current { color: #6331cc; box-shadow: inset 3px 0 #9147ff; }
+.plan-workflow-steps > div.is-complete { color: #416c18; background: #f1f8ea; }
+.plan-workflow-steps span { min-width: 0; display: grid; gap: 3px; }
+.plan-workflow-steps strong { font-size: 12px; }
+.plan-workflow-steps small { overflow: hidden; text-overflow: ellipsis; color: inherit; font-size: 9px; white-space: nowrap; }
+.plan-workflow-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.plan-workflow-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+@media (max-width: 620px) { .plan-workflow-head { flex-direction: column; } .plan-workflow-steps { grid-template-columns: 1fr; } .plan-workflow-actions { display: grid; } }
 
 .plan-captacao-row { padding: 16px 25px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .plan-captacao-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 6px 5px 10px; background: #f1ebff; color: var(--brand-strong); font-size: 11px; font-weight: 650; }

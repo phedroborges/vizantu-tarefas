@@ -28,6 +28,8 @@ const REVIEWER_KEY = "vizantu-client-reviewer-name";
 const WEEKDAYS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 const isCreativeStage = (item: DashboardItem) => item.reviewVersion >= 100;
 const copyStatus = (item: DashboardItem) => isCreativeStage(item) ? "approved" : item.approvalStatus;
+const isReviewed = (item: DashboardItem) => item.approvalStatus !== "pending";
+const roundNumber = (version: number) => version >= 100 ? version - 99 : version;
 
 function ContentIcon({ format, size = 13 }: { format?: string | null; size?: number }) {
   const value = (format || "").toLowerCase();
@@ -92,14 +94,19 @@ export function ClientDashboard({
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
   const [reviewerName, setReviewerName] = useState(() => (typeof window !== "undefined" ? window.localStorage.getItem(REVIEWER_KEY) || "" : ""));
 
-  const approvedCount = items.filter((i) => copyStatus(i) === "approved").length;
-  const creativeApprovedCount = items.filter((i) => isCreativeStage(i) && i.approvalStatus === "approved").length;
-  const creativeAvailableCount = items.filter(isCreativeStage).length;
-  const adjustmentCount = items.filter((i) => i.approvalStatus === "changes_requested" || i.approvalStatus === "rejected").length;
-  const pendingCount = items.filter((i) => i.approvalStatus === "pending").length;
-  const approvalRate = items.length ? Math.round((approvedCount / items.length) * 100) : 0;
+  const hasCreativeReview = items.some(isCreativeStage);
+  const activeStage = hasCreativeReview ? "creative" : "copy";
+  const activeStageItems = items.filter((item) => activeStage === "creative" ? isCreativeStage(item) : !isCreativeStage(item));
+  const activeStageLabel = activeStage === "creative" ? "Aprovação de criativos" : "Aprovação de texto";
+  const activeRound = Math.max(1, ...activeStageItems.map((item) => roundNumber(item.reviewVersion)));
+  const reviewedCount = activeStageItems.filter(isReviewed).length;
+  const approvedInStageCount = activeStageItems.filter((item) => item.approvalStatus === "approved").length;
+  const reviewedRate = activeStageItems.length ? Math.round((reviewedCount / activeStageItems.length) * 100) : 0;
+  const approvalRate = activeStageItems.length ? Math.round((approvedInStageCount / activeStageItems.length) * 100) : 0;
+  const adjustmentCount = activeStageItems.filter((i) => i.approvalStatus === "changes_requested" || i.approvalStatus === "rejected").length;
+  const pendingCount = activeStageItems.filter((i) => i.approvalStatus === "pending").length;
   const lastDeliveries = useMemo(
-    () => [...items].filter((i) => isCreativeStage(i) && i.approvalStatus === "approved").sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 3),
+    () => [...items].filter((i) => isCreativeStage(i) && i.approvalStatus === "approved" && (i.status === "aprovado" || i.status === "finalizado")).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 3),
     [items],
   );
 
@@ -140,7 +147,7 @@ export function ClientDashboard({
     });
     if (!response.ok) return;
     const result = await response.json();
-    updateItemLocal(item.id, { approvalStatus: result.status, reviewVersion: result.reviewVersion });
+    updateItemLocal(item.id, { approvalStatus: result.status, reviewVersion: result.reviewVersion, status: result.taskStatus });
     if (status === "approved" && buttonEl) {
       const rect = buttonEl.getBoundingClientRect();
       burst(rect.left + rect.width / 2, rect.top + rect.height / 2, 60);
@@ -164,7 +171,7 @@ export function ClientDashboard({
           <div>
             <span className="cd-eyebrow">Portal do cliente · Vizantu</span>
             <h1>Olá, {clientName}</h1>
-            <p>Revise seu planejamento, leia cada conteúdo e deixe sua decisão.</p>
+            <p>Você está na etapa de <strong>{activeStageLabel.toLowerCase()}</strong>. Leia cada conteúdo e registre sua decisão.</p>
           </div>
           <div className="cd-header-meta">
             {[roleTitle, city].filter(Boolean).join(" · ")}
@@ -183,9 +190,9 @@ export function ClientDashboard({
           <div className="cd-card">
             <h3>Visão geral</h3>
             <div className="cd-status-overview">
-              <span><CheckCircle2 size={16} /> <strong>{approvedCount}</strong> aprovados</span>
+              <span><CheckCircle2 size={16} /> <strong>{reviewedCount}</strong> revisados</span>
               <span><Clock3 size={16} /> <strong>{pendingCount}</strong> pendentes</span>
-              <span><MessageCircleMore size={16} /> <strong>{adjustmentCount}</strong> ajustes</span>
+              <span><MessageCircleMore size={16} /> <strong>{adjustmentCount}</strong> ajustes/reprovações</span>
             </div>
           </div>
           <div className="cd-card">
@@ -208,19 +215,20 @@ export function ClientDashboard({
         <section className="cd-review-section">
           <div className="cd-review-heading">
             <div>
-              <span className="cd-eyebrow">Sua revisão</span>
-              <h2>Conteúdos para aprovar</h2>
+              <span className="cd-eyebrow">Etapa atual · Rodada {activeRound}</span>
+              <h2>{activeStageLabel}</h2>
             </div>
             <small>Toque em um conteúdo para ler e responder.</small>
           </div>
 
           <div className="cd-approval-bar-wrap">
             <div className="cd-approval-bar-label">
-              <strong>{approvalRate}% concluído</strong>
-              <span>{approvedCount} de {items.length} aprovados</span>
+              <strong>{reviewedRate}% revisado</strong>
+              <span>{reviewedCount} de {activeStageItems.length} analisados</span>
             </div>
-            <div className="cd-approval-bar-track"><div className="cd-approval-bar-fill" style={{ width: `${approvalRate}%` }} /></div>
-            <div className="cd-stage-progress"><span>Texto: {approvedCount}/{items.length}</span><span>Criação: {creativeApprovedCount}/{creativeAvailableCount || items.length}</span></div>
+            <div className="cd-approval-bar-track"><div className="cd-approval-bar-fill" style={{ width: `${reviewedRate}%` }} /></div>
+            <div className="cd-stage-progress"><span>Aprovação: {approvalRate}%</span><span>{approvedInStageCount} aprovados · {reviewedCount - approvedInStageCount} com retorno</span></div>
+            {reviewedRate === 100 && activeStageItems.length ? <div className="cd-review-complete"><CheckCircle2 size={16} /><span><strong>Rodada 100% revisada.</strong> A equipe já pode seguir com os aprovados e preparar os ajustes necessários.</span></div> : null}
           </div>
 
           <div className="cd-groups">
@@ -366,7 +374,7 @@ function ApprovalModal({
   const [dateReason, setDateReason] = useState("");
   const [dateSent, setDateSent] = useState(false);
   const approveRef = useRef<HTMLButtonElement>(null);
-  const justApproved = item.approvalStatus === "approved";
+  const decisionClosed = isReviewed(item);
   const creativeStage = isCreativeStage(item);
 
   async function requestDateChange() {
@@ -389,7 +397,7 @@ function ApprovalModal({
 
         {item.description ? <div className="cd-item-description">{renderMarkdownLite(item.description)}</div> : <div className="cd-item-description cd-description-empty">Este conteúdo ainda não tem descrição.</div>}
 
-        {creativeStage && item.materialLink ? <a className="cd-material-link" href={item.materialLink} target="_blank" rel="noreferrer"><ExternalLink size={16} /><span><strong>Abrir material para revisar</strong><small>Confira o {item.formatLabel || "material"} antes de responder.</small></span></a> : !creativeStage && justApproved ? <div className="cd-material-wait"><Clock3 size={15} /> Texto aprovado. A criação aparecerá quando estiver pronta.</div> : null}
+        {creativeStage && item.materialLink ? <a className="cd-material-link" href={item.materialLink} target="_blank" rel="noreferrer"><ExternalLink size={16} /><span><strong>Abrir material para revisar</strong><small>Confira o {item.formatLabel || "material"} antes de responder.</small></span></a> : !creativeStage && item.approvalStatus === "approved" ? <div className="cd-material-wait"><Clock3 size={15} /> Texto aprovado. A criação aparecerá quando estiver pronta.</div> : null}
 
         <label className="cd-reviewer-field">
           <span>Seu nome</span>
@@ -403,10 +411,11 @@ function ApprovalModal({
           <button type="button" className="cd-btn date" disabled={!requestedDate || !reviewerName.trim()} onClick={requestDateChange}>Enviar sugestão de data</button>
         </div> : null}
 
-        {justApproved ? (
-          <p style={{ display: "flex", alignItems: "center", gap: 6, color: "#2f8f4e", fontWeight: 700, marginTop: 14 }}>
-            <Check size={18} className="cd-celebrate-icon" /> Aprovado — obrigado!
-          </p>
+        {decisionClosed ? (
+          <div className={`cd-decision-closed status-${item.approvalStatus}`}>
+            {item.approvalStatus === "approved" ? <Check size={18} className="cd-celebrate-icon" /> : <X size={18} />}
+            <span><strong>{item.approvalStatus === "approved" ? "Aprovado" : item.approvalStatus === "changes_requested" ? "Ajuste solicitado" : "Reprovado"}</strong>Sua decisão nesta rodada foi registrada. Uma nova resposta só será liberada quando a equipe abrir outra versão.</span>
+          </div>
         ) : (
           <>
             {pendingAction ? (

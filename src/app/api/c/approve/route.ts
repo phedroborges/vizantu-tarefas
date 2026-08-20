@@ -24,12 +24,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Escreva um comentário." }, { status: 400 });
   }
 
-  const result = await submitPlanApprovalResponse({
-    projectId,
-    taskId: body.taskId,
-    reviewerName: body.reviewerName.trim(),
-    status: body.status,
-    comment: body.comment,
-  });
-  return NextResponse.json(result);
+  try {
+    const result = await submitPlanApprovalResponse({
+      projectId,
+      taskId: body.taskId,
+      reviewerName: body.reviewerName.trim(),
+      status: body.status,
+      comment: body.comment,
+    });
+    return NextResponse.json(result);
+  } catch (error) {
+    if (error instanceof Error && error.message === "Este conteúdo já foi revisado nesta rodada.") {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
+    throw error;
+  }
 }

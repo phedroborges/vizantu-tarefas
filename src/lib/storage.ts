@@ -1,4 +1,5 @@
 import { isOverdue } from "./dates";
+import { taskStatusAfterClientDecision } from "./approval-workflow";
 import { getSupabase } from "./supabase-client";
 import { DEFAULT_STATUS_COLORS, TASK_STATUSES } from "./types";
 import type {
@@ -396,7 +397,9 @@ export async function getTask(id: string): Promise<Task | undefined> {
 
 export async function createTask(input: TaskInput): Promise<Task> {
   const now = nowIso();
-  const status = input.status || (input.planId ? "aprovacao_copy" : "rascunho");
+  // Um conteúdo nasce em rascunho. A aprovação só começa quando a equipe
+  // aciona explicitamente "Enviar textos para aprovação" no plano.
+  const status = input.status || "rascunho";
   const row = unwrap(
     await getSupabase()
       .from("tasks")
@@ -508,28 +511,68 @@ async function reopenApproval(taskId: string, reviewVersion: number) {
   unwrap(await db.from("plan_approval_events").insert({ id: newId(), task_id: taskId, action: "reopened", status: "pending", previous_status: previous?.status || "pending", review_version: reviewVersion, created_at: nowIso() }));
 }
 
-async function maybeOpenCreativeApprovals(planId: string) {
-  const db = getSupabase();
-  const tasks = (unwrap(await db.from("tasks").select("id, status, drive_link").eq("plan_id", planId)) || []) as { id: string; status: TaskStatus; drive_link: string | null }[];
-  if (!tasks.length) return;
-  const approvals = unwrap(await db.from("plan_item_approvals").select("task_id, status, review_version").in("task_id", tasks.map((task) => task.id))) as PlanItemApprovalRow[];
-  const byTask = new Map(approvals.map((approval) => [approval.task_id, approval]));
-  const allCopyApproved = tasks.every((task) => { const approval = byTask.get(task.id); return Boolean(approval && (approval.review_version >= 100 || approval.status === "approved")); });
-  if (!allCopyApproved) return;
-  for (const task of tasks) {
-    const approval = byTask.get(task.id);
-    if (task.status === "para_aprovacao" && task.drive_link && (!approval || approval.review_version < 100)) await reopenApproval(task.id, 100);
-  }
-}
-
 async function syncApprovalRoundFromTask(task: Task) {
   if (!task.planId) return;
   const current = unwrap(await getSupabase().from("plan_item_approvals").select("status, review_version").eq("task_id", task.id).maybeSingle()) as { status: PlanApprovalStatus; review_version: number } | null;
   if (task.status === "aprovacao_copy" && current && current.review_version < 100 && current.status !== "pending") await reopenApproval(task.id, current.review_version + 1);
   if (task.status === "para_aprovacao" && task.driveLink) {
-    await maybeOpenCreativeApprovals(task.planId);
+    if (current && current.review_version < 100 && current.status === "approved") await reopenApproval(task.id, 100);
     if (current && current.review_version >= 100 && current.status !== "pending") await reopenApproval(task.id, current.review_version + 1);
   }
+}
+
+export class ApprovalRoundError extends Error {
+  constructor(message: string, public blockers: string[] = []) {
+    super(message);
+  }
+}
+
+export async function openPlanApprovalRound(planId: string, stage: "copy" | "creative") {
+  const tasks = await listPlanTasks(planId);
+  if (!tasks.length) throw new ApprovalRoundError("Adicione conteúdos ao plano antes de abrir uma aprovação.");
+  const approvals = await listPlanItemApprovals(tasks.map((task) => task.id));
+  const byTask = new Map(approvals.map((approval) => [approval.taskId, approval]));
+
+  if (stage === "copy") {
+    const candidates = tasks.filter((task) => {
+      const approval = byTask.get(task.id);
+      if (approval?.reviewVersion && approval.reviewVersion >= 100) return false;
+      return !approval || approval.status !== "approved";
+    });
+    const blockers = candidates.filter((task) => !task.description?.trim()).map((task) => task.name);
+    if (blockers.length) throw new ApprovalRoundError("Preencha o texto de todos os conteúdos antes de enviar.", blockers);
+    if (!candidates.length) throw new ApprovalRoundError("Não há textos pendentes para enviar.");
+    const decidedVersions = candidates.map((task) => byTask.get(task.id)).filter((approval) => approval && approval.status !== "pending" && approval.reviewVersion < 100).map((approval) => approval!.reviewVersion);
+    const currentMax = approvals.filter((approval) => approval.reviewVersion < 100).reduce((max, approval) => Math.max(max, approval.reviewVersion), 0);
+    const version = decidedVersions.length ? currentMax + 1 : Math.max(currentMax, 1);
+    for (const task of candidates) {
+      const current = byTask.get(task.id);
+      if (!current || current.status !== "pending" || current.reviewVersion !== version) await reopenApproval(task.id, version);
+      if (task.status !== "aprovacao_copy") await updateTask(task.id, { status: "aprovacao_copy" });
+    }
+    return { stage, version, opened: candidates.length };
+  }
+
+  const blockers = tasks.flatMap((task) => {
+    const approval = byTask.get(task.id);
+    if (!approval || (approval.reviewVersion < 100 && approval.status !== "approved")) return [`${task.name}: texto ainda não aprovado`];
+    if (!task.driveLink?.trim()) return [`${task.name}: link do material não informado`];
+    return [];
+  });
+  if (blockers.length) throw new ApprovalRoundError("O plano ainda não está pronto para aprovação de criativos.", blockers);
+  const candidates = tasks.filter((task) => {
+    const approval = byTask.get(task.id);
+    if (!approval || approval.reviewVersion < 100) return true;
+    return approval.status === "changes_requested" || approval.status === "rejected";
+  });
+  if (!candidates.length) throw new ApprovalRoundError("Todos os criativos deste plano já foram aprovados.");
+  const currentMax = approvals.filter((approval) => approval.reviewVersion >= 100).reduce((max, approval) => Math.max(max, approval.reviewVersion), 99);
+  const version = currentMax + 1;
+  for (const task of candidates) {
+    await reopenApproval(task.id, version);
+    if (task.status !== "para_aprovacao") await updateTask(task.id, { status: "para_aprovacao" });
+  }
+  return { stage, version, opened: candidates.length };
 }
 
 export async function deleteTask(id: string): Promise<boolean> {
@@ -924,7 +967,7 @@ export async function submitPlanApprovalResponse(input: {
   reviewerName: string;
   status: PlanApprovalResponse["status"];
   comment?: string;
-}): Promise<PlanItemApproval> {
+}): Promise<PlanItemApproval & { taskStatus: TaskStatus }> {
   const db = getSupabase();
   // O cookie público autoriza somente o projeto do link. Sem esta checagem,
   // alguém que descobrisse outro UUID poderia responder por outro cliente.
@@ -934,6 +977,14 @@ export async function submitPlanApprovalResponse(input: {
   const existingRow = unwrap(await db.from("plan_item_approvals").select("*").eq("task_id", input.taskId).maybeSingle()) as PlanItemApprovalRow | null;
   const reviewVersion = existingRow?.review_version ?? 1;
   const previousStatus = existingRow?.status ?? "pending";
+
+  // Uma decisão encerra a participação do cliente naquela versão. A equipe
+  // precisa reabrir uma nova rodada para que o conteúdo volte a aceitar uma
+  // resposta — isso preserva o histórico e impede trocar uma reprovação por
+  // aprovação (ou vice-versa) dentro da mesma revisão.
+  if (previousStatus !== "pending") {
+    throw new Error("Este conteúdo já foi revisado nesta rodada.");
+  }
 
   // Upsert da resposta deste revisor (por reviewer_name + task_id + versão) —
   // reenviar substitui a resposta anterior da mesma pessoa na mesma versão.
@@ -974,21 +1025,12 @@ export async function submitPlanApprovalResponse(input: {
   );
 
   const isCreativeStage = reviewVersion >= 100;
-  const nextTaskStatus: TaskStatus = aggregated === "rejected"
-    ? "problema"
-    : aggregated === "changes_requested"
-      ? "ajuste"
-      : isCreativeStage
-        ? "aprovado"
-        : task.captacaoId
-          ? "aguardando_captacao"
-          : "pronto_para_criacao";
+  const nextTaskStatus = taskStatusAfterClientDecision(isCreativeStage ? "creative" : "copy", aggregated);
   await updateTask(task.id, { status: nextTaskStatus });
   if (input.comment?.trim() && (input.status === "changes_requested" || input.status === "rejected")) {
     const stage = isCreativeStage ? "criação" : "texto";
     await addComment(task.id, { author: input.reviewerName, text: input.status === "rejected" ? `❌ Reprovação de ${stage}: ${input.comment.trim()}` : `✏️ Ajuste de ${stage} solicitado pelo cliente: ${input.comment.trim()}` });
   }
-  if (!isCreativeStage && aggregated === "approved" && task.planId) await maybeOpenCreativeApprovals(task.planId);
 
   unwrap(
     await db.from("plan_approval_events").insert({
@@ -1004,7 +1046,7 @@ export async function submitPlanApprovalResponse(input: {
     }),
   );
 
-  return { taskId: input.taskId, status: aggregated, reviewVersion, updatedAt: nowIso() };
+  return { taskId: input.taskId, status: aggregated, reviewVersion, taskStatus: nextTaskStatus, updatedAt: nowIso() };
 }
 
 type PlanApprovalEventRow = {

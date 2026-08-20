@@ -1,12 +1,13 @@
 "use client";
 
-import { CalendarDays, Camera, CheckCircle2, ClipboardList, MessageSquareText, Plus, Trash2 } from "lucide-react";
+import { CalendarDays, Camera, CheckCircle2, ClipboardList, FileCheck2, MessageSquareText, Palette, Plus, Send, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { TaskModal } from "@/components/task-modal";
 import { ClientLinkPanel } from "@/components/client-link-panel";
 import { useConfirm } from "@/components/confirm-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatDueDate } from "@/lib/dates";
+import { summarizeApprovalRound } from "@/lib/approval-workflow";
 import { TASK_STATUSES } from "@/lib/types";
 import type { Member, Plan, PlanApprovalResponse, PlanCaptacao, PlanEvent, PlanItemApproval, Project, StatusColor, Tag, Task } from "@/lib/types";
 
@@ -71,6 +72,23 @@ export function PlanoDetailView({
   }, [approvalResponses]);
   const approvalLabels = { pending: "Pendente", approved: "Aprovado", changes_requested: "Ajuste solicitado", rejected: "Reprovado" } as const;
 
+  const copyApprovals = tasks.map((task) => {
+    const approval = approvalByTask.get(task.id);
+    if (!approval) return { taskId: task.id, status: "pending" as const, reviewVersion: 1, updatedAt: task.updatedAt };
+    return approval.reviewVersion >= 100 ? { ...approval, status: "approved" as const, reviewVersion: 1 } : approval;
+  });
+  const hasCreativeRound = initialApprovals.some((approval) => approval.reviewVersion >= 100);
+  const creativeApprovals = tasks.map((task) => {
+    const approval = approvalByTask.get(task.id);
+    return approval?.reviewVersion && approval.reviewVersion >= 100
+      ? approval
+      : { taskId: task.id, status: "pending" as const, reviewVersion: 100, updatedAt: task.updatedAt };
+  });
+  const activeStage = hasCreativeRound ? "creative" as const : "copy" as const;
+  const activeSummary = summarizeApprovalRound(activeStage === "creative" ? creativeApprovals : copyApprovals, activeStage);
+  const copySummary = summarizeApprovalRound(copyApprovals, "copy");
+  const creativeSummary = hasCreativeRound ? summarizeApprovalRound(creativeApprovals, "creative") : null;
+
   function showToast(message: string) {
     setToast(message);
     window.setTimeout(() => setToast(""), 2600);
@@ -130,6 +148,21 @@ export function PlanoDetailView({
     setNewItemName("");
   }
 
+  async function openApprovalRound(stage: "copy" | "creative") {
+    const response = await fetch(`/api/plans/${plan.id}/approval-round`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ stage }),
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      const details = Array.isArray(result.blockers) && result.blockers.length ? ` ${result.blockers.slice(0, 3).join(" · ")}${result.blockers.length > 3 ? "…" : ""}` : "";
+      return showToast(`${result.error || "Não foi possível abrir a aprovação."}${details}`);
+    }
+    showToast(stage === "copy" ? `${result.opened} texto(s) enviado(s) para aprovação.` : `${result.opened} criativo(s) enviado(s) para aprovação.`);
+    window.setTimeout(() => window.location.reload(), 650);
+  }
+
   // Captação é atribuída por item (e é universal: vale pra vídeo, carrossel,
   // estático — qualquer formato pode precisar de uma sessão de captação).
   async function setItemCaptacao(taskId: string, captacaoId: string) {
@@ -169,8 +202,7 @@ export function PlanoDetailView({
 
   const processItems = useMemo(() => [...tasks].sort((a, b) => (a.sequenceOrder ?? 0) - (b.sequenceOrder ?? 0)), [tasks]);
 
-  const doneCount = tasks.filter((t) => statusGroup(t.status) === "feita").length;
-  const progressRate = tasks.length ? Math.round((doneCount / tasks.length) * 100) : 0;
+  const progressRate = activeSummary.reviewedRate;
 
   const captacaoLabels: Record<string, string> = {
     [NO_CAPTACAO]: "Sem captação",
@@ -239,7 +271,7 @@ export function PlanoDetailView({
           </div>
           <div className="stats" style={{ display: "flex", gap: 1, background: "var(--line)", border: "1px solid var(--line)" }}>
             <div className="stat" style={{ background: "white", minWidth: 110, padding: "15px 18px" }}><strong>{tasks.length}</strong><span>itens</span></div>
-            <div className="stat" style={{ background: "white", minWidth: 110, padding: "15px 18px" }}><strong>{progressRate}%</strong><span>concluído</span></div>
+            <div className="stat" style={{ background: "white", minWidth: 110, padding: "15px 18px" }}><strong>{progressRate}%</strong><span>revisado</span></div>
           </div>
         </div>
 
@@ -251,11 +283,27 @@ export function PlanoDetailView({
 
         <ClientLinkPanel projectId={project.id} projectName={project.client || project.name} canEdit={canEdit} onToast={showToast} />
 
+        {isContent ? <section className="plan-workflow-panel" aria-label="Fluxo de aprovação do plano">
+          <div className="plan-workflow-head">
+            <div><span className="eyebrow">Fluxo do cliente</span><h2>{activeStage === "copy" ? "Aprovação de texto" : "Aprovação de criativos"}</h2><p>Rodada {activeSummary.round} · {activeSummary.reviewed} de {activeSummary.total} conteúdos revisados · {activeSummary.approvalRate}% aprovados</p></div>
+            <span className={`plan-review-state ${activeSummary.fullyReviewed ? "is-complete" : ""}`}>{activeSummary.reviewedRate}% revisado</span>
+          </div>
+          <div className="plan-workflow-steps">
+            <div className={copySummary.fullyReviewed ? "is-complete" : "is-current"}><FileCheck2 size={18} /><span><strong>1. Textos</strong><small>{copySummary.reviewed}/{copySummary.total} revisados · {copySummary.approved} aprovados</small></span></div>
+            <div className={creativeSummary?.fullyReviewed ? "is-complete" : hasCreativeRound ? "is-current" : "is-locked"}><Palette size={18} /><span><strong>2. Criativos</strong><small>{creativeSummary ? `${creativeSummary.reviewed}/${creativeSummary.total} revisados · ${creativeSummary.approved} aprovados` : "Aguardando textos, criação e links"}</small></span></div>
+          </div>
+          {canEdit ? <div className="plan-workflow-actions">
+            <button type="button" className="secondary-button" onClick={() => openApprovalRound("copy")}><Send size={14} /> Enviar textos pendentes</button>
+            <button type="button" className="primary-button" onClick={() => openApprovalRound("creative")}><Palette size={14} /> Enviar criativos para aprovação</button>
+          </div> : null}
+          <p className="plan-workflow-hint">Textos aprovados ficam em <strong>Texto aprovado</strong>. Você decide quando movê-los para captação/criação. Para enviar os criativos, todos os conteúdos do plano precisam ter texto aprovado e link do material.</p>
+        </section> : null}
+
         <section className="approval-summary" aria-label="Resumo da aprovação do cliente">
-          <div><CheckCircle2 size={17} /><strong>{initialApprovals.filter((item) => item.status === "approved").length}</strong><span>aprovados</span></div>
-          <div><strong>{initialApprovals.filter((item) => item.status === "changes_requested").length}</strong><span>com ajuste</span></div>
-          <div><strong>{initialApprovals.filter((item) => item.status === "rejected").length}</strong><span>reprovados</span></div>
-          <div><strong>{tasks.length - initialApprovals.length + initialApprovals.filter((item) => item.status === "pending").length}</strong><span>pendentes</span></div>
+          <div><CheckCircle2 size={17} /><strong>{activeSummary.reviewed}</strong><span>revisados</span></div>
+          <div><strong>{activeSummary.approved}</strong><span>aprovados</span></div>
+          <div><strong>{activeSummary.reviewed - activeSummary.approved}</strong><span>com retorno</span></div>
+          <div><strong>{activeSummary.total - activeSummary.reviewed}</strong><span>pendentes</span></div>
         </section>
 
         {isContent ? (
