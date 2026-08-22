@@ -1,4 +1,5 @@
 import type { ChatCompletionTool } from "openai/resources/chat/completions";
+import { formatRequiresCapture } from "./approval-workflow";
 import { formatDuration, isOverdue, summarizeStatusDurations, todayIso } from "./dates";
 import {
   addComment,
@@ -20,6 +21,7 @@ import {
   listTags,
   listTasks,
   updateKnowledgeDoc,
+  updatePlanCaptacao,
   updateTask,
   DueDateLockedError,
 } from "./storage";
@@ -427,11 +429,13 @@ async function toolAddPlanItem(
   if (caller.accessibleProjectIds !== "all" && !caller.accessibleProjectIds.includes(plan.projectId)) {
     return { error: "Esse plano está fora do seu acesso." };
   }
+  const packageKind = formatRequiresCapture(args.formatLabels || []) ? "capture" as const : "creation" as const;
   let captacaoId: string | undefined;
   if (args.captacaoLabel) {
     const captacoes = await listPlanCaptacoes(plan.id);
     const existing = findByName(captacoes, args.captacaoLabel, (c) => c.label);
-    captacaoId = existing ? existing.id : (await createPlanCaptacao({ planId: plan.id, label: args.captacaoLabel, sequenceOrder: captacoes.length })).id;
+    if (existing && packageKind === "capture" && existing.packageKind !== "capture") await updatePlanCaptacao(existing.id, { packageKind: "capture" });
+    captacaoId = existing ? existing.id : (await createPlanCaptacao({ planId: plan.id, label: args.captacaoLabel, packageKind, sequenceOrder: captacoes.length })).id;
   }
   const formatTagIds = await resolveTagIds(args.formatLabels, "formato");
   const task = await createTask({

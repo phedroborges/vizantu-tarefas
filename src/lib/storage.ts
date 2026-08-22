@@ -728,10 +728,10 @@ export async function deletePlan(id: string): Promise<boolean> {
 
 // ---------- Captações (agrupamento livre dentro de um Plano de conteúdo) ----------
 
-type PlanCaptacaoRow = { id: string; plan_id: string; label: string; sequence_order: number; recording_assignee_id: string | null; editing_assignee_id: string | null; created_at: string };
+type PlanCaptacaoRow = { id: string; plan_id: string; label: string; sequence_order: number; package_kind: "capture" | "creation"; recording_assignee_id: string | null; editing_assignee_id: string | null; created_at: string };
 
 function mapPlanCaptacao(row: PlanCaptacaoRow): PlanCaptacao {
-  return { id: row.id, planId: row.plan_id, label: row.label, sequenceOrder: row.sequence_order, recordingAssigneeId: row.recording_assignee_id ?? undefined, editingAssigneeId: row.editing_assignee_id ?? undefined, createdAt: row.created_at };
+  return { id: row.id, planId: row.plan_id, label: row.label, sequenceOrder: row.sequence_order, packageKind: row.package_kind || "creation", recordingAssigneeId: row.recording_assignee_id ?? undefined, editingAssigneeId: row.editing_assignee_id ?? undefined, createdAt: row.created_at };
 }
 
 export async function listPlanCaptacoes(planId: string): Promise<PlanCaptacao[]> {
@@ -739,25 +739,34 @@ export async function listPlanCaptacoes(planId: string): Promise<PlanCaptacao[]>
   return (rows as PlanCaptacaoRow[]).map(mapPlanCaptacao);
 }
 
-export async function createPlanCaptacao(input: { planId: string; label: string; sequenceOrder?: number; recordingAssigneeId?: string; editingAssigneeId?: string }): Promise<PlanCaptacao> {
+export async function createPlanCaptacao(input: { planId: string; label: string; packageKind?: "capture" | "creation"; sequenceOrder?: number; recordingAssigneeId?: string; editingAssigneeId?: string }): Promise<PlanCaptacao> {
   const row = unwrap(
     await getSupabase()
       .from("plan_captacoes")
-      .insert({ id: newId(), plan_id: input.planId, label: input.label.trim(), sequence_order: input.sequenceOrder ?? 0, recording_assignee_id: input.recordingAssigneeId || null, editing_assignee_id: input.editingAssigneeId || null, created_at: nowIso() })
+      .insert({ id: newId(), plan_id: input.planId, label: input.label.trim(), package_kind: input.packageKind || "creation", sequence_order: input.sequenceOrder ?? 0, recording_assignee_id: input.packageKind === "capture" ? input.recordingAssigneeId || null : null, editing_assignee_id: input.editingAssigneeId || null, created_at: nowIso() })
       .select()
       .single(),
   );
   return mapPlanCaptacao(row as PlanCaptacaoRow);
 }
 
-export async function updatePlanCaptacao(id: string, patch: { recordingAssigneeId?: string | null; editingAssigneeId?: string | null }): Promise<PlanCaptacao | undefined> {
+export async function updatePlanCaptacao(id: string, patch: { packageKind?: "capture" | "creation"; recordingAssigneeId?: string | null; editingAssigneeId?: string | null }): Promise<PlanCaptacao | undefined> {
   const db = getSupabase();
   const update: Record<string, unknown> = {};
+  if (patch.packageKind !== undefined) {
+    update.package_kind = patch.packageKind;
+    if (patch.packageKind === "creation") update.recording_assignee_id = null;
+  }
   if (patch.recordingAssigneeId !== undefined) update.recording_assignee_id = patch.recordingAssigneeId || null;
   if (patch.editingAssigneeId !== undefined) update.editing_assignee_id = patch.editingAssigneeId || null;
   if (!Object.keys(update).length) return undefined;
   const row = unwrap(await db.from("plan_captacoes").update(update).eq("id", id).select().maybeSingle()) as PlanCaptacaoRow | null;
   if (!row) return undefined;
+  if (patch.packageKind !== undefined) {
+    const eventType = `${patch.packageKind === "capture" ? "captacao" : "producao"}:${id}`;
+    const existingEvent = unwrap(await db.from("plan_events").select("id").in("event_type", [`captacao:${id}`, `producao:${id}`]).maybeSingle()) as { id: string } | null;
+    if (existingEvent) unwrap(await db.from("plan_events").update({ event_type: eventType, title: patch.packageKind === "capture" ? `Sugestão de captação: ${row.label}` : `Prazo de criação: ${row.label}` }).eq("id", existingEvent.id));
+  }
   if (patch.editingAssigneeId !== undefined) {
     // Legado sem responsável também passa a herdar. Exceções manuais nunca
     // são sobrescritas, inclusive quando foram deixadas "Sem responsável".
@@ -1205,20 +1214,22 @@ export async function createPlanEvent(input: { projectId: string; title: string;
 
 export async function setCaptureSuggestion(captacaoId: string, eventDate?: string): Promise<PlanEvent | undefined> {
   const db = getSupabase();
-  const captacao = unwrap(await db.from("plan_captacoes").select("id, label, plan_id").eq("id", captacaoId).maybeSingle()) as { id: string; label: string; plan_id: string } | null;
+  const captacao = unwrap(await db.from("plan_captacoes").select("id, label, plan_id, package_kind").eq("id", captacaoId).maybeSingle()) as { id: string; label: string; plan_id: string; package_kind: "capture" | "creation" } | null;
   if (!captacao) return undefined;
   const plan = unwrap(await db.from("plans").select("project_id").eq("id", captacao.plan_id).single()) as { project_id: string };
-  const eventType = `captacao:${captacao.id}`;
-  const existing = unwrap(await db.from("plan_events").select("*").eq("project_id", plan.project_id).eq("event_type", eventType).maybeSingle()) as PlanEventRow | null;
+  const eventType = `${captacao.package_kind === "capture" ? "captacao" : "producao"}:${captacao.id}`;
+  const alternateEventType = `${captacao.package_kind === "capture" ? "producao" : "captacao"}:${captacao.id}`;
+  const existingRows = unwrap(await db.from("plan_events").select("*").eq("project_id", plan.project_id).in("event_type", [eventType, alternateEventType])) as PlanEventRow[];
+  const existing = existingRows[0] || null;
   if (!eventDate) {
     if (existing) unwrap(await db.from("plan_events").delete().eq("id", existing.id));
     return undefined;
   }
   if (existing) {
-    const row = unwrap(await db.from("plan_events").update({ title: `Sugestão: ${captacao.label}`, event_date: eventDate }).eq("id", existing.id).select().single());
+    const row = unwrap(await db.from("plan_events").update({ title: captacao.package_kind === "capture" ? `Sugestão de captação: ${captacao.label}` : `Prazo de criação: ${captacao.label}`, event_type: eventType, event_date: eventDate }).eq("id", existing.id).select().single());
     return mapPlanEvent(row as PlanEventRow);
   }
-  return createPlanEvent({ projectId: plan.project_id, title: `Sugestão: ${captacao.label}`, eventType, eventDate });
+  return createPlanEvent({ projectId: plan.project_id, title: captacao.package_kind === "capture" ? `Sugestão de captação: ${captacao.label}` : `Prazo de criação: ${captacao.label}`, eventType, eventDate });
 }
 
 // ---------- Base de conhecimento ----------

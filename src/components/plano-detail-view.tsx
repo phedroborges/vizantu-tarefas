@@ -59,6 +59,7 @@ export function PlanoDetailView({
   const [suggestions, setSuggestions] = useState(captureSuggestions);
   const [tasks, setTasks] = useState(initialTasks);
   const [newCaptacaoLabel, setNewCaptacaoLabel] = useState("");
+  const [newPackageKind, setNewPackageKind] = useState<PlanCaptacao["packageKind"]>("creation");
   const [newItemName, setNewItemName] = useState("");
   const [newItemFormatId, setNewItemFormatId] = useState(formatTags[0]?.id || "");
   const [editingTask, setEditingTask] = useState<Task | null | undefined>(undefined);
@@ -115,10 +116,10 @@ export function PlanoDetailView({
     const response = await fetch("/api/plan-captacoes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ planId: plan.id, label: newCaptacaoLabel, sequenceOrder: captacoes.length }),
+      body: JSON.stringify({ planId: plan.id, label: newCaptacaoLabel, packageKind: newPackageKind, sequenceOrder: captacoes.length }),
     });
     const result = await response.json();
-    if (!response.ok) return showToast(result.error || "Não foi possível criar a captação.");
+    if (!response.ok) return showToast(result.error || "Não foi possível criar o pacote.");
     setCaptacoes((current) => [...current, result.captacao]);
     setNewCaptacaoLabel("");
   }
@@ -126,9 +127,9 @@ export function PlanoDetailView({
   async function removeCaptacao(captacao: PlanCaptacao) {
     const used = tasks.filter((t) => t.captacaoId === captacao.id).length;
     const message = used
-      ? `Remover "${captacao.label}"? ${used} ${used === 1 ? "item fica" : "itens ficam"} sem captação (nada é excluído).`
+      ? `Remover "${captacao.label}"? ${used} ${used === 1 ? "item fica" : "itens ficam"} sem pacote (nada é excluído).`
       : `Remover "${captacao.label}"?`;
-    if (!(await confirm({ title: "Remover captação", message, confirmLabel: "Remover", danger: true }))) return;
+    if (!(await confirm({ title: "Remover pacote", message, confirmLabel: "Remover", danger: true }))) return;
     const response = await fetch(`/api/plan-captacoes/${captacao.id}`, { method: "DELETE" });
     if (!response.ok) return showToast("Não foi possível remover a captação.");
     setCaptacoes((current) => current.filter((c) => c.id !== captacao.id));
@@ -139,8 +140,18 @@ export function PlanoDetailView({
     const response = await fetch(`/api/plan-captacoes/${captacaoId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ suggestedDate }) });
     const result = await response.json();
     if (!response.ok) return showToast(result.error || "Não foi possível salvar a sugestão.");
-    setSuggestions((current) => [...current.filter((event) => event.eventType !== `captacao:${captacaoId}`), ...(result.event ? [result.event] : [])]);
-    showToast(suggestedDate ? "Sugestão de captação salva." : "Sugestão removida.");
+    setSuggestions((current) => [...current.filter((event) => !event.eventType.endsWith(`:${captacaoId}`)), ...(result.event ? [result.event] : [])]);
+    const packageItem = captacoes.find((item) => item.id === captacaoId);
+    showToast(suggestedDate ? (packageItem?.packageKind === "capture" ? "Sugestão de captação salva." : "Prazo de criação salvo.") : "Data removida.");
+  }
+
+  async function setPackageKind(captacaoId: string, packageKind: PlanCaptacao["packageKind"]) {
+    const response = await fetch(`/api/plan-captacoes/${captacaoId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ packageKind }) });
+    const result = await response.json();
+    if (!response.ok || !result.captacao) return showToast(result.error || "Não foi possível alterar o tipo do pacote.");
+    setCaptacoes((current) => current.map((item) => item.id === captacaoId ? result.captacao : item));
+    if (packageKind === "creation") setSuggestions((current) => current.map((event) => event.eventType === `captacao:${captacaoId}` ? { ...event, eventType: `producao:${captacaoId}`, title: `Prazo de criação: ${result.captacao.label}` } : event));
+    showToast(packageKind === "capture" ? "Pacote definido com captação." : "Pacote definido apenas para criação.");
   }
 
   async function setCaptureAssignee(captacaoId: string, field: "recordingAssigneeId" | "editingAssigneeId", memberId: string) {
@@ -269,12 +280,12 @@ export function PlanoDetailView({
                   <SelectValue placeholder="Sem captação" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={NO_CAPTACAO}>Sem captação</SelectItem>
+              <SelectItem value={NO_CAPTACAO}>Sem pacote</SelectItem>
                   {captacoes.map((c) => <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>)}
                 </SelectContent>
               </Select>
             ) : (
-              <span className="plan-item-assignee">{task.captacaoId ? captacaoById.get(task.captacaoId)?.label : "Sem captação"}</span>
+              <span className="plan-item-assignee">{task.captacaoId ? captacaoById.get(task.captacaoId)?.label : "Sem pacote"}</span>
             )
           ) : null}
           <span className={`status ${statusGroup(task.status)}`} onClick={() => setEditingTask(task)}>{statusLabel(task.status)}</span>
@@ -351,8 +362,8 @@ export function PlanoDetailView({
           <section className="panel" style={{ marginBottom: 18 }}>
             <div className="panel-head">
               <div>
-                <h2><Camera size={15} style={{ verticalAlign: -2 }} /> Captações</h2>
-                <p>Sessões de captação do plano — cada item escolhe a sua na lista ao lado.</p>
+                <h2><ClipboardList size={15} style={{ verticalAlign: -2 }} /> Pacotes de produção</h2>
+                <p>Agrupe as entregas e escolha se o pacote exige captação ou segue direto para criação.</p>
               </div>
             </div>
             <div className="plan-captacao-row">
@@ -360,19 +371,21 @@ export function PlanoDetailView({
                 const count = tasks.filter((t) => t.captacaoId === c.id).length;
                 return (
                   <div key={c.id} className="plan-captacao-card">
-                    <div className="plan-captacao-card-head"><strong>{c.label}</strong><em>{count} conteúdos</em>{canEdit ? <button type="button" onClick={() => removeCaptacao(c)} aria-label={`Remover ${c.label}`}><Trash2 size={13} /></button> : null}</div>
-                    <div className="plan-captacao-fields">
-                      <label><span>Data sugerida</span>{canEdit ? <input type="date" aria-label={`Data sugerida para ${c.label}`} value={suggestions.find((event) => event.eventType === `captacao:${c.id}`)?.eventDate || ""} onChange={(event) => setSuggestionDate(c.id, event.target.value)} /> : <small>{suggestions.find((event) => event.eventType === `captacao:${c.id}`)?.eventDate || "—"}</small>}</label>
-                      <label><span>Gravação</span>{canEdit ? <Select items={memberLabels} value={c.recordingAssigneeId || NO_MEMBER} onValueChange={(value) => setCaptureAssignee(c.id, "recordingAssigneeId", value ?? NO_MEMBER)}><SelectTrigger className="plan-captacao-member-select"><SelectValue /></SelectTrigger><SelectContent><SelectItem value={NO_MEMBER}>Sem responsável</SelectItem>{members.filter((member) => member.active).map((member) => <SelectItem key={member.id} value={member.id}>{member.name}</SelectItem>)}</SelectContent></Select> : <small>{memberLabels[c.recordingAssigneeId || NO_MEMBER]}</small>}</label>
-                      <label><span>Edição</span>{canEdit ? <Select items={memberLabels} value={c.editingAssigneeId || NO_MEMBER} onValueChange={(value) => setCaptureAssignee(c.id, "editingAssigneeId", value ?? NO_MEMBER)}><SelectTrigger className="plan-captacao-member-select"><SelectValue /></SelectTrigger><SelectContent><SelectItem value={NO_MEMBER}>Sem responsável</SelectItem>{members.filter((member) => member.active).map((member) => <SelectItem key={member.id} value={member.id}>{member.name}</SelectItem>)}</SelectContent></Select> : <small>{memberLabels[c.editingAssigneeId || NO_MEMBER]}</small>}</label>
+                    <div className="plan-captacao-card-head"><strong>{c.label}</strong><span className={`plan-package-kind ${c.packageKind}`}>{c.packageKind === "capture" ? <><Camera size={12} /> Com captação</> : <><Palette size={12} /> Criação</>}</span><em>{count} conteúdos</em>{canEdit ? <button type="button" onClick={() => removeCaptacao(c)} aria-label={`Remover ${c.label}`}><Trash2 size={13} /></button> : null}</div>
+                    {canEdit ? <div className="plan-package-kind-switch"><button type="button" className={c.packageKind === "creation" ? "is-active" : ""} onClick={() => setPackageKind(c.id, "creation")}><Palette size={13} /> Pacote de criação</button><button type="button" className={c.packageKind === "capture" ? "is-active" : ""} onClick={() => setPackageKind(c.id, "capture")}><Camera size={13} /> Exige captação</button></div> : null}
+                    <div className={`plan-captacao-fields ${c.packageKind === "creation" ? "is-creation" : ""}`}>
+                      <label><span>{c.packageKind === "capture" ? "Data sugerida" : "Prazo sugerido"}</span>{canEdit ? <input type="date" aria-label={`Data sugerida para ${c.label}`} value={suggestions.find((event) => event.eventType.endsWith(`:${c.id}`))?.eventDate || ""} onChange={(event) => setSuggestionDate(c.id, event.target.value)} /> : <small>{suggestions.find((event) => event.eventType.endsWith(`:${c.id}`))?.eventDate || "—"}</small>}</label>
+                      {c.packageKind === "capture" ? <label><span>Gravação</span>{canEdit ? <Select items={memberLabels} value={c.recordingAssigneeId || NO_MEMBER} onValueChange={(value) => setCaptureAssignee(c.id, "recordingAssigneeId", value ?? NO_MEMBER)}><SelectTrigger className="plan-captacao-member-select"><SelectValue /></SelectTrigger><SelectContent><SelectItem value={NO_MEMBER}>Sem responsável</SelectItem>{members.filter((member) => member.active).map((member) => <SelectItem key={member.id} value={member.id}>{member.name}</SelectItem>)}</SelectContent></Select> : <small>{memberLabels[c.recordingAssigneeId || NO_MEMBER]}</small>}</label> : null}
+                      <label><span>{c.packageKind === "capture" ? "Edição" : "Criação"}</span>{canEdit ? <Select items={memberLabels} value={c.editingAssigneeId || NO_MEMBER} onValueChange={(value) => setCaptureAssignee(c.id, "editingAssigneeId", value ?? NO_MEMBER)}><SelectTrigger className="plan-captacao-member-select"><SelectValue /></SelectTrigger><SelectContent><SelectItem value={NO_MEMBER}>Sem responsável</SelectItem>{members.filter((member) => member.active).map((member) => <SelectItem key={member.id} value={member.id}>{member.name}</SelectItem>)}</SelectContent></Select> : <small>{memberLabels[c.editingAssigneeId || NO_MEMBER]}</small>}</label>
                     </div>
                   </div>
                 );
               })}
-              {!captacoes.length ? <span className="plan-item-empty">Nenhuma captação ainda.</span> : null}
+              {!captacoes.length ? <span className="plan-item-empty">Nenhum pacote ainda.</span> : null}
               {canEdit ? (
                 <form onSubmit={addCaptacao} className="plan-captacao-form">
-                  <input value={newCaptacaoLabel} onChange={(e) => setNewCaptacaoLabel(e.target.value)} placeholder="Ex.: 1ª Captação" style={{ width: 160 }} />
+                  <input value={newCaptacaoLabel} onChange={(e) => setNewCaptacaoLabel(e.target.value)} placeholder="Ex.: Carrosséis — Pacote 1" />
+                  <select aria-label="Tipo do novo pacote" value={newPackageKind} onChange={(event) => setNewPackageKind(event.target.value as PlanCaptacao["packageKind"])}><option value="creation">Pacote de criação</option><option value="capture">Exige captação</option></select>
                   <button className="secondary-button" type="submit"><Plus size={13} /></button>
                 </form>
               ) : null}

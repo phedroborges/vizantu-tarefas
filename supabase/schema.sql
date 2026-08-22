@@ -172,6 +172,8 @@ alter table plan_captacoes enable row level security;
 -- Responsáveis da sessão: quem grava e quem edita. O editor é herdado pelos
 -- conteúdos da captação, salvo quando o conteúdo recebe uma exceção manual.
 alter table plan_captacoes
+  add column if not exists package_kind text not null default 'creation'
+    check (package_kind in ('capture', 'creation')),
   add column if not exists recording_assignee_id uuid references members(id) on delete set null,
   add column if not exists editing_assignee_id uuid references members(id) on delete set null;
 

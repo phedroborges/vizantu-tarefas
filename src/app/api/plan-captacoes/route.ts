@@ -12,6 +12,7 @@ export async function POST(request: NextRequest) {
   if (!body?.label || typeof body.label !== "string" || !body.label.trim()) {
     return NextResponse.json({ error: "Informe o nome da captação." }, { status: 400 });
   }
-  const captacao = await createPlanCaptacao({ planId: body.planId, label: body.label, sequenceOrder: body.sequenceOrder, recordingAssigneeId: body.recordingAssigneeId, editingAssigneeId: body.editingAssigneeId });
+  if (body.packageKind !== "capture" && body.packageKind !== "creation") return NextResponse.json({ error: "Escolha o tipo do pacote." }, { status: 400 });
+  const captacao = await createPlanCaptacao({ planId: body.planId, label: body.label, packageKind: body.packageKind, sequenceOrder: body.sequenceOrder, recordingAssigneeId: body.recordingAssigneeId, editingAssigneeId: body.editingAssigneeId });
   return NextResponse.json({ captacao }, { status: 201 });
 }

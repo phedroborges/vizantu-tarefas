@@ -9,9 +9,10 @@ test.describe("criação de Plano", () => {
     expect(plan.plan.kind).toBe("content");
 
     const captacao = await (
-      await page.request.post("/api/plan-captacoes", { data: { planId: plan.plan.id, label: "1ª Captação", sequenceOrder: 0 } })
+      await page.request.post("/api/plan-captacoes", { data: { planId: plan.plan.id, label: "1ª Captação", packageKind: "capture", sequenceOrder: 0 } })
     ).json();
     expect(captacao.captacao.label).toBe("1ª Captação");
+    expect(captacao.captacao.packageKind).toBe("capture");
 
     const item = await (
       await page.request.post("/api/tasks", { data: { projectId, planId: plan.plan.id, captacaoId: captacao.captacao.id, name: "Vídeo #1" } })

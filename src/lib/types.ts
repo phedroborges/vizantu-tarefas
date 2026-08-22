@@ -212,6 +212,7 @@ export type PlanCaptacao = {
   planId: string;
   label: string;
   sequenceOrder: number;
+  packageKind: "capture" | "creation";
   recordingAssigneeId?: string;
   editingAssigneeId?: string;
   createdAt: string;

@@ -41,7 +41,7 @@ export default async function PlanoDetailPage({ params }: { params: Promise<{ id
         initialTasks={tasks}
         initialApprovals={approvals}
         approvalResponses={approvalResponses}
-        captureSuggestions={planEvents.filter((event) => event.eventType.startsWith("captacao:"))}
+        captureSuggestions={planEvents.filter((event) => event.eventType.startsWith("captacao:") || event.eventType.startsWith("producao:"))}
         members={members}
         formatTags={formatTags}
         channelTags={channelTags}
