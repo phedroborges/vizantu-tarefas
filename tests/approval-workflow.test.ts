@@ -33,7 +33,8 @@ describe("fluxo de aprovação em duas etapas", () => {
   });
 
   it("mantém texto e criativo coerentes com o status interno", () => {
-    expect(taskStatusAfterClientDecision("copy", "approved")).toBe("texto_aprovado");
+    expect(taskStatusAfterClientDecision("copy", "approved", false)).toBe("pronto_para_criacao");
+    expect(taskStatusAfterClientDecision("copy", "approved", true)).toBe("aguardando_captacao");
     expect(taskStatusAfterClientDecision("copy", "changes_requested")).toBe("ajuste");
     expect(taskStatusAfterClientDecision("copy", "rejected")).toBe("problema");
     expect(taskStatusAfterClientDecision("creative", "approved")).toBe("aprovado");

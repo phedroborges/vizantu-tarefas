@@ -32,7 +32,7 @@ test("fluxo completo: texto, produção, criativo e nova rodada", async ({ page 
   for (const taskId of taskIds) {
     const approval = await page.request.post("/api/c/approve", { data: { taskId, reviewerName: "Cliente E2E", status: "approved" } });
     expect(approval.ok()).toBeTruthy();
-    expect((await approval.json()).taskStatus).toBe("texto_aprovado");
+    expect((await approval.json()).taskStatus).toBe("pronto_para_criacao");
   }
 
   const repeatedDecision = await page.request.post("/api/c/approve", { data: { taskId: taskIds[0], reviewerName: "Cliente E2E", status: "rejected", comment: "troca indevida" } });

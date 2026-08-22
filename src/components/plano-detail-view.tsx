@@ -337,7 +337,7 @@ export function PlanoDetailView({
             <button type="button" className="secondary-button" onClick={() => openApprovalRound("copy")}><Send size={14} /> Enviar textos pendentes</button>
             <button type="button" className="primary-button" disabled={creativeBlockers.length > 0} title={creativeBlockers.length ? "Resolva os requisitos indicados acima." : undefined} onClick={() => openApprovalRound("creative")}><Palette size={14} /> Enviar criativos para aprovação</button>
           </div> : null}
-          <p className="plan-workflow-hint">Textos aprovados ficam em <strong>Texto aprovado</strong>. Você decide quando movê-los para captação/criação. Para enviar os criativos, todos os conteúdos do plano precisam ter texto aprovado e link do material.</p>
+          <p className="plan-workflow-hint">Após a aprovação do texto, conteúdos com captação ficam em <strong>Aguardando captação</strong>; os demais seguem para <strong>Pronto para criação</strong>. Para enviar os criativos, todos os conteúdos do plano precisam ter texto aprovado e link do material.</p>
         </section> : null}
 
         <section className="approval-summary" aria-label="Resumo da aprovação do cliente">

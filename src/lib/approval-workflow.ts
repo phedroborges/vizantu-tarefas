@@ -14,10 +14,13 @@ export function isReviewDecision(status: PlanApprovalStatus): boolean {
   return status !== "pending";
 }
 
-export function taskStatusAfterClientDecision(stage: ApprovalStage, status: PlanApprovalStatus): TaskStatus {
+export function taskStatusAfterClientDecision(stage: ApprovalStage, status: PlanApprovalStatus, needsCapture = false): TaskStatus {
   if (status === "rejected") return "problema";
   if (status === "changes_requested") return "ajuste";
-  if (status === "approved") return stage === "creative" ? "aprovado" : "texto_aprovado";
+  if (status === "approved") {
+    if (stage === "creative") return "aprovado";
+    return needsCapture ? "aguardando_captacao" : "pronto_para_criacao";
+  }
   return stage === "creative" ? "para_aprovacao" : "aprovacao_copy";
 }
 

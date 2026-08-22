@@ -1069,7 +1069,7 @@ export async function submitPlanApprovalResponse(input: {
   );
 
   const isCreativeStage = reviewVersion >= 100;
-  const nextTaskStatus = taskStatusAfterClientDecision(isCreativeStage ? "creative" : "copy", aggregated);
+  const nextTaskStatus = taskStatusAfterClientDecision(isCreativeStage ? "creative" : "copy", aggregated, Boolean(task.captacaoId));
   await updateTask(task.id, { status: nextTaskStatus });
   if (input.comment?.trim() && (input.status === "changes_requested" || input.status === "rejected")) {
     const stage = isCreativeStage ? "criação" : "texto";
