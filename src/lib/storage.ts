@@ -1,5 +1,5 @@
 import { isOverdue } from "./dates";
-import { nextApprovalReviewVersion, taskStatusAfterClientDecision } from "./approval-workflow";
+import { formatRequiresCapture, nextApprovalReviewVersion, taskStatusAfterClientDecision } from "./approval-workflow";
 import { inheritsCaptureEditor } from "./assignee-inheritance";
 import { getSupabase } from "./supabase-client";
 import { DEFAULT_STATUS_COLORS, TASK_STATUSES } from "./types";
@@ -1069,7 +1069,14 @@ export async function submitPlanApprovalResponse(input: {
   );
 
   const isCreativeStage = reviewVersion >= 100;
-  const nextTaskStatus = taskStatusAfterClientDecision(isCreativeStage ? "creative" : "copy", aggregated, Boolean(task.captacaoId));
+  const formatRows = task.formatTagIds.length
+    ? unwrap(await db.from("tags").select("label").eq("kind", "formato").in("id", task.formatTagIds)) as { label: string }[]
+    : [];
+  const nextTaskStatus = taskStatusAfterClientDecision(
+    isCreativeStage ? "creative" : "copy",
+    aggregated,
+    formatRequiresCapture(formatRows.map((format) => format.label)),
+  );
   await updateTask(task.id, { status: nextTaskStatus });
   if (input.comment?.trim() && (input.status === "changes_requested" || input.status === "rejected")) {
     const stage = isCreativeStage ? "criação" : "texto";

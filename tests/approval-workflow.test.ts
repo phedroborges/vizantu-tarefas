@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { approvalRound, approvalStage, nextApprovalReviewVersion, summarizeApprovalRound, taskStatusAfterClientDecision } from "../src/lib/approval-workflow";
+import { approvalRound, approvalStage, formatRequiresCapture, nextApprovalReviewVersion, summarizeApprovalRound, taskStatusAfterClientDecision } from "../src/lib/approval-workflow";
 
 describe("fluxo de aprovação em duas etapas", () => {
   it("separa versões de texto e criativo em rodadas legíveis", () => {
@@ -40,6 +40,14 @@ describe("fluxo de aprovação em duas etapas", () => {
     expect(taskStatusAfterClientDecision("creative", "approved")).toBe("aprovado");
     expect(taskStatusAfterClientDecision("creative", "changes_requested")).toBe("ajuste");
     expect(taskStatusAfterClientDecision("creative", "rejected")).toBe("problema");
+  });
+
+  it("manda somente formatos de vídeo para captação", () => {
+    expect(formatRequiresCapture(["Vídeo"])).toBe(true);
+    expect(formatRequiresCapture(["Reels"])).toBe(true);
+    expect(formatRequiresCapture(["Carrossel"])).toBe(false);
+    expect(formatRequiresCapture(["Estático", "Impresso"])).toBe(false);
+    expect(formatRequiresCapture(["Stories"])).toBe(false);
   });
 
   it("reabre uma nova rodada de texto após ajuste ou reprovação", () => {

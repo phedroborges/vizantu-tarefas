@@ -14,6 +14,13 @@ export function isReviewDecision(status: PlanApprovalStatus): boolean {
   return status !== "pending";
 }
 
+export function formatRequiresCapture(formatLabels: string[]): boolean {
+  return formatLabels.some((label) => {
+    const normalized = label.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").trim();
+    return /(^|\s)(video|reels?)(\s|$)/.test(normalized);
+  });
+}
+
 export function taskStatusAfterClientDecision(stage: ApprovalStage, status: PlanApprovalStatus, needsCapture = false): TaskStatus {
   if (status === "rejected") return "problema";
   if (status === "changes_requested") return "ajuste";
