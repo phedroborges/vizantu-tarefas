@@ -21,6 +21,27 @@ export function taskStatusAfterClientDecision(stage: ApprovalStage, status: Plan
   return stage === "creative" ? "para_aprovacao" : "aprovacao_copy";
 }
 
+export function nextApprovalReviewVersion(
+  current: Pick<PlanItemApproval, "status" | "reviewVersion"> | undefined,
+  taskStatus: TaskStatus,
+  hasMaterialLink: boolean,
+): number | undefined {
+  if (!current || current.status === "pending") return undefined;
+
+  if (taskStatus === "aprovacao_copy" && current.reviewVersion < 100) {
+    return current.reviewVersion + 1;
+  }
+
+  if (taskStatus !== "para_aprovacao") return undefined;
+
+  if (current.reviewVersion < 100) {
+    if (current.status !== "approved") return current.reviewVersion + 1;
+    return hasMaterialLink ? 100 : undefined;
+  }
+
+  return hasMaterialLink ? current.reviewVersion + 1 : undefined;
+}
+
 export function summarizeApprovalRound(approvals: Pick<PlanItemApproval, "status" | "reviewVersion">[], stage: ApprovalStage) {
   const scoped = approvals.filter((approval) => approvalStage(approval.reviewVersion) === stage);
   const reviewed = scoped.filter((approval) => isReviewDecision(approval.status)).length;

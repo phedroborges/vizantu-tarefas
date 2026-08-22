@@ -1,5 +1,5 @@
 import { isOverdue } from "./dates";
-import { taskStatusAfterClientDecision } from "./approval-workflow";
+import { nextApprovalReviewVersion, taskStatusAfterClientDecision } from "./approval-workflow";
 import { inheritsCaptureEditor } from "./assignee-inheritance";
 import { getSupabase } from "./supabase-client";
 import { DEFAULT_STATUS_COLORS, TASK_STATUSES } from "./types";
@@ -539,11 +539,12 @@ async function reopenApproval(taskId: string, reviewVersion: number) {
 async function syncApprovalRoundFromTask(task: Task) {
   if (!task.planId) return;
   const current = unwrap(await getSupabase().from("plan_item_approvals").select("status, review_version").eq("task_id", task.id).maybeSingle()) as { status: PlanApprovalStatus; review_version: number } | null;
-  if (task.status === "aprovacao_copy" && current && current.review_version < 100 && current.status !== "pending") await reopenApproval(task.id, current.review_version + 1);
-  if (task.status === "para_aprovacao" && task.driveLink) {
-    if (current && current.review_version < 100 && current.status === "approved") await reopenApproval(task.id, 100);
-    if (current && current.review_version >= 100 && current.status !== "pending") await reopenApproval(task.id, current.review_version + 1);
-  }
+  const nextVersion = nextApprovalReviewVersion(
+    current ? { status: current.status, reviewVersion: current.review_version } : undefined,
+    task.status,
+    Boolean(task.driveLink),
+  );
+  if (nextVersion !== undefined) await reopenApproval(task.id, nextVersion);
 }
 
 export class ApprovalRoundError extends Error {

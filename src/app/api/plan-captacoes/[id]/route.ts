@@ -8,11 +8,20 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const { id } = await params;
   const body = await request.json();
   if (body?.suggestedDate && !/^\d{4}-\d{2}-\d{2}$/.test(body.suggestedDate)) return NextResponse.json({ error: "Data inválida." }, { status: 400 });
-  const event = body.suggestedDate !== undefined ? await setCaptureSuggestion(id, body.suggestedDate || undefined) : undefined;
-  const captacao = body.recordingAssigneeId !== undefined || body.editingAssigneeId !== undefined
-    ? await updatePlanCaptacao(id, { recordingAssigneeId: body.recordingAssigneeId, editingAssigneeId: body.editingAssigneeId })
-    : undefined;
-  return NextResponse.json({ event: event || null, captacao: captacao || null });
+  try {
+    const event = body.suggestedDate !== undefined ? await setCaptureSuggestion(id, body.suggestedDate || undefined) : undefined;
+    const captacao = body.recordingAssigneeId !== undefined || body.editingAssigneeId !== undefined
+      ? await updatePlanCaptacao(id, { recordingAssigneeId: body.recordingAssigneeId, editingAssigneeId: body.editingAssigneeId })
+      : undefined;
+    return NextResponse.json({ event: event || null, captacao: captacao || null });
+  } catch (error) {
+    console.error("[/api/plan-captacoes/:id] falha ao atualizar captação:", error);
+    const missingMigration = error instanceof Error && /recording_assignee_id|editing_assignee_id|assignee_source/.test(error.message);
+    return NextResponse.json(
+      { error: missingMigration ? "A atualização do banco para responsáveis de captação ainda não foi aplicada." : "Não foi possível atualizar a captação." },
+      { status: 500 },
+    );
+  }
 }
 
 export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {

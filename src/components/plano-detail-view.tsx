@@ -63,6 +63,7 @@ export function PlanoDetailView({
   const [newItemFormatId, setNewItemFormatId] = useState(formatTags[0]?.id || "");
   const [editingTask, setEditingTask] = useState<Task | null | undefined>(undefined);
   const [toast, setToast] = useState("");
+  const [workflowError, setWorkflowError] = useState("");
   const { confirm, ConfirmDialog } = useConfirm();
 
   const isContent = plan.kind === "content";
@@ -90,6 +91,18 @@ export function PlanoDetailView({
   const activeSummary = summarizeApprovalRound(activeStage === "creative" ? creativeApprovals : copyApprovals, activeStage);
   const copySummary = summarizeApprovalRound(copyApprovals, "copy");
   const creativeSummary = hasCreativeRound ? summarizeApprovalRound(creativeApprovals, "creative") : null;
+  const creativeBlockers = tasks.flatMap((task) => {
+    const approval = approvalByTask.get(task.id);
+    const blockers: string[] = [];
+    if (!approval || (approval.reviewVersion < 100 && approval.status !== "approved")) blockers.push(`${task.name}: texto ainda não aprovado`);
+    if (!task.driveLink?.trim()) blockers.push(`${task.name}: link do material não informado`);
+    return blockers;
+  });
+  const approvedTextCount = tasks.filter((task) => {
+    const approval = approvalByTask.get(task.id);
+    return Boolean(approval && (approval.reviewVersion >= 100 || approval.status === "approved"));
+  }).length;
+  const linkedMaterialCount = tasks.filter((task) => task.driveLink?.trim()).length;
 
   function showToast(message: string) {
     setToast(message);
@@ -133,9 +146,12 @@ export function PlanoDetailView({
   async function setCaptureAssignee(captacaoId: string, field: "recordingAssigneeId" | "editingAssigneeId", memberId: string) {
     const value = memberId === NO_MEMBER ? null : memberId;
     const response = await fetch(`/api/plan-captacoes/${captacaoId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ [field]: value }) });
-    const result = await response.json();
+    const raw = await response.text();
+    let result: { error?: string; captacao?: PlanCaptacao } = {};
+    try { result = raw ? JSON.parse(raw) : {}; } catch { result = {}; }
     if (!response.ok || !result.captacao) return showToast(result.error || "Não foi possível atualizar o responsável.");
-    setCaptacoes((current) => current.map((capture) => capture.id === captacaoId ? result.captacao : capture));
+    const updatedCapture = result.captacao;
+    setCaptacoes((current) => current.map((capture) => capture.id === captacaoId ? updatedCapture : capture));
     if (field === "editingAssigneeId") {
       setTasks((current) => current.map((task) => task.captacaoId === captacaoId && inheritsCaptureEditor(task.assigneeId, task.assigneeSource) ? { ...task, assigneeId: value || undefined, assigneeSource: "captacao" } : task));
       showToast("Editor atualizado e aplicado aos conteúdos herdados.");
@@ -163,6 +179,7 @@ export function PlanoDetailView({
   }
 
   async function openApprovalRound(stage: "copy" | "creative") {
+    setWorkflowError("");
     const response = await fetch(`/api/plans/${plan.id}/approval-round`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -171,7 +188,9 @@ export function PlanoDetailView({
     const result = await response.json();
     if (!response.ok) {
       const details = Array.isArray(result.blockers) && result.blockers.length ? ` ${result.blockers.slice(0, 3).join(" · ")}${result.blockers.length > 3 ? "…" : ""}` : "";
-      return showToast(`${result.error || "Não foi possível abrir a aprovação."}${details}`);
+      const message = `${result.error || "Não foi possível abrir a aprovação."}${details}`;
+      setWorkflowError(message);
+      return showToast(message);
     }
     showToast(stage === "copy" ? `${result.opened} texto(s) enviado(s) para aprovação.` : `${result.opened} criativo(s) enviado(s) para aprovação.`);
     window.setTimeout(() => window.location.reload(), 650);
@@ -307,9 +326,16 @@ export function PlanoDetailView({
             <div className={copySummary.fullyReviewed ? "is-complete" : "is-current"}><FileCheck2 size={18} /><span><strong>1. Textos</strong><small>{copySummary.reviewed}/{copySummary.total} revisados · {copySummary.approved} aprovados</small></span></div>
             <div className={creativeSummary?.fullyReviewed ? "is-complete" : hasCreativeRound ? "is-current" : "is-locked"}><Palette size={18} /><span><strong>2. Criativos</strong><small>{creativeSummary ? `${creativeSummary.reviewed}/${creativeSummary.total} revisados · ${creativeSummary.approved} aprovados` : "Aguardando textos, criação e links"}</small></span></div>
           </div>
+          <div className="plan-creative-readiness">
+            <strong>Requisitos para enviar os criativos</strong>
+            <span className={approvedTextCount === tasks.length ? "is-ready" : ""}><CheckCircle2 size={13} /> Textos aprovados: {approvedTextCount}/{tasks.length}</span>
+            <span className={linkedMaterialCount === tasks.length ? "is-ready" : ""}><CheckCircle2 size={13} /> Links adicionados: {linkedMaterialCount}/{tasks.length}</span>
+            {creativeBlockers.length ? <ul>{creativeBlockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul> : <small>Plano pronto para ser enviado à aprovação de criativos.</small>}
+          </div>
+          {workflowError ? <div className="form-message" role="alert">{workflowError}</div> : null}
           {canEdit ? <div className="plan-workflow-actions">
             <button type="button" className="secondary-button" onClick={() => openApprovalRound("copy")}><Send size={14} /> Enviar textos pendentes</button>
-            <button type="button" className="primary-button" onClick={() => openApprovalRound("creative")}><Palette size={14} /> Enviar criativos para aprovação</button>
+            <button type="button" className="primary-button" disabled={creativeBlockers.length > 0} title={creativeBlockers.length ? "Resolva os requisitos indicados acima." : undefined} onClick={() => openApprovalRound("creative")}><Palette size={14} /> Enviar criativos para aprovação</button>
           </div> : null}
           <p className="plan-workflow-hint">Textos aprovados ficam em <strong>Texto aprovado</strong>. Você decide quando movê-los para captação/criação. Para enviar os criativos, todos os conteúdos do plano precisam ter texto aprovado e link do material.</p>
         </section> : null}

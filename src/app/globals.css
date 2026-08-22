@@ -676,6 +676,13 @@ a.upcoming-item { color: inherit; text-decoration: none; }
 .plan-workflow-steps small { overflow: hidden; text-overflow: ellipsis; color: inherit; font-size: 9px; white-space: nowrap; }
 .plan-workflow-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .plan-workflow-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+.plan-creative-readiness { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 12px; background: #fff; border: 1px solid #d9c8ff; }
+.plan-creative-readiness > strong { flex-basis: 100%; font-size: 11px; }
+.plan-creative-readiness > span { display: inline-flex; align-items: center; gap: 5px; color: #9a5d00; font-size: 10px; font-weight: 700; }
+.plan-creative-readiness > span.is-ready { color: #47751b; }
+.plan-creative-readiness ul { flex-basis: 100%; display: grid; gap: 4px; margin: 2px 0 0; padding-left: 18px; color: #9a3932; font-size: 10px; }
+.plan-creative-readiness small { flex-basis: 100%; color: #47751b; font-size: 10px; }
+.plan-workflow-actions button:disabled { opacity: .45; cursor: not-allowed; }
 @media (max-width: 620px) { .plan-workflow-head { flex-direction: column; } .plan-workflow-steps { grid-template-columns: 1fr; } .plan-workflow-actions { display: grid; } }
 
 .plan-captacao-row { padding: 16px 25px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
