@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isResponse, requireUser } from "@/lib/authz";
-import { createPlan, listPlans } from "@/lib/storage";
+import { createBrandWorkflow, createPlan, listPlans } from "@/lib/storage";
 import { PLAN_KINDS } from "@/lib/types";
 
 export async function GET(request: NextRequest) {
@@ -24,6 +24,10 @@ export async function POST(request: NextRequest) {
   }
   if (!PLAN_KINDS.some((k) => k.value === body.kind)) {
     return NextResponse.json({ error: "Selecione o tipo do plano." }, { status: 400 });
+  }
+  if (body.kind === "brand") {
+    const result = await createBrandWorkflow({ projectId: body.projectId, title: body.title, createdBy: auth.id });
+    return NextResponse.json(result, { status: 201 });
   }
   const plan = await createPlan({
     projectId: body.projectId,

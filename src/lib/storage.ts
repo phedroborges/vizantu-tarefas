@@ -2,7 +2,7 @@ import { isOverdue } from "./dates";
 import { formatRequiresCapture, nextApprovalReviewVersion, taskStatusAfterClientDecision } from "./approval-workflow";
 import { inheritsCaptureEditor } from "./assignee-inheritance";
 import { getSupabase } from "./supabase-client";
-import { DEFAULT_STATUS_COLORS, TASK_STATUSES } from "./types";
+import { BRAND_STAGES, DEFAULT_STATUS_COLORS, TASK_STATUSES } from "./types";
 import type {
   Announcement,
   AnnouncementScope,
@@ -704,6 +704,21 @@ export async function createPlan(input: {
       .single(),
   );
   return mapPlan(row as PlanRow);
+}
+
+export async function createBrandWorkflow(input: { projectId: string; title: string; createdBy?: string }): Promise<{ plan: Plan; tasks: Task[] }> {
+  const plan = await createPlan({ projectId: input.projectId, title: input.title, kind: "brand", createdBy: input.createdBy });
+  try {
+    const tasks: Task[] = [];
+    for (const [sequenceOrder, name] of BRAND_STAGES.entries()) {
+      tasks.push(await createTask({ projectId: input.projectId, planId: plan.id, name, sequenceOrder }));
+    }
+    const activePlan = await updatePlan(plan.id, { status: "active" });
+    return { plan: activePlan || plan, tasks };
+  } catch (error) {
+    await deletePlan(plan.id);
+    throw error;
+  }
 }
 
 export async function updatePlan(

@@ -13,6 +13,7 @@ export default async function PlanoDetailPage({ params }: { params: Promise<{ id
 
   const plan = await getPlan(id);
   if (!plan) notFound();
+  if (plan.kind === "brand") redirect(`/marcas/${plan.id}`);
   if (user.accessibleProjectIds !== "all" && !user.accessibleProjectIds.includes(plan.projectId)) notFound();
 
   const [project, captacoes, tasks, members, formatTags, channelTags, categoryTags, statusColors] = await Promise.all([

@@ -86,6 +86,7 @@ export function TaskModal({
   statusColors,
   defaultProjectId,
   canEdit = true,
+  allowDeleteAndDuplicate = true,
   currentUserId,
   onClose,
   onSaved,
@@ -102,6 +103,7 @@ export function TaskModal({
   statusColors: StatusColor[];
   defaultProjectId: string;
   canEdit?: boolean;
+  allowDeleteAndDuplicate?: boolean;
   currentUserId: string;
   onClose: () => void;
   onSaved: (task: Task) => void;
@@ -589,7 +591,7 @@ export function TaskModal({
           ) : null}
         </div>
         <footer className="modal-actions">
-          {isEditing && canEdit ? (
+          {isEditing && canEdit && allowDeleteAndDuplicate ? (
             <div style={{ display: "flex", gap: 8 }}>
               <button type="button" className="danger-button" onClick={remove}><Trash2 size={13} /> Excluir</button>
               <button type="button" className="secondary-button" onClick={duplicate} disabled={isDuplicating}>

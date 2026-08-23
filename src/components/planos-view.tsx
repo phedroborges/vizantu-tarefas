@@ -107,7 +107,7 @@ export function PlanosView({
                 <div className="field">
                   <label htmlFor="plan-kind">Tipo</label>
                   <select id="plan-kind" value={kind} onChange={(e) => setKind(e.target.value as PlanKind)}>
-                    {PLAN_KINDS.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}
+                    {PLAN_KINDS.filter((item) => item.value !== "brand").map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}
                   </select>
                 </div>
                 <button className="primary-button" type="submit" disabled={isSaving} style={{ width: "100%" }}>{isSaving ? "Criando..." : "Criar plano"}</button>

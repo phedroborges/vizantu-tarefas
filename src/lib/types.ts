@@ -182,14 +182,25 @@ export type Task = {
 // Tasks com plan_id, sem os campos de conteúdo. "presentation" nunca gera
 // Tasks — continua servido pelo pipeline de blob do vizantu-planos.
 
-export type PlanKind = "content" | "process" | "presentation";
+export type PlanKind = "content" | "process" | "presentation" | "brand";
 export type PlanStatus = "draft" | "active" | "completed" | "archived";
 
 export const PLAN_KINDS: { value: PlanKind; label: string }[] = [
   { value: "content", label: "Conteúdo (vídeos, posts, carrosséis)" },
   { value: "process", label: "Processo (passos ordenados)" },
   { value: "presentation", label: "Apresentação (HTML livre)" },
+  { value: "brand", label: "Marca (fluxo de entregáveis)" },
 ];
+
+export const BRAND_STAGES = [
+  "Briefing",
+  "Entrevistas",
+  "Diagnóstico de marca",
+  "Plataforma de marca",
+  "Identidade visual",
+  "Manual de marca",
+  "Apresentação",
+] as const;
 
 export type Plan = {
   id: string;

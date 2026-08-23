@@ -12,7 +12,8 @@ export default async function PlanosPage() {
 
   const [plans, projects] = await Promise.all([listPlans(), listProjects()]);
   const visibleProjects = user.accessibleProjectIds === "all" ? projects : projects.filter((p) => user.accessibleProjectIds.includes(p.id));
-  const visiblePlans = user.accessibleProjectIds === "all" ? plans : plans.filter((p) => user.accessibleProjectIds.includes(p.projectId));
+  const nonBrandPlans = plans.filter((plan) => plan.kind !== "brand");
+  const visiblePlans = user.accessibleProjectIds === "all" ? nonBrandPlans : nonBrandPlans.filter((p) => user.accessibleProjectIds.includes(p.projectId));
 
   return (
     <AdminShell active="planos" user={user}>

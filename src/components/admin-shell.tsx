@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, BookOpen, CheckSquare, ClipboardList, Folders, LogOut, Menu, Sparkles, Users, X } from "lucide-react";
+import { BarChart3, BookOpen, CheckSquare, ClipboardList, Folders, LogOut, Menu, Palette, Sparkles, Users, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -12,13 +12,14 @@ import type { CurrentUser } from "@/lib/current-user";
 import { PageContextProvider } from "@/lib/page-context";
 import { createClient } from "@/lib/supabase/browser-client";
 
-export type AdminShellActive = "dashboard" | "projetos" | "tarefas" | "planos" | "membros" | "conhecimento" | "assistente";
+export type AdminShellActive = "dashboard" | "projetos" | "tarefas" | "planos" | "marcas" | "membros" | "conhecimento" | "assistente";
 
 const PAGE_LABELS: Record<AdminShellActive, string> = {
   dashboard: "Página atual: Dashboard (visão geral de métricas, prazos e ranking do time).",
   projetos: "Página atual: Projetos.",
   tarefas: "Página atual: Tarefas.",
   planos: "Página atual: Planos (conteúdos e processos organizados por cliente).",
+  marcas: "Página atual: Marcas (fluxos de branding e seus entregáveis).",
   membros: "Página atual: Membros.",
   conhecimento: "Página atual: Base de conhecimento.",
   assistente: "Página atual: Assistente (chat completo).",
@@ -76,6 +77,10 @@ export function AdminShell({
           <Link className={active === "planos" ? "active" : ""} href="/planos" onClick={() => setMenuOpen(false)}>
             <ClipboardList size={18} />
             <span>Planos</span>
+          </Link>
+          <Link className={active === "marcas" ? "active" : ""} href="/marcas" onClick={() => setMenuOpen(false)}>
+            <Palette size={18} />
+            <span>Marcas</span>
           </Link>
           {user.role === "dono" ? (
             <Link className={active === "membros" ? "active" : ""} href="/membros" onClick={() => setMenuOpen(false)}>

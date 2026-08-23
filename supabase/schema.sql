@@ -139,7 +139,7 @@ create table if not exists plans (
   id uuid primary key default gen_random_uuid(),
   project_id uuid not null references projects(id) on delete cascade,
   title text not null,
-  kind text not null check (kind in ('content', 'process', 'presentation')),
+  kind text not null check (kind in ('content', 'process', 'presentation', 'brand')),
   status text not null default 'draft' check (status in ('draft', 'active', 'completed', 'archived')),
   approval_deadline timestamptz,
   approval_period_days int,
