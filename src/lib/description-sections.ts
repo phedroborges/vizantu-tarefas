@@ -7,6 +7,7 @@
 export const DESCRIPTION_SECTIONS = [
   { key: "direcionamento", label: "Direcionamento", placeholder: "O que precisa acontecer nesse conteúdo, o contexto, o que gravar/fazer" },
   { key: "roteiro", label: "Roteiro", placeholder: "Cena, fala, lettering — o roteiro em si" },
+  { key: "legenda", label: "Legenda", placeholder: "Texto complementar da publicação e CTA" },
   { key: "referencia", label: "Referência", placeholder: "Links ou descrição do que serve de referência" },
 ] as const;
 
@@ -17,10 +18,8 @@ const LABEL_TO_KEY = new Map<string, DescriptionSectionKey>(
   DESCRIPTION_SECTIONS.map((s) => [s.label.toLowerCase(), s.key]),
 );
 
-// Aceita variações antigas ("Legenda" existia como campo próprio antes) pra
-// não perder texto de itens criados antes deste formato.
+// Aceita variações antigas sem misturar conteúdos de seções diferentes.
 const ALIASES: Record<string, DescriptionSectionKey> = {
-  legenda: "roteiro",
   ideia: "roteiro",
   referencias: "referencia",
   "referência": "referencia",
@@ -32,7 +31,7 @@ function normalizeHeading(raw: string): DescriptionSectionKey | null {
 }
 
 export function emptySections(): DescriptionSections {
-  return { direcionamento: "", roteiro: "", referencia: "", livre: "" };
+  return { direcionamento: "", roteiro: "", legenda: "", referencia: "", livre: "" };
 }
 
 // Lê o texto salvo e separa nas seções conhecidas. Qualquer coisa escrita
@@ -44,7 +43,7 @@ export function parseDescription(text: string | undefined): DescriptionSections 
 
   const lines = text.split("\n");
   let current: DescriptionSectionKey | "livre" = "livre";
-  const buffers: Record<string, string[]> = { direcionamento: [], roteiro: [], referencia: [], livre: [] };
+  const buffers: Record<string, string[]> = { direcionamento: [], roteiro: [], legenda: [], referencia: [], livre: [] };
 
   for (const line of lines) {
     const heading = /^\s*\*\*(.+?)\*\*\s*$/.exec(line);
