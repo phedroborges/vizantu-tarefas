@@ -173,6 +173,8 @@
 .cd-item-description .markdown-lite-h3 { margin: 18px 0 6px; color: var(--cd-ink); font-size: 14px; }
 .cd-item-description .markdown-lite-h3:first-child { margin-top: 0; }
 .cd-item-description .markdown-lite-line { white-space: pre-wrap; }
+.cd-item-description .markdown-lite-link { color: var(--cd-purple-strong); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
+.cd-item-description .markdown-lite-link:hover { color: var(--cd-purple); }
 .cd-reviewer-field { display: grid; gap: 6px; margin-top: 5px; color: var(--cd-muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .055em; }
 .cd-reviewer-field input, .cd-approval-modal textarea { width: 100%; color: var(--cd-ink); background: #fff; border: 1px solid var(--cd-line); border-radius: 0; font-size: 16px; text-transform: none; letter-spacing: normal; }
 .cd-reviewer-field input { min-height: 46px; padding: 0 12px; }
