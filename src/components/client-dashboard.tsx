@@ -1,9 +1,10 @@
 "use client";
 
-import { ArrowRight, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clapperboard, Clock3, ExternalLink, ImageIcon, Images, MessageCircleMore, Play, Sparkles, X } from "lucide-react";
+import { ArrowRight, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clapperboard, Clock3, Copy, ExternalLink, ImageIcon, Images, MessageCircleMore, Play, Sparkles, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { renderMarkdownLite } from "@/components/markdown-lite";
 import { burst } from "@/lib/confetti";
+import { descriptionHeadingKey, parseDescription } from "@/lib/description-sections";
 import "../app/c/client-dashboard.css";
 
 export type DashboardItem = {
@@ -354,6 +355,68 @@ export function ClientDashboard({
   );
 }
 
+// O roteiro é o que o cliente mais leva pra fora do portal (manda pro
+// produtor, cola no roteirista). Copiar selecionando na tela sempre traz junto
+// o cabeçalho e as seções vizinhas, então aqui o botão copia exatamente o
+// texto da seção Roteiro — nada mais.
+function CopyScriptButton({ script }: { script: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(script);
+    } catch {
+      // Sem clipboard API (contexto não seguro, navegador antigo do cliente)
+      // ainda dá pra copiar pelo caminho velho, com um campo fora da tela.
+      const field = document.createElement("textarea");
+      field.value = script;
+      field.setAttribute("readonly", "");
+      field.style.cssText = "position:fixed;top:-1000px;opacity:0";
+      document.body.appendChild(field);
+      field.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(field);
+      if (!ok) return;
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  }
+
+  return (
+    <button type="button" className={copied ? "cd-copy-script is-copied" : "cd-copy-script"} onClick={copy} title="Copiar o roteiro">
+      {copied ? <Check size={12} /> : <Copy size={12} />}
+      {copied ? "copiado" : "copiar"}
+    </button>
+  );
+}
+
+// Mesma descrição de sempre, só que com o cabeçalho do roteiro virando uma
+// linha com o botão ao lado. Sem seção de roteiro (ou sem texto nela), cai no
+// render normal — nenhum botão órfão aparece.
+export function ItemDescription({ text }: { text: string }) {
+  const script = parseDescription(text).roteiro;
+  const lines = text.split("\n");
+  const headingIndex = lines.findIndex((line) => descriptionHeadingKey(line) === "roteiro");
+  if (!script || headingIndex < 0) return <>{renderMarkdownLite(text)}</>;
+
+  const before = lines.slice(0, headingIndex).join("\n").replace(/\s+$/, "");
+  const after = lines.slice(headingIndex + 1).join("\n").replace(/^\n+/, "");
+  // O cabeçalho vira um bloco próprio (o CSS cuida do respiro em volta): as
+  // quebras de linha aqui seriam nós de texto soltos no container, que não
+  // tem pre-wrap, e colapsariam num espaço — o "Roteiro" grudaria na linha
+  // anterior.
+  return (
+    <>
+      {before ? renderMarkdownLite(before) : null}
+      <span className="cd-script-heading">
+        <strong>Roteiro</strong>
+        <CopyScriptButton script={script} />
+      </span>
+      {after ? renderMarkdownLite(after) : null}
+    </>
+  );
+}
+
 function ApprovalModal({
   item,
   reviewerName,
@@ -395,7 +458,7 @@ function ApprovalModal({
           <span className={creativeStage ? "is-current" : "is-locked"}>2. Criação</span>
         </div>
 
-        {item.description ? <div className="cd-item-description">{renderMarkdownLite(item.description)}</div> : <div className="cd-item-description cd-description-empty">Este conteúdo ainda não tem descrição.</div>}
+        {item.description ? <div className="cd-item-description"><ItemDescription text={item.description} /></div> : <div className="cd-item-description cd-description-empty">Este conteúdo ainda não tem descrição.</div>}
 
         {creativeStage && item.materialLink ? <a className="cd-material-link" href={item.materialLink} target="_blank" rel="noreferrer"><ExternalLink size={16} /><span><strong>Abrir material para revisar</strong><small>Confira o {item.formatLabel || "material"} antes de responder.</small></span></a> : !creativeStage && item.approvalStatus === "approved" ? <div className="cd-material-wait"><Clock3 size={15} /> Texto aprovado. A criação aparecerá quando estiver pronta.</div> : null}
 

@@ -18,6 +18,8 @@ const LABEL_TO_KEY = new Map<string, DescriptionSectionKey>(
   DESCRIPTION_SECTIONS.map((s) => [s.label.toLowerCase(), s.key]),
 );
 
+const HEADING_LINE = /^\s*\*\*(.+?)\*\*\s*$/;
+
 // Aceita variações antigas sem misturar conteúdos de seções diferentes.
 const ALIASES: Record<string, DescriptionSectionKey> = {
   ideia: "roteiro",
@@ -28,6 +30,15 @@ const ALIASES: Record<string, DescriptionSectionKey> = {
 function normalizeHeading(raw: string): DescriptionSectionKey | null {
   const clean = raw.trim().toLowerCase().replace(/:$/, "");
   return LABEL_TO_KEY.get(clean) ?? ALIASES[clean] ?? null;
+}
+
+// Qual seção uma linha do texto salvo abre, se abrir alguma. Fica exportado
+// porque quem renderiza a descrição também precisa achar o cabeçalho de uma
+// seção específica (o do roteiro, pra pendurar o botão de copiar nele) sem
+// remontar essa regra por fora.
+export function descriptionHeadingKey(line: string): DescriptionSectionKey | null {
+  const heading = HEADING_LINE.exec(line);
+  return heading ? normalizeHeading(heading[1]) : null;
 }
 
 export function emptySections(): DescriptionSections {
@@ -46,8 +57,7 @@ export function parseDescription(text: string | undefined): DescriptionSections 
   const buffers: Record<string, string[]> = { direcionamento: [], roteiro: [], legenda: [], referencia: [], livre: [] };
 
   for (const line of lines) {
-    const heading = /^\s*\*\*(.+?)\*\*\s*$/.exec(line);
-    const key = heading ? normalizeHeading(heading[1]) : null;
+    const key = descriptionHeadingKey(line);
     if (key) {
       current = key;
       continue;
