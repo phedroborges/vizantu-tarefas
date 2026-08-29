@@ -25,33 +25,52 @@ describe("tag de status: ícone e contraste", () => {
     expect(readableTextOn("#6d3bd4")).toBe(BRANCO);
   });
 
-  it("4. as três cores padrão do sistema ficam legíveis", () => {
+  it("4. toda cor padrão tem contraste WCAG suficiente", () => {
     for (const [status, color] of Object.entries(DEFAULT_STATUS_COLORS)) {
       const text = readableTextOn(color);
-      expect([PRETO, BRANCO], `${status} -> ${color}`).toContain(text);
-      // Contraste real entre o texto escolhido e o fundo, pela fórmula WCAG.
       expect(contrastRatio(color, text), `${status} (${color}) contraste`).toBeGreaterThanOrEqual(4.5);
     }
   });
 
-  it("5. branco e preto puros recebem o oposto", () => {
+  it("5. TODAS as cores padrão pedem texto branco", () => {
+    // Metade das tags com texto preto e metade com branco lê como bagunça na
+    // tabela, mesmo com cada uma isolada tendo contraste. A escala inteira foi
+    // escolhida escura o bastante pra manter o texto branco em todas.
+    for (const [status, color] of Object.entries(DEFAULT_STATUS_COLORS)) {
+      expect(readableTextOn(color), `${status} (${color})`).toBe(BRANCO);
+    }
+  });
+
+  it("6. cada etapa tem cor própria, nenhuma repetida dentro do grupo", () => {
+    const porGrupo = new Map<string, string[]>();
+    for (const status of TASK_STATUSES) {
+      const lista = porGrupo.get(status.group) || [];
+      lista.push(DEFAULT_STATUS_COLORS[status.value]);
+      porGrupo.set(status.group, lista);
+    }
+    for (const [grupo, cores] of porGrupo) {
+      expect(new Set(cores).size, `grupo ${grupo}`).toBe(cores.length);
+    }
+  });
+
+  it("7. branco e preto puros recebem o oposto", () => {
     expect(readableTextOn("#ffffff")).toBe(PRETO);
     expect(readableTextOn("#000000")).toBe(BRANCO);
   });
 
-  it("6. meio-tom escolhe pelo contraste real, não por corte fixo", () => {
+  it("8. meio-tom escolhe pelo contraste real, não por corte fixo", () => {
     // #aeb5ae tem luminância 0.45: um corte em 0.5 mandaria texto branco
     // (contraste 2.1). O escuro dá 7.8 e é o certo.
     expect(readableTextOn("#aeb5ae")).toBe(PRETO);
     expect(contrastRatio("#aeb5ae", PRETO)).toBeGreaterThan(contrastRatio("#aeb5ae", BRANCO));
   });
 
-  it("7. hex de 3 dígitos também funciona", () => {
+  it("9. hex de 3 dígitos também funciona", () => {
     expect(readableTextOn("#fff")).toBe(PRETO);
     expect(readableTextOn("#000")).toBe(BRANCO);
   });
 
-  it("8. valor inválido não quebra a tabela — cai no texto escuro", () => {
+  it("10. valor inválido não quebra a tabela — cai no texto escuro", () => {
     expect(readableTextOn("roxo")).toBe(PRETO);
     expect(readableTextOn("")).toBe(PRETO);
   });

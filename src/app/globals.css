@@ -226,7 +226,7 @@ a.upcoming-item { color: inherit; text-decoration: none; }
    na cor com contraste contra ela (ver readableTextOn em lib/status-visual).
    Antes a cor só aparecia numa bolinha de 7px enquanto o texto ficava numa cor
    fixa do grupo — três variações para doze etapas, todas parecidas. */
-.status-tag { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; padding: 3px 9px 3px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 700; line-height: 1.5; white-space: nowrap; }
+.status-tag { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; padding: 4px 9px 4px 7px; font-size: 10px; font-weight: 720; letter-spacing: .02em; text-transform: uppercase; line-height: 1.4; white-space: nowrap; }
 .status-tag svg { flex: none; }
 .status-tag > span { overflow: hidden; text-overflow: ellipsis; }
 .status-trigger { padding: 0; border: 0; background: none; }
@@ -274,7 +274,7 @@ a.upcoming-item { color: inherit; text-decoration: none; }
 .toolbar-button:hover { border-color: #aab2aa; color: var(--dark); }
 .toolbar-button.is-active { border-color: var(--brand-strong); background: #f2ecfe; color: #4e2ea8; }
 .toolbar-button.icon-only { padding: 0 10px; }
-.toolbar-count { display: inline-flex; align-items: center; justify-content: center; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: var(--brand-strong); color: #fff; font-size: 9.5px; font-weight: 750; }
+.toolbar-count { display: inline-flex; align-items: center; justify-content: center; min-width: 17px; height: 17px; padding: 0 4px; background: var(--brand-strong); color: #fff; font-size: 9.5px; font-weight: 750; }
 .toolbar-menu { display: grid; gap: 12px; max-height: 70vh; overflow-y: auto; padding: 12px; }
 .toolbar-field { display: grid; gap: 5px; color: var(--muted-text); font-size: 9.5px; font-weight: 720; text-transform: uppercase; letter-spacing: .06em; }
 .toolbar-field select { width: 100%; min-height: 36px; padding: 0 9px; border: 1px solid var(--line); background: #fff; color: var(--dark); font-size: 12px; font-weight: 500; text-transform: none; letter-spacing: normal; }
@@ -970,7 +970,7 @@ a.upcoming-item { color: inherit; text-decoration: none; }
 .due-countdown-main { display: grid; gap: 2px; min-width: 0; flex: 1; }
 .due-countdown-main strong { color: var(--dark); font-size: 12px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .due-countdown-main span { display: flex; align-items: center; gap: 6px; color: var(--muted-text); font-size: 10.5px; }
-.due-countdown-time { flex: none; padding: 4px 9px; border-radius: 999px; font-size: 10.5px; font-weight: 720; white-space: nowrap; }
+.due-countdown-time { flex: none; padding: 4px 9px; font-size: 10.5px; font-weight: 720; white-space: nowrap; }
 .due-countdown-time.calmo { background: #eef2ec; color: #4e574f; }
 .due-countdown-time.perto { background: #fff3cd; color: #7a5200; }
 .due-countdown-time.urgente { background: #ffe8e3; color: #a2331f; }

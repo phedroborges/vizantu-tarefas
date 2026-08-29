@@ -24,7 +24,6 @@ import { useDateFormat } from "@/lib/use-date-format";
 import { formatTaskDate, type DateFormatKey } from "@/lib/date-format";
 import { StatusTag } from "@/components/status-tag";
 import { Avatar, AvatarName } from "@/components/avatar";
-import { DueCountdown } from "@/components/due-countdown";
 import { celebrateFrom } from "@/lib/celebrate";
 import { TaskToolbar } from "@/components/task-toolbar";
 
@@ -472,8 +471,6 @@ export function TarefasView({
         </div>
 
         <section className="panel">
-          <DueCountdown tasks={tasks} projectById={projectById} onOpenTask={setSelectedTask} />
-
           <TaskToolbar
             filters={{ query, projectId: projectFilter, assigneeId: assigneeFilter, status: statusFilter, list: listFilter, showFinalized }}
             onFiltersChange={(next) => {

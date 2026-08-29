@@ -105,17 +105,33 @@ export const TASK_STATUSES: { value: TaskStatus; label: string; group: StatusGro
 export const DONE_STATUSES: TaskStatus[] = ["aprovado", "problema", "finalizado"];
 
 // ---------- Cor por etapa do status (customizável, ver status_colors) ----------
-// Default = mesma cor que o grupo já usava, então enquanto ninguém customiza
-// nada a UI continua idêntica ao que era antes desta função existir.
-const GROUP_DEFAULT_COLOR: Record<StatusGroup, string> = {
-  nao_iniciada: "#aeb5ae",
-  em_andamento: "#e3c23c",
-  feita: "#6aa329",
+// Uma escala por grupo, escurecendo conforme a etapa avança dentro dele:
+// frio parado (não iniciada) -> quente trabalhando (em andamento) -> verde
+// entregue (feita). Problema é a exceção vermelha, que quebra a linha de
+// propósito.
+//
+// Todas foram escolhidas escuras o bastante pra o texto sair BRANCO em todas
+// (luminância <= 0.18). Uma tabela em que metade das tags tem texto preto e
+// metade branco lê como bagunça, mesmo quando cada uma isolada tem contraste.
+// O teste em tests/status-visual.test.ts trava as duas coisas.
+export const DEFAULT_STATUS_COLORS: Record<TaskStatus, string> = {
+  // Não iniciada — cinza esfriando pro azul aço conforme a espera é de terceiros.
+  rascunho: "#6b7280",
+  aguardando_informacao: "#5b6b7d",
+  aprovacao_copy: "#4a6382",
+  aguardando_captacao: "#3d5570",
+  // Em andamento — âmbar esquentando pro laranja queimado conforme avança.
+  pronto_para_criacao: "#a06a12",
+  em_criacao: "#8f5a12",
+  revisao: "#8a4b18",
+  ajuste: "#7d3d1c",
+  // Feita — verde aprofundando até o encerramento definitivo.
+  para_aprovacao: "#4f7a24",
+  aprovado: "#3e7a2e",
+  finalizado: "#2a5f3f",
+  // Exceção: não é etapa da esteira, é alerta.
+  problema: "#9c2f22",
 };
-
-export const DEFAULT_STATUS_COLORS: Record<TaskStatus, string> = Object.fromEntries(
-  TASK_STATUSES.map((status) => [status.value, GROUP_DEFAULT_COLOR[status.group]]),
-) as Record<TaskStatus, string>;
 
 export type StatusColor = { status: TaskStatus; color: string };
 

@@ -2,8 +2,9 @@ import { AlertTriangle, CheckCircle2, Clock3, ListTodo } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AdminShell } from "@/components/admin-shell";
+import { DueCountdown } from "@/components/due-countdown";
 import { filterTasksByAccess, filterTasksByListAccess } from "@/lib/authz";
-import { formatDueDate, isOverdue } from "@/lib/dates";
+import { isOverdue } from "@/lib/dates";
 import { getCurrentUser } from "@/lib/current-user";
 import { listMembers, listProjects, listTasks } from "@/lib/storage";
 import { TASK_STATUSES } from "@/lib/types";
@@ -28,11 +29,6 @@ export default async function Home() {
   const done = tasks.filter((task) => task.status === "finalizado").length;
   const inProgress = tasks.filter((task) => groupOf(task.status) === "em_andamento").length;
   const overdue = tasks.filter((task) => isOverdue(task.dueDate, task.status)).length;
-
-  const upcoming = tasks
-    .filter((task) => task.status !== "finalizado" && task.dueDate)
-    .sort((a, b) => (a.dueDate! < b.dueDate! ? -1 : 1))
-    .slice(0, 8);
 
   const assigneeCounts = new Map<string, number>();
   tasks.forEach((task) => {
@@ -130,21 +126,10 @@ export default async function Home() {
               <div><span className="eyebrow">Prazos</span><h2>Próximas entregas</h2></div>
               <Link className="secondary-button" href="/tarefas">Ver tarefas</Link>
             </div>
-            {upcoming.length ? (
-              <ul className="upcoming-list">
-                {upcoming.map((task) => {
-                  const overdueTask = isOverdue(task.dueDate, task.status);
-                  return (
-                    <Link className="upcoming-item" key={task.id} href={`/tarefas/${task.id}`}>
-                      <div><strong>{task.name}</strong><span>{projectById.get(task.projectId)?.name || "Sem projeto"} · {task.assigneeId ? memberById.get(task.assigneeId)?.name || "Ex-membro" : "Sem responsável"}</span></div>
-                      <span className={`upcoming-due ${overdueTask ? "overdue" : ""}`}>{formatDueDate(task.dueDate)}{overdueTask ? " · atrasada" : ""}</span>
-                    </Link>
-                  );
-                })}
-              </ul>
-            ) : (
-              <div className="empty-state"><h3>Nenhuma entrega pendente</h3><p>Todas as tarefas com prazo estão concluídas.</p></div>
-            )}
+            {/* O contador substitui a lista simples que existia aqui: era a
+                mesma informação sem dizer quanto tempo falta, que é justamente
+                o que se quer saber num painel de prazos. */}
+            <DueCountdown tasks={tasks} projectById={projectById} />
           </section>
 
           <section className="panel">

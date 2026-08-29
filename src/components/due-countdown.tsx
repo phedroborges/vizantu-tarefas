@@ -1,6 +1,7 @@
 "use client";
 
 import { AlarmClock } from "lucide-react";
+import Link from "next/link";
 import { useMemo, useSyncExternalStore } from "react";
 import { Avatar } from "@/components/avatar";
 import { hoursUntilDue, isOverdue, timeUntilDueLabel } from "@/lib/dates";
@@ -38,11 +39,9 @@ function urgencia(horas: number): string {
 export function DueCountdown({
   tasks,
   projectById,
-  onOpenTask,
 }: {
   tasks: Task[];
   projectById: Map<string, Project>;
-  onOpenTask: (task: Task) => void;
 }) {
   const minuto = useSyncExternalStore(subscribeMinuto, minutoAtual, minutoNoServidor);
   const agora = minuto === null ? null : new Date(minuto * 60_000);
@@ -77,7 +76,7 @@ export function DueCountdown({
         const rotulo = agora ? timeUntilDueLabel(task.dueDate!, agora) : "—";
         const classe = horas === null ? "calmo" : urgencia(horas);
         return (
-          <button type="button" className="due-countdown-row" key={task.id} onClick={() => onOpenTask(task)}>
+          <Link className="due-countdown-row" key={task.id} href={`/tarefas/${task.id}`}>
             <div className="due-countdown-main">
               <strong>{task.name}</strong>
               <span>
@@ -86,7 +85,7 @@ export function DueCountdown({
               </span>
             </div>
             <span className={`due-countdown-time ${isOverdue(task.dueDate, task.status) ? "vencido" : classe}`}>{rotulo}</span>
-          </button>
+          </Link>
         );
       })}
     </div>
