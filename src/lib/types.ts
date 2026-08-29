@@ -10,6 +10,10 @@ export type Project = {
   clientRole?: string;
   clientCity?: string;
   clientInstagram?: string;
+  // Foto/logo do cliente e, para marca em construção que ainda não tem logo,
+  // uma cor escolhida. Sem nenhum dos dois, cai na cor derivada do nome.
+  avatarUrl?: string | null;
+  avatarColor?: string | null;
   status: ProjectStatus;
   createdAt: string;
   updatedAt: string;
@@ -38,6 +42,7 @@ export type Member = {
   role: UserRole;
   aiEnabled: boolean;
   active: boolean;
+  avatarUrl?: string | null;
   createdAt: string;
   updatedAt: string;
 };

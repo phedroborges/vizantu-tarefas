@@ -14,6 +14,7 @@ import { DESCRIPTION_SECTIONS, parseDescription, serializeDescription } from "@/
 import { formatDateTime, isOverdue, todayIso } from "@/lib/dates";
 import { resizeImageFile } from "@/lib/resize-image";
 import type { Member, Project, StatusColor, Tag, TagKind, Task, TaskStatus } from "@/lib/types";
+import { celebrateFrom } from "@/lib/celebrate";
 
 type Draft = {
   projectId: string;
@@ -127,6 +128,7 @@ export function TaskModal({
   const [linkCopied, setLinkCopied] = useState(false);
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const statusRef = useRef<HTMLDivElement>(null);
   const { confirm, ConfirmDialog } = useConfirm();
 
   // Refs (não state) pra evitar corrida entre o autosave debounced e uma
@@ -384,13 +386,20 @@ export function TaskModal({
                 {task?.assigneeSource === "captacao" && draft.assigneeSource === "captacao" ? <small className="meta-inheritance-hint">Herdado da edição da captação</small> : null}
               </MetaRow>
 
+              <div ref={statusRef}>
               <TaskStatusControl
                 status={draft.status}
                 statusHistory={statusHistory}
                 dueDate={draft.dueDate}
                 color={colorByStatus.get(draft.status)}
-                onChange={(value) => updateField("status", value, { immediate: true })}
+                onChange={(value) => {
+                  // Mesmo marco do lado de fora (ver patchTask em tarefas-view):
+                  // "Para aprovação" é quando a demanda sai da mão do time.
+                  if (value === "para_aprovacao" && draft.status !== "para_aprovacao") celebrateFrom(statusRef.current);
+                  updateField("status", value, { immediate: true });
+                }}
               />
+              </div>
 
               <MetaRow icon={<CalendarDays size={13} />} label="Entrega">
                 <input

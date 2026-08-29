@@ -3,6 +3,8 @@
 import { Copy, Folders, Link2, Pencil, Search, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useConfirm } from "@/components/confirm-dialog";
+import { Avatar } from "@/components/avatar";
+import { AvatarPicker } from "@/components/avatar-picker";
 import { PROJECT_STATUSES } from "@/lib/types";
 import type { Project, ProjectStatus, Task } from "@/lib/types";
 
@@ -30,6 +32,8 @@ export function ProjetosView({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarColor, setAvatarColor] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState("");
   const { confirm, ConfirmDialog } = useConfirm();
@@ -63,6 +67,8 @@ export function ProjetosView({
     setClientRole("");
     setClientCity("");
     setClientInstagram("");
+    setAvatarUrl(null);
+    setAvatarColor(null);
     setStatus("ativo");
     setError("");
   }
@@ -74,6 +80,8 @@ export function ProjetosView({
     setClientRole(project.clientRole || "");
     setClientCity(project.clientCity || "");
     setClientInstagram(project.clientInstagram || "");
+    setAvatarUrl(project.avatarUrl ?? null);
+    setAvatarColor(project.avatarColor ?? null);
     setStatus(project.status);
     setError("");
   }
@@ -86,7 +94,7 @@ export function ProjetosView({
     const response = await fetch(editingId ? `/api/projects/${editingId}` : "/api/projects", {
       method: editingId ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, client, clientRole, clientCity, clientInstagram, status }),
+      body: JSON.stringify({ name, client, clientRole, clientCity, clientInstagram, avatarUrl, avatarColor, status }),
     });
     const result = await response.json();
     setIsSaving(false);
@@ -153,6 +161,19 @@ export function ProjetosView({
               <form className="modal-body" onSubmit={submit} style={{ padding: "24px 25px 27px" }}>
                 {error ? <div className="form-message">{error}</div> : null}
                 <div className="field">
+                  <label>Foto ou cor do cliente</label>
+                  <AvatarPicker
+                    name={name || "Novo projeto"}
+                    imageUrl={avatarUrl}
+                    color={avatarColor}
+                    withColor
+                    onChange={(next) => {
+                      if (next.avatarUrl !== undefined) setAvatarUrl(next.avatarUrl);
+                      if (next.avatarColor !== undefined) setAvatarColor(next.avatarColor);
+                    }}
+                  />
+                </div>
+                <div className="field">
                   <label htmlFor="project-name">Nome do projeto</label>
                   <input id="project-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Tawper" required maxLength={120} />
                 </div>
@@ -198,9 +219,12 @@ export function ProjetosView({
                   const rate = stats.total ? Math.round((stats.done / stats.total) * 100) : 0;
                   return (
                     <li className="project-row" key={project.id}>
-                      <div className="project-row-title">
-                        <strong>{project.name}</strong>
-                        <span>{project.client || "Sem cliente definido"}</span>
+                      <div className="project-row-title" style={{ display: "flex", alignItems: "center", gap: 11 }}>
+                        <Avatar name={project.name} imageUrl={project.avatarUrl} color={project.avatarColor} size={34} />
+                        <span style={{ display: "grid", minWidth: 0 }}>
+                          <strong>{project.name}</strong>
+                          <span>{project.client || "Sem cliente definido"}</span>
+                        </span>
                       </div>
                       <div className="project-row-progress">
                         <span>{stats.done}/{stats.total} tarefas concluídas</span>

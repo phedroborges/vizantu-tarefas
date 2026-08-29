@@ -222,10 +222,23 @@ a.upcoming-item { color: inherit; text-decoration: none; }
 .status.feita { color: #4b6715; --status-color: var(--approved); }
 .status.atrasada { color: #9c3c20; --status-color: #e56a3c; }
 
+/* Tag de status: a cor escolhida no seletor pinta a tag INTEIRA, e o texto sai
+   na cor com contraste contra ela (ver readableTextOn em lib/status-visual).
+   Antes a cor só aparecia numa bolinha de 7px enquanto o texto ficava numa cor
+   fixa do grupo — três variações para doze etapas, todas parecidas. */
+.status-tag { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; padding: 3px 9px 3px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 700; line-height: 1.5; white-space: nowrap; }
+.status-tag svg { flex: none; }
+.status-tag > span { overflow: hidden; text-overflow: ellipsis; }
+.status-trigger { padding: 0; border: 0; background: none; }
+.status-trigger::after { display: none; }
+.status-color-error { margin: 0 0 8px; padding: 7px 9px; background: #ffebe9; border: 1px solid #e8bab6; color: #912d28; font-size: 11px; font-weight: 600; }
+
 .badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px; background: #f0f2ee; color: #596159; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; }
-.badge.format { background: #f1ebff; color: var(--brand-strong); }
-.badge.channel { background: #eaf4fb; color: #356c9c; }
-.badge.list { background: #eaf4fb; color: #356c9c; }
+/* Cada tipo de tag com a sua própria família de cor — formato, canal e lista
+   eram dois azuis idênticos e um roxo, então nada se distinguia de relance. */
+.badge.format { background: #f1ebff; color: #5b32b8; }
+.badge.channel { background: #e6f3ec; color: #266b46; }
+.badge.list { background: #fdf0e3; color: #96541a; }
 .badge + .badge { margin-left: 4px; }
 
 /* ---------- Pílula de acesso (liberado/bloqueado) — Membros ---------- */
@@ -253,6 +266,28 @@ a.upcoming-item { color: inherit; text-decoration: none; }
 /* ---------- Filtros / Toolbar ---------- */
 .toolbar { padding: 18px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
 .toolbar-filters { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+/* Barra consolidada: busca + Filtros (com contador) + engrenagem + visão.
+   Antes eram 4 selects soltos e 4 botões concorrendo na mesma linha. */
+.toolbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.toolbar-button { display: inline-flex; align-items: center; gap: 7px; min-height: 38px; padding: 0 12px; border: 1px solid var(--line); background: #fff; color: #4e574f; font-size: 11px; font-weight: 650; cursor: pointer; }
+.toolbar-button:hover { border-color: #aab2aa; color: var(--dark); }
+.toolbar-button.is-active { border-color: var(--brand-strong); background: #f2ecfe; color: #4e2ea8; }
+.toolbar-button.icon-only { padding: 0 10px; }
+.toolbar-count { display: inline-flex; align-items: center; justify-content: center; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: var(--brand-strong); color: #fff; font-size: 9.5px; font-weight: 750; }
+.toolbar-menu { display: grid; gap: 12px; max-height: 70vh; overflow-y: auto; padding: 12px; }
+.toolbar-field { display: grid; gap: 5px; color: var(--muted-text); font-size: 9.5px; font-weight: 720; text-transform: uppercase; letter-spacing: .06em; }
+.toolbar-field select { width: 100%; min-height: 36px; padding: 0 9px; border: 1px solid var(--line); background: #fff; color: var(--dark); font-size: 12px; font-weight: 500; text-transform: none; letter-spacing: normal; }
+.toolbar-section { display: grid; gap: 3px; }
+.toolbar-section + .toolbar-section { padding-top: 11px; border-top: 1px solid var(--line); }
+.toolbar-section-label { padding-bottom: 3px; color: var(--muted-text); font-size: 9.5px; font-weight: 720; text-transform: uppercase; letter-spacing: .06em; }
+.toolbar-radio, .toolbar-check { display: flex; align-items: center; gap: 8px; padding: 5px 4px; font-size: 12px; color: var(--dark); cursor: pointer; }
+.toolbar-radio:hover, .toolbar-check:hover { background: #fafbf9; }
+.toolbar-radio small { margin-left: auto; color: var(--muted-text); font-size: 10.5px; }
+.toolbar-toggle { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 38px; border: 1px solid var(--line); background: #fff; color: #4e574f; font-size: 11px; font-weight: 650; cursor: pointer; }
+.toolbar-toggle[aria-pressed="true"] { border-color: var(--brand-strong); background: #f2ecfe; color: #4e2ea8; }
+.toolbar-clear { min-height: 34px; border: 0; background: none; color: var(--brand-strong); font-size: 11px; font-weight: 650; cursor: pointer; }
+.toolbar-clear:hover { text-decoration: underline; }
 .toolbar-filters select, .toolbar-filters input { height: 38px; padding: 0 10px; border: 1px solid var(--line); background: #fafbf9; color: var(--dark); font-size: 11px; }
 .search { position: relative; flex: 1; max-width: 280px; }
 .search svg { position: absolute; left: 12px; top: 11px; color: #8b938b; }
@@ -269,7 +304,10 @@ a.upcoming-item { color: inherit; text-decoration: none; }
 .task-table tbody tr:hover { background: #fafbf9; }
 .task-name-cell { cursor: pointer; }
 .task-name { color: var(--dark); font-weight: 650; }
-.task-project { display: block; margin-top: 3px; color: var(--brand-strong); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+/* O nome do cliente é apoio, não manchete: em roxo e caixa alta ele tinha o
+   mesmo peso do título da tarefa e a linha virava um bloco só. */
+.task-project { display: block; margin-top: 3px; color: var(--muted-text); font-size: 10.5px; font-weight: 500; letter-spacing: 0; }
+.task-name { display: block; line-height: 1.35; }
 .task-actions { display: flex; gap: 6px; justify-content: flex-end; }
 
 /* Edição inline nas células da lista (formato, canal, responsável, prazo, status) */
@@ -880,3 +918,79 @@ a.upcoming-item { color: inherit; text-decoration: none; }
   /* abaixo da barra de menu do mobile */
   .announcement-trigger { top: 70px; right: 14px; }
 }
+
+
+/* ---------- Avatares (membros e clientes) ---------- */
+.avatar { display: inline-flex; align-items: center; justify-content: center; flex: none; overflow: hidden; border-radius: 50%; vertical-align: middle; }
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
+.avatar-initials { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: #fff; font-weight: 700; letter-spacing: .01em; line-height: 1; }
+.avatar-name { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+.avatar-name > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.avatar-name.is-muted > span:last-child { color: var(--muted-text); }
+.task-project { display: flex; align-items: center; gap: 6px; }
+
+.avatar-picker { display: grid; gap: 12px; }
+.avatar-picker-top { display: flex; align-items: center; gap: 14px; }
+.avatar-picker-actions { display: grid; gap: 5px; }
+.avatar-picker-remove { border: 0; background: none; padding: 0; color: var(--muted-text); font-size: 10.5px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+.avatar-picker-remove:hover { color: #a22d27; }
+.avatar-picker-label { display: block; margin-bottom: 6px; color: var(--muted-text); font-size: 9.5px; font-weight: 720; text-transform: uppercase; letter-spacing: .06em; }
+.avatar-swatches { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.avatar-swatch { width: 24px; height: 24px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; }
+.avatar-swatch.is-selected { border-color: var(--dark); box-shadow: 0 0 0 2px #fff inset; }
+.avatar-picker-error { margin: 0; color: #912d28; font-size: 11px; font-weight: 600; }
+
+/* ---------- Tarefa atrasada: precisa saltar da tabela ---------- */
+/* O tremor roda UMA vez ao aparecer, não em loop: chamar atenção é o objetivo,
+   mas uma linha tremendo pra sempre inviabiliza ler e clicar na própria linha.
+   Quem prefere menos movimento (prefers-reduced-motion) recebe só a cor. */
+.task-table tbody tr.is-overdue > td { background: #fff5f3; border-top-color: #f0c4bd; }
+.task-table tbody tr.is-overdue > td:first-child { box-shadow: inset 3px 0 0 #c8452c; }
+.task-table tbody tr.is-overdue:hover > td { background: #ffece8; }
+.task-table tbody tr.is-overdue { animation: overdueShake .55s cubic-bezier(.36,.07,.19,.97) both; }
+
+@keyframes overdueShake {
+  10%, 90% { transform: translateX(-1.5px); }
+  20%, 80% { transform: translateX(3px); }
+  30%, 50%, 70% { transform: translateX(-5px); }
+  40%, 60% { transform: translateX(5px); }
+  100% { transform: translateX(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .task-table tbody tr.is-overdue { animation: none; }
+}
+
+/* ---------- Contador do dashboard ---------- */
+.due-countdown { display: grid; gap: 1px; margin-top: 18px; background: var(--line); border: 1px solid var(--line); }
+.due-countdown-head { display: flex; align-items: center; gap: 8px; padding: 12px 16px; background: #fff; color: var(--dark); font-size: 12px; font-weight: 700; }
+.due-countdown-head small { margin-left: auto; color: var(--muted-text); font-size: 10.5px; font-weight: 500; }
+.due-countdown-row { display: flex; align-items: center; gap: 10px; padding: 11px 16px; background: #fff; border: 0; width: 100%; text-align: left; cursor: pointer; font: inherit; }
+.due-countdown-row:hover { background: #fafbf9; }
+.due-countdown-main { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.due-countdown-main strong { color: var(--dark); font-size: 12px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.due-countdown-main span { display: flex; align-items: center; gap: 6px; color: var(--muted-text); font-size: 10.5px; }
+.due-countdown-time { flex: none; padding: 4px 9px; border-radius: 999px; font-size: 10.5px; font-weight: 720; white-space: nowrap; }
+.due-countdown-time.calmo { background: #eef2ec; color: #4e574f; }
+.due-countdown-time.perto { background: #fff3cd; color: #7a5200; }
+.due-countdown-time.urgente { background: #ffe8e3; color: #a2331f; }
+.due-countdown-time.vencido { background: #c8452c; color: #fff; }
+.due-countdown-empty { padding: 16px; background: #fff; color: var(--muted-text); font-size: 11.5px; }
+
+/* Canvas do confete (lib/confetti.ts) — o portal do cliente já estilizava esta
+   classe no seu próprio CSS; o lado interno precisa da mesma regra. */
+.cd-confetti-canvas { position: fixed; z-index: 80; inset: 0; pointer-events: none; }
+
+/* Check que pulsa junto com o confete ao mandar pra aprovação. */
+.celebrate-pop { animation: celebratePop .5s cubic-bezier(.34,1.56,.64,1); }
+@keyframes celebratePop { 0% { transform: scale(.4); opacity: 0; } 60% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .celebrate-pop { animation: none; } }
+
+/* Foto do membro: o próprio avatar é o botão de enviar/trocar. */
+.member-avatar-slot { display: grid; justify-items: center; gap: 2px; flex: none; }
+.member-avatar-button { position: relative; padding: 0; border: 0; background: none; line-height: 0; cursor: pointer; border-radius: 50%; }
+.member-avatar-button:disabled { opacity: .6; cursor: wait; }
+.member-avatar-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: rgba(20, 22, 20, .55); color: #fff; opacity: 0; transition: opacity .12s; }
+.member-avatar-button:hover .member-avatar-overlay, .member-avatar-button:focus-visible .member-avatar-overlay { opacity: 1; }
+.member-avatar-clear { border: 0; background: none; padding: 0; color: var(--muted-text); font-size: 9px; cursor: pointer; }
+.member-avatar-clear:hover { color: #a22d27; }

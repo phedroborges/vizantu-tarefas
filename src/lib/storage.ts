@@ -57,7 +57,7 @@ function sortByLocale<T>(items: T[], getValue: (item: T) => string): T[] {
 
 // ---------- Projetos ----------
 
-type ProjectRow = { id: string; name: string; client: string | null; client_role: string | null; client_city: string | null; client_instagram: string | null; status: Project["status"]; created_at: string; updated_at: string };
+type ProjectRow = { id: string; name: string; client: string | null; client_role: string | null; client_city: string | null; client_instagram: string | null; avatar_url: string | null; avatar_color: string | null; status: Project["status"]; created_at: string; updated_at: string };
 
 function mapProject(row: ProjectRow): Project {
   return {
@@ -67,6 +67,8 @@ function mapProject(row: ProjectRow): Project {
     clientRole: row.client_role ?? undefined,
     clientCity: row.client_city ?? undefined,
     clientInstagram: row.client_instagram ?? undefined,
+    avatarUrl: row.avatar_url,
+    avatarColor: row.avatar_color,
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -95,13 +97,16 @@ export async function createProject(input: { name: string; client?: string; stat
   return mapProject(row as ProjectRow);
 }
 
-export async function updateProject(id: string, patch: Partial<Pick<Project, "name" | "client" | "clientRole" | "clientCity" | "clientInstagram" | "status">>): Promise<Project | undefined> {
+export async function updateProject(id: string, patch: Partial<Pick<Project, "name" | "client" | "clientRole" | "clientCity" | "clientInstagram" | "avatarUrl" | "avatarColor" | "status">>): Promise<Project | undefined> {
   const update: Record<string, unknown> = { updated_at: nowIso() };
   if (patch.name !== undefined) update.name = patch.name.trim();
   if (patch.client !== undefined) update.client = patch.client.trim() || null;
   if (patch.clientRole !== undefined) update.client_role = patch.clientRole.trim() || null;
   if (patch.clientCity !== undefined) update.client_city = patch.clientCity.trim() || null;
   if (patch.clientInstagram !== undefined) update.client_instagram = patch.clientInstagram.trim().replace(/^@/, "") || null;
+  // null é valor legítimo aqui: é como se remove a foto ou a cor.
+  if (patch.avatarUrl !== undefined) update.avatar_url = patch.avatarUrl || null;
+  if (patch.avatarColor !== undefined) update.avatar_color = patch.avatarColor || null;
   if (patch.status !== undefined) update.status = patch.status;
   const row = unwrap(await getSupabase().from("projects").update(update).eq("id", id).select().maybeSingle());
   return row ? mapProject(row as ProjectRow) : undefined;
@@ -123,6 +128,7 @@ type MemberRow = {
   role: UserRole;
   ai_enabled: boolean;
   active: boolean;
+  avatar_url: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -135,6 +141,7 @@ function mapMember(row: MemberRow): Member {
     role: row.role,
     aiEnabled: row.ai_enabled,
     active: row.active,
+    avatarUrl: row.avatar_url,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -176,13 +183,14 @@ export async function createMember(input: { id: string; name: string; email: str
 
 export async function updateMember(
   id: string,
-  patch: Partial<Pick<Member, "name" | "active" | "role" | "aiEnabled">>,
+  patch: Partial<Pick<Member, "name" | "active" | "role" | "aiEnabled" | "avatarUrl">>,
 ): Promise<Member | undefined> {
   const update: Record<string, unknown> = { updated_at: nowIso() };
   if (patch.name !== undefined) update.name = patch.name.trim();
   if (patch.active !== undefined) update.active = patch.active;
   if (patch.role !== undefined) update.role = patch.role;
   if (patch.aiEnabled !== undefined) update.ai_enabled = patch.aiEnabled;
+  if (patch.avatarUrl !== undefined) update.avatar_url = patch.avatarUrl || null;
   const row = unwrap(await getSupabase().from("members").update(update).eq("id", id).select().maybeSingle());
   return row ? mapMember(row as MemberRow) : undefined;
 }

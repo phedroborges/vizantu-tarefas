@@ -1,12 +1,12 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, CalendarDays, CheckSquare, Eye, EyeOff, List, Plus, Search } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { ArrowLeft, ArrowRight, CalendarDays, CheckSquare, Plus } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   currentMonthKey,
   daysInCalendarMonth,
-  formatDueDate,
   isOverdue,
+  overdueDays,
   monthKeyFromDate,
   monthLabel,
   moveMonth,
@@ -17,28 +17,22 @@ import { STATUS_GROUPS, TASK_COLUMNS, TASK_LIST_KINDS, TASK_STATUSES } from "@/l
 import type { Member, Project, StatusColor, Tag, Task, TaskColumnKey, TaskListKind, TaskStatus } from "@/lib/types";
 import { TaskModal } from "@/components/task-modal";
 import { QuickTaskModal } from "@/components/quick-task-modal";
-import { TaskColumnPicker } from "@/components/task-column-picker";
 import { TagPickerPopover } from "@/components/tag-picker";
-import { StatusColorPicker } from "@/components/status-color-picker";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useTaskColumns } from "@/lib/use-task-columns";
+import { useDateFormat } from "@/lib/use-date-format";
+import { formatTaskDate, type DateFormatKey } from "@/lib/date-format";
+import { StatusTag } from "@/components/status-tag";
+import { Avatar, AvatarName } from "@/components/avatar";
+import { DueCountdown } from "@/components/due-countdown";
+import { celebrateFrom } from "@/lib/celebrate";
+import { TaskToolbar } from "@/components/task-toolbar";
 
 const WEEKDAYS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 const NO_ASSIGNEE = "none";
 // Base UI's <Select.Value> só resolve o rótulo se o Root receber esse mapa.
 const STATUS_LABELS: Record<string, string> = Object.fromEntries(TASK_STATUSES.map((status) => [status.value, status.label]));
 const LIST_LABELS: Record<TaskListKind, string> = Object.fromEntries(TASK_LIST_KINDS.map((kind) => [kind.value, kind.label])) as Record<TaskListKind, string>;
-
-// Cor customizada por etapa exata (não por grupo) — vira uma custom property
-// que o CSS de .status/.status-inline lê no ::before (não dá pra estilizar
-// pseudo-elemento via inline style direto). "Atrasada" nunca é sobrescrita:
-// é um estado sintético, não uma etapa que o usuário escolheu.
-function statusColorStyle(task: Task, colorByStatus: Map<TaskStatus, string>): React.CSSProperties | undefined {
-  if (isOverdue(task.dueDate, task.status)) return undefined;
-  const color = colorByStatus.get(task.status);
-  return color ? ({ "--status-color": color } as React.CSSProperties) : undefined;
-}
 
 // Cor do badge = grupo (3 cores + atrasada) — mais legível que 12 tons distintos.
 function statusOf(task: Task): string {
@@ -56,13 +50,12 @@ function statusFilterValue(task: Task): string {
   return isOverdue(task.dueDate, task.status) ? "atrasada" : task.status;
 }
 
-function InlineStatusCell({ task, group, colorStyle, onChange }: { task: Task; group: string; colorStyle?: React.CSSProperties; onChange: (status: TaskStatus) => void }) {
+function InlineStatusCell({ task, colorByStatus, onChange }: { task: Task; colorByStatus: Map<TaskStatus, string>; onChange: (status: TaskStatus, origin?: HTMLElement | null) => void }) {
+  const triggerRef = useRef<HTMLButtonElement>(null);
   return (
-    <Select items={STATUS_LABELS} value={task.status} onValueChange={(value) => value && onChange(value as TaskStatus)}>
-      <SelectTrigger className="meta-trigger cell-trigger" onClick={(event) => event.stopPropagation()}>
-        <span className={`status ${group}`} style={colorStyle}>
-          <SelectValue />
-        </span>
+    <Select items={STATUS_LABELS} value={task.status} onValueChange={(value) => value && onChange(value as TaskStatus, triggerRef.current)}>
+      <SelectTrigger ref={triggerRef} className="meta-trigger cell-trigger status-trigger" onClick={(event) => event.stopPropagation()}>
+        <StatusTag status={task.status} overdue={isOverdue(task.dueDate, task.status)} colorByStatus={colorByStatus} />
       </SelectTrigger>
       <SelectContent>
         {STATUS_GROUPS.map((statusGroup) => (
@@ -91,10 +84,11 @@ function InlineAssigneeCell({ task, members, onChange }: { task: Task; members: 
     ...Object.fromEntries(activeMembers.map((member) => [member.id, member.name])),
     ...(currentInactive ? { [currentInactive.id]: `${currentInactive.name} (inativo)` } : {}),
   };
+  const current = task.assigneeId ? members.find((member) => member.id === task.assigneeId) : undefined;
   return (
     <Select items={labels} value={task.assigneeId || NO_ASSIGNEE} onValueChange={(value) => onChange(value === NO_ASSIGNEE ? null : value ?? null)}>
       <SelectTrigger className="meta-trigger cell-trigger" onClick={(event) => event.stopPropagation()}>
-        <SelectValue placeholder="Sem responsável" />
+        {current ? <AvatarName name={current.name} imageUrl={current.avatarUrl} /> : <SelectValue placeholder="Sem responsável" />}
       </SelectTrigger>
       <SelectContent>
         <SelectItem value={NO_ASSIGNEE}>Sem responsável</SelectItem>
@@ -107,7 +101,7 @@ function InlineAssigneeCell({ task, members, onChange }: { task: Task; members: 
   );
 }
 
-function InlineDueDateCell({ task, locked, onChange, onLockedClick }: { task: Task; locked: boolean; onChange: (value: string) => void; onLockedClick: () => void }) {
+function InlineDueDateCell({ task, locked, dateFormat, onChange, onLockedClick }: { task: Task; locked: boolean; dateFormat: DateFormatKey; onChange: (value: string) => void; onLockedClick: () => void }) {
   const [editing, setEditing] = useState(false);
 
   if (editing) {
@@ -137,7 +131,7 @@ function InlineDueDateCell({ task, locked, onChange, onLockedClick }: { task: Ta
         setEditing(true);
       }}
     >
-      {formatDueDate(task.dueDate)}
+      {formatTaskDate(task.dueDate, dateFormat)}
     </button>
   );
 }
@@ -185,6 +179,7 @@ export function TarefasView({
   const [quickAddTitle, setQuickAddTitle] = useState("");
   const [isQuickAdding, setIsQuickAdding] = useState(false);
   const { visible: visibleColumns, toggle: toggleColumn } = useTaskColumns();
+  const { format: dateFormat, setFormat: setDateFormat } = useDateFormat();
 
   const projectById = useMemo(() => new Map(initialProjects.map((project) => [project.id, project])), [initialProjects]);
   const memberById = useMemo(() => new Map(initialMembers.map((member) => [member.id, member])), [initialMembers]);
@@ -211,6 +206,29 @@ export function TarefasView({
       return true;
     });
   }, [tasks, query, projectFilter, assigneeFilter, statusFilter, listFilter, showFinalized, memberById, channelTagById]);
+
+  // A tarefa aberta no modal nunca some da lista por baixo dele. Trocar o
+  // status ou o responsável dentro do modal faz a tarefa deixar de casar com
+  // o filtro ativo, e ao fechar o modal ela teria sumido — a pessoa acha que
+  // perdeu a tarefa. Enquanto o modal está aberto, ela fica visível.
+  // Atrasadas vão pro topo, da mais atrasada pra menos, independente de
+  // qualquer outra ordem — é o que precisa de ação antes de tudo. O resto
+  // mantém a ordem que já vinha.
+  const sortedTasks = useMemo(() => {
+    return [...filteredTasks].sort((a, b) => {
+      const atrasoA = overdueDays(a.dueDate, a.status);
+      const atrasoB = overdueDays(b.dueDate, b.status);
+      if (atrasoA !== atrasoB) return atrasoB - atrasoA;
+      return 0;
+    });
+  }, [filteredTasks]);
+
+  const visibleTasks = useMemo(() => {
+    if (!selectedTask || selectedTask === "new") return sortedTasks;
+    if (sortedTasks.some((task) => task.id === selectedTask.id)) return sortedTasks;
+    const pinned = tasks.find((task) => task.id === selectedTask.id);
+    return pinned ? [pinned, ...sortedTasks] : sortedTasks;
+  }, [sortedTasks, selectedTask, tasks]);
 
   const pageDetail = useMemo(() => {
     if (selectedTask && selectedTask !== "new") {
@@ -251,13 +269,24 @@ export function TarefasView({
     if (path && window.location.pathname !== path) window.history.replaceState(null, "", path);
   }, [selectedTask]);
 
+  // O TaskModal salva sozinho (autosave com debounce), então isto roda a cada
+  // pausa na digitação — NÃO pode fechar o modal nem soltar toast, senão a
+  // tarefa some da tela no meio da edição. O próprio modal já mostra
+  // "salvando/salvo". Só a criação pelo modal rápido fecha (ver handleCreated).
   function handleSaved(task: Task) {
     setTasks((current) => {
       const exists = current.some((item) => item.id === task.id);
       return exists ? current.map((item) => (item.id === task.id ? task : item)) : [task, ...current];
     });
+    // Mantém o modal apontando pra versão recém-salva (status, prazo e listas
+    // podem ter mudado do lado do servidor).
+    setSelectedTask((current) => (current && current !== "new" && current.id === task.id ? task : current));
+  }
+
+  function handleCreated(task: Task) {
+    setTasks((current) => (current.some((item) => item.id === task.id) ? current : [task, ...current]));
     setSelectedTask(null);
-    showToast("Tarefa salva.");
+    showToast("Tarefa criada.");
   }
 
   function handleDeleted(id: string) {
@@ -272,7 +301,8 @@ export function TarefasView({
     showToast("Tarefa duplicada.");
   }
 
-  async function patchTask(taskId: string, payload: Record<string, unknown>) {
+  async function patchTask(taskId: string, payload: Record<string, unknown>, origin?: HTMLElement | null) {
+    const anterior = tasks.find((item) => item.id === taskId)?.status;
     const response = await fetch(`/api/tasks/${taskId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -281,6 +311,12 @@ export function TarefasView({
     const result = await response.json();
     if (!response.ok) return showToast(result.error || "Não foi possível salvar a alteração.");
     setTasks((current) => current.map((item) => (item.id === taskId ? result.task : item)));
+    // Entrou em "Para aprovação" agora (e não já estava lá): a demanda saiu da
+    // mão do time. Mesmo confete que o cliente vê ao aprovar.
+    if (result.task.status === "para_aprovacao" && anterior !== "para_aprovacao") {
+      celebrateFrom(origin);
+      showToast("Enviada para aprovação!");
+    }
   }
 
   async function quickAdd(event: React.FormEvent<HTMLFormElement>) {
@@ -307,8 +343,8 @@ export function TarefasView({
   }
 
   const monthTasks = useMemo(
-    () => filteredTasks.filter((task) => task.dueDate && monthKeyFromDate(task.dueDate) === selectedMonth),
-    [filteredTasks, selectedMonth],
+    () => visibleTasks.filter((task) => task.dueDate && monthKeyFromDate(task.dueDate) === selectedMonth),
+    [visibleTasks, selectedMonth],
   );
   const tasksByDay = useMemo(() => {
     const grouped = new Map<string, Task[]>();
@@ -317,7 +353,7 @@ export function TarefasView({
     });
     return grouped;
   }, [monthTasks]);
-  const noDueTasks = useMemo(() => filteredTasks.filter((task) => !task.dueDate), [filteredTasks]);
+  const noDueTasks = useMemo(() => visibleTasks.filter((task) => !task.dueDate), [visibleTasks]);
   const calendarDays = useMemo(() => daysInCalendarMonth(selectedMonth), [selectedMonth]);
 
   function renderColumn(key: TaskColumnKey, task: Task) {
@@ -330,12 +366,14 @@ export function TarefasView({
         return task.channelTagIds.length
           ? task.channelTagIds.map((id) => <span className="badge channel" key={id}>{channelTagById.get(id)?.label}</span>)
           : "—";
-      case "assignee":
-        return task.assigneeId ? memberById.get(task.assigneeId)?.name || "—" : "—";
+      case "assignee": {
+        const member = task.assigneeId ? memberById.get(task.assigneeId) : undefined;
+        return member ? <AvatarName name={member.name} imageUrl={member.avatarUrl} /> : "—";
+      }
       case "dueDate":
-        return formatDueDate(task.dueDate);
+        return formatTaskDate(task.dueDate, dateFormat);
       case "status":
-        return <span className={`status ${statusOf(task)}`} style={statusColorStyle(task, colorByStatus)}>{statusLabel(task)}</span>;
+        return <StatusTag status={task.status} overdue={isOverdue(task.dueDate, task.status)} colorByStatus={colorByStatus} />;
       case "lists":
         return task.lists.length ? task.lists.map((kind) => <span className="badge list" key={kind}>{LIST_LABELS[kind]}</span>) : "—";
       case "driveLink":
@@ -399,6 +437,7 @@ export function TarefasView({
           <InlineDueDateCell
             task={task}
             locked={isOverdue(task.dueDate, task.status)}
+            dateFormat={dateFormat}
             onChange={(dueDate) => patchTask(task.id, { dueDate })}
             onLockedClick={() => showToast('Tarefa atrasada — mude o status para "Aprovado", "Problema" ou "Finalizado" para editar a data.')}
           />
@@ -407,9 +446,8 @@ export function TarefasView({
         return (
           <InlineStatusCell
             task={task}
-            group={statusOf(task)}
-            colorStyle={statusColorStyle(task, colorByStatus)}
-            onChange={(status) => patchTask(task.id, { status })}
+            colorByStatus={colorByStatus}
+            onChange={(status, origin) => patchTask(task.id, { status }, origin)}
           />
         );
       default:
@@ -434,60 +472,37 @@ export function TarefasView({
         </div>
 
         <section className="panel">
-          <div className="toolbar">
-            <div className="search">
-              <Search size={16} />
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por tarefa, canal ou responsável" aria-label="Buscar tarefas" />
-            </div>
-            <div className="toolbar-filters">
-              <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} aria-label="Filtrar por projeto">
-                <option value="">Todos os projetos</option>
-                {initialProjects.map((project) => <option value={project.id} key={project.id}>{project.name}</option>)}
-              </select>
-              <select value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value)} aria-label="Filtrar por responsável">
-                <option value="">Todos os responsáveis</option>
-                {activeMembers.map((member) => <option value={member.id} key={member.id}>{member.name}</option>)}
-              </select>
-              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label="Filtrar por status">
-                <option value="">Todos os status</option>
-                {STATUS_GROUPS.map((group) => (
-                  <optgroup label={group.label} key={group.value}>
-                    {TASK_STATUSES.filter((status) => status.group === group.value).map((status) => (
-                      <option value={status.value} key={status.value}>{status.label}</option>
-                    ))}
-                  </optgroup>
-                ))}
-                <option value="atrasada">Atrasada</option>
-              </select>
-              <select value={listFilter} onChange={(e) => setListFilter(e.target.value as TaskListKind | "")} aria-label="Filtrar por lista">
-                <option value="">Todas as listas</option>
-                {TASK_LIST_KINDS.map((kind) => <option value={kind.value} key={kind.value}>{kind.label}</option>)}
-              </select>
-              {view === "lista" ? <TaskColumnPicker visible={visibleColumns} onToggle={toggleColumn} /> : null}
-              {canEdit ? (
-                <StatusColorPicker
-                  colors={statusColors}
-                  onSaved={(colors) => {
-                    setStatusColors(colors);
-                    showToast("Cores dos status atualizadas.");
-                  }}
-                />
-              ) : null}
-              <div className="view-toggle" role="group" aria-label="Exibir tarefas finalizadas">
-                <button type="button" aria-pressed={showFinalized} className={showFinalized ? "active" : ""} onClick={() => setShowFinalized((current) => !current)}>
-                  {showFinalized ? <EyeOff size={14} /> : <Eye size={14} />} {showFinalized ? "Ocultar finalizadas" : "Mostrar finalizadas"}
-                </button>
-              </div>
-              <div className="view-toggle" role="tablist" aria-label="Alternar visualização">
-                <button type="button" role="tab" aria-selected={view === "lista"} className={view === "lista" ? "active" : ""} onClick={() => setView("lista")}><List size={14} /> Lista</button>
-                <button type="button" role="tab" aria-selected={view === "calendario"} className={view === "calendario" ? "active" : ""} onClick={() => setView("calendario")}><CalendarDays size={14} /> Calendário</button>
-              </div>
-            </div>
-          </div>
+          <DueCountdown tasks={tasks} projectById={projectById} onOpenTask={setSelectedTask} />
+
+          <TaskToolbar
+            filters={{ query, projectId: projectFilter, assigneeId: assigneeFilter, status: statusFilter, list: listFilter, showFinalized }}
+            onFiltersChange={(next) => {
+              if (next.query !== undefined) setQuery(next.query);
+              if (next.projectId !== undefined) setProjectFilter(next.projectId);
+              if (next.assigneeId !== undefined) setAssigneeFilter(next.assigneeId);
+              if (next.status !== undefined) setStatusFilter(next.status);
+              if (next.list !== undefined) setListFilter(next.list);
+              if (next.showFinalized !== undefined) setShowFinalized(next.showFinalized);
+            }}
+            projects={initialProjects}
+            members={activeMembers}
+            view={view}
+            onViewChange={setView}
+            visibleColumns={visibleColumns}
+            onToggleColumn={toggleColumn}
+            dateFormat={dateFormat}
+            onDateFormatChange={setDateFormat}
+            statusColors={statusColors}
+            onStatusColorsSaved={(colors) => {
+              setStatusColors(colors);
+              showToast("Cores dos status atualizadas.");
+            }}
+            canEdit={canEdit}
+          />
 
           {view === "lista" ? (
             <>
-              {filteredTasks.length ? (
+              {visibleTasks.length ? (
                 <div className="project-table-wrap">
                   <table className="task-table">
                     <thead>
@@ -499,11 +514,17 @@ export function TarefasView({
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredTasks.map((task) => (
-                        <tr key={task.id}>
+                      {visibleTasks.map((task) => (
+                        <tr key={task.id} className={isOverdue(task.dueDate, task.status) ? "is-overdue" : ""}>
                           <td className="task-name-cell" onClick={() => setSelectedTask(task)}>
                             <span className="task-name">{task.name}</span>
-                            <span className="task-project">{projectById.get(task.projectId)?.name || "Sem projeto"}</span>
+                            <span className="task-project">
+                              {(() => {
+                                const project = projectById.get(task.projectId);
+                                if (!project) return "Sem projeto";
+                                return <><Avatar name={project.name} imageUrl={project.avatarUrl} color={project.avatarColor} size={15} />{project.name}</>;
+                              })()}
+                            </span>
                           </td>
                           {TASK_COLUMNS.filter((column) => visibleColumns.includes(column.key)).map((column) => (
                             <td key={column.key}>{renderEditableColumn(column.key, task)}</td>
@@ -578,7 +599,7 @@ export function TarefasView({
                     {noDueTasks.map((task) => (
                       <li className="upcoming-item" key={task.id} onClick={() => setSelectedTask(task)} style={{ cursor: "pointer" }}>
                         <div><strong>{task.name}</strong><span>{projectById.get(task.projectId)?.name || "Sem projeto"}</span></div>
-                        <span className={`status ${statusOf(task)}`} style={statusColorStyle(task, colorByStatus)}>{statusLabel(task)}</span>
+                        <StatusTag status={task.status} overdue={isOverdue(task.dueDate, task.status)} colorByStatus={colorByStatus} />
                       </li>
                     ))}
                   </ul>
@@ -600,10 +621,7 @@ export function TarefasView({
           defaultProjectId={projectFilter || initialProjects[0]?.id || ""}
           currentUserId={currentUserId}
           onClose={() => setSelectedTask(null)}
-          onCreated={(task) => {
-            handleSaved(task);
-            showToast("Tarefa criada.");
-          }}
+          onCreated={handleCreated}
           onTagCreated={handleTagCreated}
         />
       ) : null}

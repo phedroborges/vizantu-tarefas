@@ -16,24 +16,38 @@ export function StatusColorPicker({
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<Record<TaskStatus, string>>(() => Object.fromEntries(colors.map((c) => [c.status, c.color])) as Record<TaskStatus, string>);
   const [isSaving, setIsSaving] = useState(false);
+  // Antes o erro era engolido: clicar em salvar não fazia nada e não dizia nada.
+  const [error, setError] = useState("");
 
   function openPicker(next: boolean) {
     setOpen(next);
+    if (next) setError("");
     if (next) setDraft(Object.fromEntries(colors.map((c) => [c.status, c.color])) as Record<TaskStatus, string>);
   }
 
   async function save() {
     setIsSaving(true);
-    const response = await fetch("/api/status-colors", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ colors: draft }),
-    });
-    const result = await response.json();
-    setIsSaving(false);
-    if (!response.ok) return;
-    onSaved(result.colors);
-    setOpen(false);
+    setError("");
+    try {
+      const response = await fetch("/api/status-colors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ colors: draft }),
+      });
+      // Uma resposta que não é JSON (erro de proxy, página de erro do
+      // servidor) explodia aqui e o botão ficava preso em "Salvando...".
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(result.error || `Não foi possível salvar (erro ${response.status}).`);
+        return;
+      }
+      onSaved(result.colors);
+      setOpen(false);
+    } catch {
+      setError("Falha de conexão — tente de novo.");
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   return (
@@ -60,6 +74,7 @@ export function StatusColorPicker({
           ))}
         </div>
         <div className="status-color-actions">
+          {error ? <p className="status-color-error" role="alert">{error}</p> : null}
           <button type="button" className="primary-button" onClick={save} disabled={isSaving} style={{ width: "100%" }}>
             {isSaving ? "Salvando..." : "Salvar cores"}
           </button>

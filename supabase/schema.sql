@@ -347,3 +347,14 @@ alter table client_links enable row level security;
 
 drop table if exists plan_client_tokens;
 drop table if exists plan_clients;
+
+-- ---------- Foto de perfil (membros) e identidade visual (clientes) ----------
+-- Ambas nullable: sem foto, a UI cai nas iniciais sobre uma cor derivada do
+-- nome (ver src/lib/avatar.ts). Cliente em construção de marca nem sempre tem
+-- logo, então a cor é alternativa de primeira classe, não só fallback.
+alter table members
+  add column if not exists avatar_url text;
+
+alter table projects
+  add column if not exists avatar_url text,
+  add column if not exists avatar_color text;

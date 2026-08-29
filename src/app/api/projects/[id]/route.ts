@@ -13,6 +13,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     clientRole: body.clientRole,
     clientCity: body.clientCity,
     clientInstagram: body.clientInstagram,
+    avatarUrl: body.avatarUrl,
+    avatarColor: body.avatarColor,
     status: body.status,
   });
   if (!project) return NextResponse.json({ error: "Projeto não encontrado." }, { status: 404 });

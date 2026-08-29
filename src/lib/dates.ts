@@ -89,3 +89,46 @@ export function formatDuration(ms: number): string {
   const mins = minutes % 60;
   return [days ? `${days}d` : "", hours ? `${hours}h` : "", !days && mins ? `${mins}min` : ""].filter(Boolean).join(" ");
 }
+
+// Quantos dias de atraso — 0 se não está atrasada. Usado pra ordenar as
+// atrasadas da mais velha pra mais nova no topo da lista.
+export function overdueDays(dueDate: string | undefined, status: TaskStatus, today: string = todayIso()): number {
+  // A comparação é feita aqui, e não via isOverdue(), porque aquela função lê
+  // o dia de hoje por conta própria e ignoraria o `today` recebido — o que
+  // torna esta impossível de testar com data fixa.
+  if (!dueDate || DONE_SET.has(status) || dueDate >= today) return 0;
+  const [ay, am, ad] = today.split("-").map(Number);
+  const [by, bm, bd] = dueDate!.split("-").map(Number);
+  const MS_PER_DAY = 86_400_000;
+  return Math.round((Date.UTC(ay, am - 1, ad) - Date.UTC(by, bm - 1, bd)) / MS_PER_DAY);
+}
+
+// Horas restantes até o fim do dia do prazo (23:59:59 no fuso de São Paulo).
+// Negativo quando já passou. Alimenta o contador do dashboard.
+export function hoursUntilDue(dueDate: string, now: Date = new Date()): number {
+  const [year, month, day] = dueDate.split("-").map(Number);
+  // O fim do dia em São Paulo (UTC-3) é 02:59:59 UTC do dia seguinte.
+  const deadlineUtc = Date.UTC(year, month - 1, day, 23 + 3, 59, 59);
+  return (deadlineUtc - now.getTime()) / 3_600_000;
+}
+
+// "faltam 5h", "faltam 2 dias", "vence hoje", "atrasada há 3 dias".
+export function timeUntilDueLabel(dueDate: string, now: Date = new Date()): string {
+  const hours = hoursUntilDue(dueDate, now);
+  if (hours < 0) {
+    // Atraso é contado em DIAS DE CALENDÁRIO, igual à coluna de prazo. Medir
+    // pelas horas desde o fim do dia dava um dia a menos que a tabela ("há 11
+    // dias" ao lado de "12 dias"), e duas contas diferentes pro mesmo atraso
+    // na mesma tela destroem a confiança nas duas.
+    const hojeIso = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: TZ }).format(now);
+    const [ay, am, ad] = hojeIso.split("-").map(Number);
+    const [by, bm, bd] = dueDate.split("-").map(Number);
+    const days = Math.round((Date.UTC(ay, am - 1, ad) - Date.UTC(by, bm - 1, bd)) / 86_400_000);
+    if (days >= 1) return `atrasada há ${days} ${days === 1 ? "dia" : "dias"}`;
+    return `atrasada há ${Math.max(1, Math.floor(-hours))}h`;
+  }
+  if (hours < 1) return `faltam ${Math.max(1, Math.round(hours * 60))}min`;
+  if (hours < 24) return `faltam ${Math.floor(hours)}h`;
+  const days = Math.floor(hours / 24);
+  return `faltam ${days} ${days === 1 ? "dia" : "dias"}`;
+}

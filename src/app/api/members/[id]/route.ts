@@ -12,6 +12,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     active: body.active,
     role: body.role,
     aiEnabled: body.aiEnabled,
+    avatarUrl: body.avatarUrl,
   });
   if (!member) return NextResponse.json({ error: "Membro não encontrado." }, { status: 404 });
   return NextResponse.json({ member });

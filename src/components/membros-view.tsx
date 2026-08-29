@@ -1,7 +1,8 @@
 "use client";
 
-import { Check, FolderLock, RotateCcw, Sparkles, UserX, Users, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Camera, Check, FolderLock, RotateCcw, Sparkles, UserX, Users, X } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { Avatar } from "@/components/avatar";
 import { TASK_LIST_KINDS, USER_ROLES } from "@/lib/types";
 import type { Member, Project, TaskListKind, UserRole } from "@/lib/types";
 
@@ -63,7 +64,7 @@ export function MembrosView({
     resetForm();
   }
 
-  async function patchMember(id: string, patch: Partial<Pick<Member, "role" | "aiEnabled" | "active">>) {
+  async function patchMember(id: string, patch: Partial<Pick<Member, "role" | "aiEnabled" | "active" | "avatarUrl">>) {
     const response = await fetch(`/api/members/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -155,9 +156,12 @@ export function MembrosView({
               <ul className="project-list">
                 {members.map((member) => (
                   <li className="project-row" key={member.id} style={{ gridTemplateColumns: "minmax(0,1fr) auto" }}>
-                    <div className="project-row-title">
-                      <strong>{member.name}</strong>
-                      <span>{member.email}</span>
+                    <div className="project-row-title" style={{ display: "flex", alignItems: "center", gap: 11 }}>
+                      <AvatarUploadButton member={member} onChange={(avatarUrl) => patchMember(member.id, { avatarUrl })} />
+                      <span style={{ display: "grid", minWidth: 0 }}>
+                        <strong>{member.name}</strong>
+                        <span>{member.email}</span>
+                      </span>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
                       <select
@@ -262,5 +266,57 @@ export function MembrosView({
 
       {toast ? <div className="toast">{toast}</div> : null}
     </>
+  );
+}
+
+// Clicar no próprio avatar troca a foto — sem abrir modal, que pra uma ação de
+// um passo só custaria mais do que a ação em si.
+function AvatarUploadButton({ member, onChange }: { member: Member; onChange: (avatarUrl: string | null) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function upload(file: File) {
+    setBusy(true);
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      const response = await fetch("/api/uploads", { method: "POST", body });
+      const result = await response.json().catch(() => ({}));
+      if (response.ok) onChange(result.url);
+    } finally {
+      setBusy(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  }
+
+  return (
+    <span className="member-avatar-slot">
+      <button
+        type="button"
+        className="member-avatar-button"
+        disabled={busy}
+        title={member.avatarUrl ? `Trocar a foto de ${member.name}` : `Enviar foto de ${member.name}`}
+        aria-label={member.avatarUrl ? `Trocar a foto de ${member.name}` : `Enviar foto de ${member.name}`}
+        onClick={() => inputRef.current?.click()}
+      >
+        <Avatar name={member.name} imageUrl={member.avatarUrl} size={38} />
+        <span className="member-avatar-overlay"><Camera size={13} /></span>
+      </button>
+      {member.avatarUrl ? (
+        <button type="button" className="member-avatar-clear" onClick={() => onChange(null)} aria-label={`Remover a foto de ${member.name}`}>
+          remover
+        </button>
+      ) : null}
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        hidden
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) upload(file);
+        }}
+      />
+    </span>
   );
 }

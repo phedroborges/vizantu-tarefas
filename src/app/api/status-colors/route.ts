@@ -12,7 +12,11 @@ export async function GET() {
   return NextResponse.json({ colors });
 }
 
-export async function PUT(request: NextRequest) {
+// POST, e não PUT: em produção nenhuma das 3 rotas PUT do app jamais gravou
+// (status_colors, project_access e member_list_access estavam as três vazias),
+// enquanto tudo que é POST/PATCH grava normalmente — o método provavelmente
+// morre antes de chegar no Next. Não custa nada usar o verbo que funciona.
+export async function POST(request: NextRequest) {
   const auth = await requireUser(["dono", "editor"]);
   if (isResponse(auth)) return auth;
   const body = await request.json();
