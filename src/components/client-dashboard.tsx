@@ -1,7 +1,7 @@
 "use client";
 
-import { ArrowRight, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clapperboard, Clock3, Copy, ExternalLink, ImageIcon, Images, MessageCircleMore, Play, Sparkles, X } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { AlertCircle, ArrowRight, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clapperboard, Clock3, Copy, ExternalLink, ImageIcon, Images, MessageCircleMore, Play, Sparkles, X } from "lucide-react";
+import { useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { renderMarkdownLite } from "@/components/markdown-lite";
 import { burst } from "@/lib/confetti";
 import { descriptionHeadingKey, parseDescription } from "@/lib/description-sections";
@@ -26,6 +26,15 @@ export type DashboardEvent = { id: string; title: string; date: string; eventTyp
 
 const STATUS_LABEL: Record<string, string> = { pending: "pendente", approved: "aprovado", changes_requested: "em ajuste", rejected: "reprovado" };
 const REVIEWER_KEY = "vizantu-client-reviewer-name";
+
+// O nome do revisor vive no localStorage, que é externo ao React. Lê-lo no
+// initializer de useState faria o HTML do servidor (sempre vazio) divergir do
+// primeiro render no navegador; useSyncExternalStore é a via que o React
+// oferece pra isso. Ninguém escreve nessa chave por fora, então não há a que
+// se inscrever — o subscribe é um no-op.
+const subscribeToStoredName = () => () => {};
+const readStoredName = () => window.localStorage.getItem(REVIEWER_KEY) || "";
+const readStoredNameOnServer = () => "";
 const WEEKDAYS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 const isCreativeStage = (item: DashboardItem) => item.reviewVersion >= 100;
 const copyStatus = (item: DashboardItem) => isCreativeStage(item) ? "approved" : item.approvalStatus;
@@ -93,7 +102,28 @@ export function ClientDashboard({
     return firstScheduled ? new Date(`${firstScheduled}T12:00:00`) : new Date();
   });
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
-  const [reviewerName, setReviewerName] = useState(() => (typeof window !== "undefined" ? window.localStorage.getItem(REVIEWER_KEY) || "" : ""));
+  // A identificação é pedida na ENTRADA, não na hora de decidir. Antes disso o
+  // cliente com pressa ia direto nos botões, que ficavam desabilitados por
+  // causa do nome vazio — sem erro, sem aviso, só não acontecia nada. Com o
+  // nome resolvido logo no começo, os botões nunca chegam desabilitados.
+  const storedName = useSyncExternalStore(subscribeToStoredName, readStoredName, readStoredNameOnServer);
+  // Enquanto o cliente não digita nada, vale o nome guardado. Depois que ele
+  // edita (inclusive apagando), vale o que está no campo.
+  const [editedName, setEditedName] = useState<string | null>(null);
+  const reviewerName = editedName ?? storedName;
+  // "Já se identificou" é grudento de propósito: apagar o nome dentro do modal
+  // mostra o aviso de campo obrigatório, não traz o portão de entrada de volta
+  // por cima da tela.
+  const [passedGate, setPassedGate] = useState(false);
+  const identified = passedGate || Boolean(storedName.trim());
+
+  function confirmIdentification(name: string) {
+    const clean = name.trim();
+    if (!clean) return;
+    window.localStorage.setItem(REVIEWER_KEY, clean);
+    setEditedName(clean);
+    setPassedGate(true);
+  }
 
   const hasCreativeReview = items.some(isCreativeStage);
   const activeStage = hasCreativeReview ? "creative" : "copy";
@@ -331,11 +361,13 @@ export function ClientDashboard({
         <ApprovalModal
           item={activeItem}
           reviewerName={reviewerName}
-          onReviewerNameChange={setReviewerName}
+          onReviewerNameChange={setEditedName}
           onClose={() => setActiveItemId(null)}
           onSubmit={submitReview}
         />
       ) : null}
+
+      {!identified ? <IdentificationGate onConfirm={confirmIdentification} /> : null}
 
       {surveyOpen ? (
         <div className="cd-overlay" onClick={() => setSurveyOpen(false)}>
@@ -417,6 +449,39 @@ export function ItemDescription({ text }: { text: string }) {
   );
 }
 
+// Primeira coisa que o cliente vê: sem nome, não dá pra seguir. Não tem botão
+// de fechar nem fecha clicando fora de propósito — é justamente o passo que
+// antes ficava escondido lá embaixo do modal de aprovação.
+function IdentificationGate({ onConfirm }: { onConfirm: (name: string) => void }) {
+  const [name, setName] = useState("");
+  const ready = Boolean(name.trim());
+
+  return (
+    <div className="cd-overlay">
+      <form
+        className="cd-approval-modal cd-identify-modal"
+        onClick={(e) => e.stopPropagation()}
+        onSubmit={(e) => {
+          e.preventDefault();
+          onConfirm(name);
+        }}
+      >
+        <h3>Antes de começar, quem é você?</h3>
+        <div className="cd-meta">
+          Toda aprovação, ajuste ou reprovação fica registrada com o seu nome, pra equipe saber com quem falar sobre cada retorno.
+        </div>
+        <label className="cd-reviewer-field">
+          <span>Seu nome</span>
+          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Como podemos te identificar?" />
+        </label>
+        <button type="submit" className="cd-btn approve" disabled={!ready} style={{ marginTop: 14, width: "100%" }}>
+          Continuar
+        </button>
+      </form>
+    </div>
+  );
+}
+
 function ApprovalModal({
   item,
   reviewerName,
@@ -462,10 +527,23 @@ function ApprovalModal({
 
         {creativeStage && item.materialLink ? <a className="cd-material-link" href={item.materialLink} target="_blank" rel="noreferrer"><ExternalLink size={16} /><span><strong>Abrir material para revisar</strong><small>Confira o {item.formatLabel || "material"} antes de responder.</small></span></a> : !creativeStage && item.approvalStatus === "approved" ? <div className="cd-material-wait"><Clock3 size={15} /> Texto aprovado. A criação aparecerá quando estiver pronta.</div> : null}
 
+        {/* O nome já vem preenchido do portão de entrada. Isto aqui é pra
+            corrigir/trocar — e pra avisar em voz alta se alguém apagar, em vez
+            de só desabilitar os botões em silêncio. */}
         <label className="cd-reviewer-field">
-          <span>Seu nome</span>
-          <input value={reviewerName} onChange={(e) => onReviewerNameChange(e.target.value)} placeholder="Como podemos te identificar?" />
+          <span>Seu nome <em className="cd-field-required">obrigatório</em></span>
+          <input
+            value={reviewerName}
+            onChange={(e) => onReviewerNameChange(e.target.value)}
+            placeholder="Como podemos te identificar?"
+            aria-invalid={!reviewerName.trim()}
+          />
         </label>
+        {!reviewerName.trim() ? (
+          <p className="cd-reviewer-warning" role="alert">
+            <AlertCircle size={14} /> Preencha seu nome para liberar os botões de resposta.
+          </p>
+        ) : null}
 
         <button type="button" className="cd-date-change-toggle" onClick={() => setDateRequestOpen((open) => !open)}><CalendarDays size={15} /> {dateSent ? "Pedido de nova data enviado" : "Pedir alteração de data"}</button>
         {dateRequestOpen ? <div className="cd-date-change-form">

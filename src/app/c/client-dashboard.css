@@ -182,6 +182,15 @@
 .cd-copy-script:hover { background: #e6dbff; }
 .cd-copy-script.is-copied { color: #3f6818; background: #edf7e4; border-color: #cfe5bc; }
 .cd-reviewer-field { display: grid; gap: 6px; margin-top: 5px; color: var(--cd-muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .055em; }
+.cd-field-required { margin-left: 5px; color: var(--cd-purple-strong); font-style: normal; font-size: 9px; }
+.cd-reviewer-warning { display: flex; align-items: center; gap: 6px; margin: 7px 0 0; padding: 8px 10px; color: #8a5a00; background: #fff3cd; border: 1px solid #efd58b; font-size: 11px; font-weight: 600; }
+.cd-reviewer-warning svg { flex: none; }
+.cd-identify-modal { display: block; }
+.cd-identify-modal h3 { margin-top: 0; }
+/* .cd-meta é caixa-alta em pill curta; aqui é uma frase inteira, que em caixa
+   alta fica cansativa de ler justamente pra quem está com pressa. */
+.cd-identify-modal .cd-meta { margin-bottom: 14px; color: var(--cd-muted); font-size: 12px; font-weight: 500; line-height: 1.5; text-transform: none; letter-spacing: normal; }
+.cd-reviewer-field input[aria-invalid="true"] { border-color: #efd58b; background: #fffdf6; }
 .cd-reviewer-field input, .cd-approval-modal textarea { width: 100%; color: var(--cd-ink); background: #fff; border: 1px solid var(--cd-line); border-radius: 0; font-size: 16px; text-transform: none; letter-spacing: normal; }
 .cd-reviewer-field input { min-height: 46px; padding: 0 12px; }
 .cd-approval-modal textarea { min-height: 100px; margin-top: 10px; padding: 12px; resize: vertical; }
