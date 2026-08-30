@@ -52,3 +52,47 @@ describe("markdown-lite: links clicáveis na referência", () => {
     expect(out).not.toContain("<a ");
   });
 });
+
+describe("markdown-lite: imagem dentro da descrição", () => {
+  it("![](url) vira <img>, não link com colchetes soltos", () => {
+    const out = html("![](https://cdn.exemplo.com/ref.png)");
+    expect(out).toContain('<img src="https://cdn.exemplo.com/ref.png"');
+    expect(out).not.toContain("![");
+    expect(out).not.toContain("](");
+  });
+
+  it("mantém o texto ao redor — a imagem fica onde foi colada", () => {
+    const out = html("Cena 1: abre no pátio\n![](https://cdn.exemplo.com/a.jpg)\nCena 2: corta pro rosto");
+    expect(out).toContain("Cena 1: abre no pátio");
+    expect(out).toContain('src="https://cdn.exemplo.com/a.jpg"');
+    expect(out).toContain("Cena 2: corta pro rosto");
+  });
+
+  it("usa o alt quando ele existe", () => {
+    const out = html("![enquadramento da abertura](https://cdn.exemplo.com/b.png)");
+    expect(out).toContain('alt="enquadramento da abertura"');
+  });
+
+  it("não confunde link normal com imagem", () => {
+    const out = html("[a referência](https://exemplo.com/x)");
+    expect(out).toContain('href="https://exemplo.com/x"');
+    expect(out).not.toContain("<img");
+  });
+
+  it("continua recusando esquema que não seja http(s) no src", () => {
+    const out = html("![x](javascript:alert(1)) ![y](data:image/png;base64,AAAA)");
+    // Vira texto escapado, nunca elemento: nenhum src/href carrega o esquema.
+    expect(out).not.toContain("<img");
+    expect(out).not.toContain('src="javascript:');
+    expect(out).not.toContain('href="javascript:');
+    expect(out).not.toContain('src="data:');
+    expect(out).toContain("markdown-lite-line");
+  });
+
+  it("negrito e link seguem funcionando na mesma linha da imagem", () => {
+    const out = html("**Referência:** ![](https://cdn.exemplo.com/c.png) veja https://exemplo.com");
+    expect(out).toContain("<strong>Referência:</strong>");
+    expect(out).toContain('src="https://cdn.exemplo.com/c.png"');
+    expect(out).toContain('href="https://exemplo.com"');
+  });
+});

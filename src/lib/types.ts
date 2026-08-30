@@ -206,6 +206,19 @@ export type Task = {
 export type PlanKind = "content" | "process" | "presentation" | "brand";
 export type PlanStatus = "draft" | "active" | "completed" | "archived";
 
+// Etapa do plano — DERIVADA, nunca digitada. A regra é do Phedro: o plano fica
+// ATIVO quando existe link de aprovação do cliente, porque é o link que coloca
+// o plano na frente do cliente. Antes disso é rascunho. A coluna plans.status é
+// legado: nenhuma tela escrevia nela, então o chip mostrava um valor congelado
+// no momento da criação. Quem manda agora é derivePlanStage().
+export type PlanStage = "rascunho" | "ativo" | "aprovado";
+
+export const PLAN_STAGES: { value: PlanStage; label: string; tone: "nao_iniciada" | "em_andamento" | "feita" }[] = [
+  { value: "rascunho", label: "Rascunho", tone: "nao_iniciada" },
+  { value: "ativo", label: "Ativo", tone: "em_andamento" },
+  { value: "aprovado", label: "Aprovado", tone: "feita" },
+];
+
 export const PLAN_KINDS: { value: PlanKind; label: string }[] = [
   { value: "content", label: "Conteúdo (vídeos, posts, carrosséis)" },
   { value: "process", label: "Processo (passos ordenados)" },

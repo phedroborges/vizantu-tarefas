@@ -1,4 +1,5 @@
-import type { PlanApprovalStatus, PlanItemApproval, TaskStatus } from "./types";
+import { PLAN_STAGES } from "./types";
+import type { PlanApprovalStatus, PlanItemApproval, PlanStage, TaskStatus } from "./types";
 
 export type ApprovalStage = "copy" | "creative";
 
@@ -67,4 +68,27 @@ export function summarizeApprovalRound(approvals: Pick<PlanItemApproval, "status
     approvalRate: total ? Math.round((approved / total) * 100) : 0,
     fullyReviewed: total > 0 && reviewed === total,
   };
+}
+
+// A etapa do plano sai do LINK DE APROVAÇÃO: é criar o link que coloca o plano
+// na frente do cliente, então é isso que torna o plano ativo. O único estado
+// que vem depois é "aprovado", quando o cliente já fechou todos os criativos —
+// senão um plano encerrado ficaria "ativo" pra sempre.
+export function derivePlanStage(input: {
+  hasClientLink: boolean;
+  approvals: Pick<PlanItemApproval, "status" | "reviewVersion">[];
+  taskCount: number;
+}): PlanStage {
+  const creative = input.approvals.filter((approval) => approvalStage(approval.reviewVersion) === "creative");
+  const allCreativeApproved = input.taskCount > 0 && creative.length >= input.taskCount && creative.every((approval) => approval.status === "approved");
+  if (allCreativeApproved) return "aprovado";
+  return input.hasClientLink ? "ativo" : "rascunho";
+}
+
+export function planStageLabel(stage: PlanStage): string {
+  return PLAN_STAGES.find((item) => item.value === stage)?.label || stage;
+}
+
+export function planStageTone(stage: PlanStage): string {
+  return PLAN_STAGES.find((item) => item.value === stage)?.tone || "nao_iniciada";
 }

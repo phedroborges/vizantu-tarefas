@@ -1,5 +1,5 @@
 import { isOverdue } from "./dates";
-import { formatRequiresCapture, nextApprovalReviewVersion, taskStatusAfterClientDecision } from "./approval-workflow";
+import { derivePlanStage, formatRequiresCapture, nextApprovalReviewVersion, taskStatusAfterClientDecision } from "./approval-workflow";
 import { inheritsCaptureEditor } from "./assignee-inheritance";
 import { getSupabase } from "./supabase-client";
 import { BRAND_STAGES, DEFAULT_STATUS_COLORS, TASK_STATUSES } from "./types";
@@ -20,6 +20,7 @@ import type {
   PlanEvent,
   PlanItemApproval,
   PlanKind,
+  PlanStage,
   PlanStatus,
   Project,
   StatusColor,
@@ -773,9 +774,10 @@ export async function createPlanCaptacao(input: { planId: string; label: string;
   return mapPlanCaptacao(row as PlanCaptacaoRow);
 }
 
-export async function updatePlanCaptacao(id: string, patch: { packageKind?: "capture" | "creation"; recordingAssigneeId?: string | null; editingAssigneeId?: string | null }): Promise<PlanCaptacao | undefined> {
+export async function updatePlanCaptacao(id: string, patch: { label?: string; packageKind?: "capture" | "creation"; recordingAssigneeId?: string | null; editingAssigneeId?: string | null }): Promise<PlanCaptacao | undefined> {
   const db = getSupabase();
   const update: Record<string, unknown> = {};
+  if (patch.label !== undefined) update.label = patch.label.trim();
   if (patch.packageKind !== undefined) {
     update.package_kind = patch.packageKind;
     if (patch.packageKind === "creation") update.recording_assignee_id = null;
@@ -785,10 +787,12 @@ export async function updatePlanCaptacao(id: string, patch: { packageKind?: "cap
   if (!Object.keys(update).length) return undefined;
   const row = unwrap(await db.from("plan_captacoes").update(update).eq("id", id).select().maybeSingle()) as PlanCaptacaoRow | null;
   if (!row) return undefined;
-  if (patch.packageKind !== undefined) {
-    const eventType = `${patch.packageKind === "capture" ? "captacao" : "producao"}:${id}`;
+  // O nome do pacote também aparece no evento de agenda do projeto — renomear
+  // o pacote (ou trocar o tipo) precisa arrastar o título do evento junto.
+  if (patch.label !== undefined || patch.packageKind !== undefined) {
+    const eventType = `${row.package_kind === "capture" ? "captacao" : "producao"}:${id}`;
     const existingEvent = unwrap(await db.from("plan_events").select("id").in("event_type", [`captacao:${id}`, `producao:${id}`]).maybeSingle()) as { id: string } | null;
-    if (existingEvent) unwrap(await db.from("plan_events").update({ event_type: eventType, title: patch.packageKind === "capture" ? `Sugestão de captação: ${row.label}` : `Prazo de criação: ${row.label}` }).eq("id", existingEvent.id));
+    if (existingEvent) unwrap(await db.from("plan_events").update({ event_type: eventType, title: row.package_kind === "capture" ? `Sugestão de captação: ${row.label}` : `Prazo de criação: ${row.label}` }).eq("id", existingEvent.id));
   }
   if (patch.editingAssigneeId !== undefined) {
     // Legado sem responsável também passa a herdar. Exceções manuais nunca
@@ -861,18 +865,21 @@ export async function getOrCreateClientLink(projectId: string): Promise<ClientLi
   return active ?? createClientLink(projectId);
 }
 
-// Invalida o link atual e emite outro — pra quando o endereço vazou.
+// Invalida o link atual e emite outro — pra quando o endereço vazou. A revogação
+// do anterior mora dentro de createClientLink, então aqui é só o novo endereço.
 export async function rotateClientLink(projectId: string): Promise<ClientLink> {
-  const links = await listClientLinks(projectId);
-  for (const link of links) {
-    if (!link.revokedAt) await revokeClientLink(link.id);
-  }
   return createClientLink(projectId);
 }
 
+// Emitir um endereço novo revoga o anterior: é um link por projeto, e o banco
+// cobra isso (índice client_links_one_active_per_project). A identidade de quem
+// aprova não vem do link — o cliente se identifica na hora da aprovação —, então
+// dois endereços vivos só servem pra ninguém saber qual foi o enviado.
 export async function createClientLink(projectId: string, expiresAt?: string): Promise<ClientLink> {
+  const db = getSupabase();
+  unwrap(await db.from("client_links").update({ revoked_at: nowIso() }).eq("project_id", projectId).is("revoked_at", null));
   const row = unwrap(
-    await getSupabase()
+    await db
       .from("client_links")
       .insert({ id: newId(), project_id: projectId, token: randomToken(), expires_at: expiresAt || null, created_at: nowIso() })
       .select()
@@ -983,6 +990,52 @@ type PlanItemApprovalRow = { task_id: string; status: PlanApprovalStatus; review
 
 function mapPlanItemApproval(row: PlanItemApprovalRow): PlanItemApproval {
   return { taskId: row.task_id, status: row.status, reviewVersion: row.review_version, updatedAt: row.updated_at };
+}
+
+// Etapa derivada de vários planos de uma vez — a lista de /planos precisa disso
+// pra todos os planos visíveis, então são 3 queries em lote, não N por plano.
+export async function listPlanStages(plans: { id: string; projectId: string }[]): Promise<Record<string, PlanStage>> {
+  if (!plans.length) return {};
+  const db = getSupabase();
+  const projectIds = Array.from(new Set(plans.map((plan) => plan.projectId)));
+
+  const [linkRows, taskRows] = await Promise.all([
+    unwrap(await db.from("client_links").select("project_id, revoked_at, expires_at").in("project_id", projectIds)) as Promise<
+      { project_id: string; revoked_at: string | null; expires_at: string | null }[]
+    >,
+    unwrap(await db.from("tasks").select("id, plan_id").in("plan_id", plans.map((plan) => plan.id))) as Promise<{ id: string; plan_id: string }[]>,
+  ]);
+  const approvalRows = taskRows.length
+    ? (unwrap(await db.from("plan_item_approvals").select("task_id, status, review_version").in("task_id", taskRows.map((task) => task.id))) as { task_id: string; status: PlanApprovalStatus; review_version: number }[])
+    : [];
+
+  // Mesma validade que resolveClientLink aplica na porta do portal do cliente:
+  // um link revogado ou vencido não abre nada, então não deixa o plano ativo.
+  const now = Date.now();
+  const projectsWithLink = new Set(
+    linkRows
+      .filter((link) => !link.revoked_at && (!link.expires_at || new Date(link.expires_at).getTime() > now))
+      .map((link) => link.project_id),
+  );
+
+  const planByTask = new Map(taskRows.map((task) => [task.id, task.plan_id]));
+  const taskCounts = new Map<string, number>();
+  taskRows.forEach((task) => taskCounts.set(task.plan_id, (taskCounts.get(task.plan_id) || 0) + 1));
+  const approvalsByPlan = new Map<string, { status: PlanApprovalStatus; reviewVersion: number }[]>();
+  approvalRows.forEach((row) => {
+    const planId = planByTask.get(row.task_id);
+    if (!planId) return;
+    approvalsByPlan.set(planId, [...(approvalsByPlan.get(planId) || []), { status: row.status, reviewVersion: row.review_version }]);
+  });
+
+  return Object.fromEntries(plans.map((plan) => [
+    plan.id,
+    derivePlanStage({
+      hasClientLink: projectsWithLink.has(plan.projectId),
+      approvals: approvalsByPlan.get(plan.id) || [],
+      taskCount: taskCounts.get(plan.id) || 0,
+    }),
+  ]));
 }
 
 export async function listPlanItemApprovals(taskIds: string[]): Promise<PlanItemApproval[]> {

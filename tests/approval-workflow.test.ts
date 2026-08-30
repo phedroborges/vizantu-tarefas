@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { approvalRound, approvalStage, formatRequiresCapture, nextApprovalReviewVersion, summarizeApprovalRound, taskStatusAfterClientDecision } from "../src/lib/approval-workflow";
+import { approvalRound, approvalStage, derivePlanStage, formatRequiresCapture, nextApprovalReviewVersion, planStageLabel, summarizeApprovalRound, taskStatusAfterClientDecision } from "../src/lib/approval-workflow";
 
 describe("fluxo de aprovação em duas etapas", () => {
   it("separa versões de texto e criativo em rodadas legíveis", () => {
@@ -63,5 +63,38 @@ describe("fluxo de aprovação em duas etapas", () => {
   it("reabre uma nova rodada de criativo com o link do material", () => {
     expect(nextApprovalReviewVersion({ status: "changes_requested", reviewVersion: 100 }, "para_aprovacao", true)).toBe(101);
     expect(nextApprovalReviewVersion({ status: "rejected", reviewVersion: 101 }, "para_aprovacao", false)).toBeUndefined();
+  });
+});
+
+describe("etapa derivada do plano", () => {
+  const creative = (status: "pending" | "approved" | "changes_requested" | "rejected") => ({ status, reviewVersion: 100 });
+  const copy = (status: "pending" | "approved") => ({ status, reviewVersion: 1 });
+
+  it("fica em rascunho enquanto não existe link de aprovação", () => {
+    expect(derivePlanStage({ hasClientLink: false, approvals: [], taskCount: 0 })).toBe("rascunho");
+    expect(derivePlanStage({ hasClientLink: false, approvals: [], taskCount: 14 })).toBe("rascunho");
+  });
+
+  it("vira ativo assim que o link de aprovação existe, mesmo sem nada enviado", () => {
+    expect(derivePlanStage({ hasClientLink: true, approvals: [], taskCount: 20 })).toBe("ativo");
+  });
+
+  it("segue ativo durante as rodadas de aprovação", () => {
+    expect(derivePlanStage({ hasClientLink: true, approvals: [copy("approved"), copy("approved")], taskCount: 2 })).toBe("ativo");
+    expect(derivePlanStage({ hasClientLink: true, approvals: [creative("pending"), creative("approved")], taskCount: 2 })).toBe("ativo");
+  });
+
+  it("fecha em aprovado quando o cliente aprova todos os criativos", () => {
+    expect(derivePlanStage({ hasClientLink: true, approvals: [creative("approved"), creative("approved")], taskCount: 2 })).toBe("aprovado");
+  });
+
+  it("não fecha com criativo reprovado nem com item de fora da rodada", () => {
+    expect(derivePlanStage({ hasClientLink: true, approvals: [creative("approved"), creative("rejected")], taskCount: 2 })).toBe("ativo");
+    expect(derivePlanStage({ hasClientLink: true, approvals: [creative("approved")], taskCount: 3 })).toBe("ativo");
+  });
+
+  it("traduz as etapas pro português", () => {
+    expect(planStageLabel("ativo")).toBe("Ativo");
+    expect(planStageLabel("aprovado")).toBe("Aprovado");
   });
 });

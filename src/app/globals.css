@@ -681,6 +681,16 @@ a.upcoming-item { color: inherit; text-decoration: none; }
 .markdown-lite-link { color: var(--brand-strong); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
 .markdown-lite-link:hover { color: var(--brand); }
 
+/* Imagem colada no meio do texto. Fica em bloco próprio (o markdown que a
+   gera já entra em linha própria) e nunca estoura a largura da coluna. */
+.markdown-lite-image { display: block; max-width: 100%; margin: 8px 0; }
+.markdown-lite-image img { display: block; max-width: 100%; max-height: 340px; width: auto; border: 1px solid var(--line); }
+.markdown-lite-image:hover img { border-color: var(--brand-strong); }
+
+/* Alvo de arrasto e upload em andamento, iguais nos dois modos do campo. */
+.is-drop-target { outline: 2px dashed var(--brand-strong); outline-offset: 3px; background: #f7f3ff; }
+.is-uploading { opacity: .6; cursor: progress; }
+
 /* ---------- Plano (captações, itens, cliente/link mágico) ---------- */
 
 .client-link-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 0 25px 22px; }
@@ -730,6 +740,9 @@ a.upcoming-item { color: inherit; text-decoration: none; }
 .plan-captacao-card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 11px; }
 .plan-captacao-card-head strong { flex: 1; font-size: 12px; }
 .plan-captacao-card-head em { color: var(--brand-strong); font-size: 9px; font-style: normal; }
+.plan-captacao-label.is-editable { cursor: text; border-bottom: 1px dashed transparent; }
+.plan-captacao-label.is-editable:hover { border-bottom-color: #b79eff; }
+.plan-captacao-label-input { flex: 1; min-width: 0; height: 26px; padding: 0 6px; border: 1px solid var(--brand-strong); background: #fff; font-size: 12px; font-weight: 700; font-family: inherit; }
 .plan-package-kind { display: inline-flex; align-items: center; gap: 4px; padding: 4px 7px; color: #596159; background: #eef0ec; font-size: 9px; font-weight: 750; text-transform: uppercase; }
 .plan-package-kind.capture { color: #6235b6; background: #eee6ff; }
 .plan-captacao-card-head button { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; color: #a33931; background: transparent; }

@@ -9,17 +9,20 @@
 
 import type { MouseEvent, ReactNode } from "react";
 
-// Três formas inline, numa varredura só. A ordem da alternância importa: o link
-// markdown precisa vir antes da URL solta, senão o https de dentro dos
-// parênteses viraria link sozinho e o [texto] ficaria órfão na tela.
+// Quatro formas inline, numa varredura só. A ordem da alternância importa em
+// dois pontos: a imagem ![alt](url) vem antes do link, senão o [alt](url) de
+// dentro casaria como link e o "!" ficaria solto na tela; e o link markdown vem
+// antes da URL solta, senão o https de dentro dos parênteses viraria link
+// sozinho e o [texto] ficaria órfão.
 //
 // O ** ... ** não atravessa quebra de linha — assim um asterisco solto no meio
 // do roteiro não "come" o resto do parágrafo procurando o par.
 //
-// Só http/https entram no href. É isso que mantém a promessa do arquivo: um
-// `javascript:` escrito na descrição continua sendo texto, nunca um link.
+// Só http/https entram no href e no src. É isso que mantém a promessa do
+// arquivo: um `javascript:` escrito na descrição continua sendo texto, nunca um
+// link — e um `data:` não vira imagem.
 const INLINE =
-  /\*\*([^*\n]+)\*\*|\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<>()[\]]+)/g;
+  /!\[([^\]\n]*)\]\((https?:\/\/[^\s)]+)\)|\*\*([^*\n]+)\*\*|\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<>()[\]]+)/g;
 
 function ExternalLink({ href, children }: { href: string; children: ReactNode }) {
   return (
@@ -38,6 +41,24 @@ function ExternalLink({ href, children }: { href: string; children: ReactNode })
   );
 }
 
+// A imagem abre em tamanho cheio numa aba nova. O stopPropagation é pelo mesmo
+// motivo do link: o RichTextField entra em edição ao clicar na prévia, e clicar
+// numa referência pra ampliar não é pedido pra editar.
+function InlineImage({ src, alt }: { src: string; alt: string }) {
+  return (
+    <a
+      className="markdown-lite-image"
+      href={src}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={(event: MouseEvent) => event.stopPropagation()}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={src} alt={alt} loading="lazy" />
+    </a>
+  );
+}
+
 function renderInline(text: string, keyPrefix: string): ReactNode[] {
   const nodes: ReactNode[] = [];
   let last = 0;
@@ -47,9 +68,12 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
   while ((match = INLINE.exec(text)) !== null) {
     if (match.index > last) nodes.push(text.slice(last, match.index));
     const key = `${keyPrefix}-${match.index}`;
-    const [bold, linkText, linkHref, bareUrl] = [match[1], match[2], match[3], match[4]];
+    const [imageAlt, imageSrc, bold, linkText, linkHref, bareUrl] = [match[1], match[2], match[3], match[4], match[5], match[6]];
 
-    if (bold !== undefined) {
+    if (imageSrc !== undefined) {
+      nodes.push(<InlineImage key={key} src={imageSrc} alt={imageAlt || ""} />);
+      last = match.index + match[0].length;
+    } else if (bold !== undefined) {
       nodes.push(<strong key={key}>{bold}</strong>);
       last = match.index + match[0].length;
     } else if (linkHref !== undefined) {

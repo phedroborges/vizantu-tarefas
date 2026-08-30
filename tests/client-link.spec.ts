@@ -7,9 +7,15 @@ import { fixtures, loginAsTestDono } from "./helpers";
 // duas metades: o cliente entra sem login; o resto do app continua exigindo.
 const db = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
 
+// Emitir um link revoga o anterior — é um por projeto, garantido pelo índice
+// client_links_one_active_per_project. O helper faz o mesmo que
+// createClientLink() faz em produção, senão o segundo insert do arquivo
+// esbarraria na constraint.
 async function createLink(projectId: string, patch: Record<string, unknown> = {}) {
   const token = `e2e-link-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  await db.from("client_links").insert({ project_id: projectId, token, ...patch });
+  await db.from("client_links").update({ revoked_at: new Date().toISOString() }).eq("project_id", projectId).is("revoked_at", null);
+  const { error } = await db.from("client_links").insert({ project_id: projectId, token, ...patch });
+  if (error) throw new Error(`Falha ao criar link de teste: ${error.message}`);
   return token;
 }
 

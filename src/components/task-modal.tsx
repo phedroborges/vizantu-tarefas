@@ -8,7 +8,6 @@ import { MetaRow } from "@/components/meta-row";
 import { TagPicker } from "@/components/tag-picker";
 import { TaskStatusControl } from "@/components/task-status-control";
 import { RichTextField } from "@/components/rich-text-field";
-import { renderMarkdownLite } from "@/components/markdown-lite";
 import { useConfirm } from "@/components/confirm-dialog";
 import { DESCRIPTION_SECTIONS, parseDescription, serializeDescription } from "@/lib/description-sections";
 import { formatDateTime, isOverdue, todayIso } from "@/lib/dates";
@@ -124,7 +123,6 @@ export function TaskModal({
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [error, setError] = useState("");
   const [editingLink, setEditingLink] = useState(false);
-  const [editingDescription, setEditingDescription] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -535,6 +533,7 @@ export function TaskModal({
                         value={sections.livre}
                         disabled={!canEdit}
                         onChange={(value) => updateSection("livre", value)}
+                        onError={setError}
                       />
                     </section>
                   ) : null}
@@ -546,31 +545,22 @@ export function TaskModal({
                         value={sections[section.key]}
                         disabled={!canEdit}
                         onChange={(value) => updateSection(section.key, value)}
+                        onError={setError}
                         placeholder={section.placeholder}
                       />
                     </section>
                   ))}
                 </div>
-              ) : editingDescription ? (
-                <textarea
-                  autoFocus
+              ) : (
+                <RichTextField
                   className="task-desc-textarea"
                   value={draft.description}
-                  onChange={(e) => updateField("description", e.target.value)}
-                  onBlur={() => setEditingDescription(false)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Escape") {
-                      e.stopPropagation();
-                      setEditingDescription(false);
-                    }
-                  }}
-                  placeholder="Descreva o briefing da tarefa"
+                  disabled={!canEdit}
+                  onChange={(value) => updateField("description", value)}
+                  onError={setError}
+                  placeholder="Vazio — clique para escrever a descrição"
                   maxLength={4000}
                 />
-              ) : (
-                <button type="button" className="task-desc-display" onClick={() => setEditingDescription(true)}>
-                  {draft.description ? renderMarkdownLite(draft.description) : <span className="meta-empty">Vazio — clique para escrever a descrição</span>}
-                </button>
               )}
             </div>
           </div>

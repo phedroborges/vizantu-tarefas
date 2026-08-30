@@ -4,8 +4,9 @@ import { ClipboardList, Search, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useConfirm } from "@/components/confirm-dialog";
+import { planStageLabel, planStageTone } from "@/lib/approval-workflow";
 import { PLAN_KINDS } from "@/lib/types";
-import type { Plan, PlanKind, Project } from "@/lib/types";
+import type { Plan, PlanKind, PlanStage, Project } from "@/lib/types";
 
 function kindLabel(kind: PlanKind) {
   return PLAN_KINDS.find((k) => k.value === kind)?.label || kind;
@@ -14,10 +15,12 @@ function kindLabel(kind: PlanKind) {
 export function PlanosView({
   initialPlans,
   initialProjects,
+  planStages,
   canEdit = true,
 }: {
   initialPlans: Plan[];
   initialProjects: Project[];
+  planStages: Record<string, PlanStage>;
   canEdit?: boolean;
 }) {
   const [plans, setPlans] = useState(initialPlans);
@@ -129,7 +132,7 @@ export function PlanosView({
                       <span>{projectById.get(plan.projectId)?.name || "—"} · {kindLabel(plan.kind)}</span>
                     </Link>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-end" }}>
-                      <span className={`status ${plan.status === "active" ? "em_andamento" : plan.status === "completed" ? "feita" : "nao_iniciada"}`}>{plan.status}</span>
+                      <span className={`status ${planStageTone(planStages[plan.id] || "rascunho")}`} title="Etapa calculada a partir das rodadas de aprovação do cliente">{planStageLabel(planStages[plan.id] || "rascunho")}</span>
                       {canEdit ? (
                         <button className="icon-button" type="button" onClick={() => remove(plan)} title="Excluir" aria-label={`Excluir ${plan.title}`}><Trash2 size={14} /></button>
                       ) : null}

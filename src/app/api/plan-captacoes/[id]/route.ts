@@ -9,10 +9,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const body = await request.json();
   if (body?.suggestedDate && !/^\d{4}-\d{2}-\d{2}$/.test(body.suggestedDate)) return NextResponse.json({ error: "Data inválida." }, { status: 400 });
   if (body.packageKind !== undefined && body.packageKind !== "capture" && body.packageKind !== "creation") return NextResponse.json({ error: "Tipo de pacote inválido." }, { status: 400 });
+  if (body.label !== undefined && (typeof body.label !== "string" || !body.label.trim())) return NextResponse.json({ error: "Informe o nome do pacote." }, { status: 400 });
+  if (typeof body.label === "string" && body.label.trim().length > 140) return NextResponse.json({ error: "O nome do pacote tem no máximo 140 caracteres." }, { status: 400 });
   try {
     const event = body.suggestedDate !== undefined ? await setCaptureSuggestion(id, body.suggestedDate || undefined) : undefined;
-    const captacao = body.packageKind !== undefined || body.recordingAssigneeId !== undefined || body.editingAssigneeId !== undefined
-      ? await updatePlanCaptacao(id, { packageKind: body.packageKind, recordingAssigneeId: body.recordingAssigneeId, editingAssigneeId: body.editingAssigneeId })
+    const captacao = body.label !== undefined || body.packageKind !== undefined || body.recordingAssigneeId !== undefined || body.editingAssigneeId !== undefined
+      ? await updatePlanCaptacao(id, { label: body.label, packageKind: body.packageKind, recordingAssigneeId: body.recordingAssigneeId, editingAssigneeId: body.editingAssigneeId })
       : undefined;
     return NextResponse.json({ event: event || null, captacao: captacao || null });
   } catch (error) {

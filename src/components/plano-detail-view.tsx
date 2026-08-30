@@ -63,6 +63,8 @@ export function PlanoDetailView({
   const [newItemName, setNewItemName] = useState("");
   const [newItemFormatId, setNewItemFormatId] = useState(formatTags[0]?.id || "");
   const [editingTask, setEditingTask] = useState<Task | null | undefined>(undefined);
+  const [renamingCaptacaoId, setRenamingCaptacaoId] = useState("");
+  const [captacaoLabelDraft, setCaptacaoLabelDraft] = useState("");
   const [toast, setToast] = useState("");
   const [workflowError, setWorkflowError] = useState("");
   const { confirm, ConfirmDialog } = useConfirm();
@@ -143,6 +145,35 @@ export function PlanoDetailView({
     setSuggestions((current) => [...current.filter((event) => !event.eventType.endsWith(`:${captacaoId}`)), ...(result.event ? [result.event] : [])]);
     const packageItem = captacoes.find((item) => item.id === captacaoId);
     showToast(suggestedDate ? (packageItem?.packageKind === "capture" ? "Sugestão de captação salva." : "Prazo de criação salvo.") : "Data removida.");
+  }
+
+  function startRenameCaptacao(captacao: PlanCaptacao) {
+    if (!canEdit) return;
+    setRenamingCaptacaoId(captacao.id);
+    setCaptacaoLabelDraft(captacao.label);
+  }
+
+  async function commitRenameCaptacao(captacao: PlanCaptacao) {
+    const label = captacaoLabelDraft.trim();
+    setRenamingCaptacaoId("");
+    if (!label || label === captacao.label) return;
+    setCaptacoes((current) => current.map((item) => (item.id === captacao.id ? { ...item, label } : item)));
+    const response = await fetch(`/api/plan-captacoes/${captacao.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ label }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.captacao) {
+      setCaptacoes((current) => current.map((item) => (item.id === captacao.id ? captacao : item)));
+      return showToast(result.error || "Não foi possível renomear o pacote.");
+    }
+    setCaptacoes((current) => current.map((item) => (item.id === captacao.id ? result.captacao : item)));
+    // O título do evento de agenda é derivado do nome — refaz na lista local.
+    setSuggestions((current) => current.map((event) => event.eventType.endsWith(`:${captacao.id}`)
+      ? { ...event, title: `${event.eventType.startsWith("captacao:") ? "Sugestão de captação" : "Prazo de criação"}: ${label}` }
+      : event));
+    showToast("Pacote renomeado.");
   }
 
   async function setPackageKind(captacaoId: string, packageKind: PlanCaptacao["packageKind"]) {
@@ -371,7 +402,27 @@ export function PlanoDetailView({
                 const count = tasks.filter((t) => t.captacaoId === c.id).length;
                 return (
                   <div key={c.id} className="plan-captacao-card">
-                    <div className="plan-captacao-card-head"><strong>{c.label}</strong><span className={`plan-package-kind ${c.packageKind}`}>{c.packageKind === "capture" ? <><Camera size={12} /> Com captação</> : <><Palette size={12} /> Criação</>}</span><em>{count} conteúdos</em>{canEdit ? <button type="button" onClick={() => removeCaptacao(c)} aria-label={`Remover ${c.label}`}><Trash2 size={13} /></button> : null}</div>
+                    <div className="plan-captacao-card-head">{renamingCaptacaoId === c.id ? (
+                      <input
+                        className="plan-captacao-label-input"
+                        autoFocus
+                        maxLength={140}
+                        value={captacaoLabelDraft}
+                        aria-label={`Nome do pacote ${c.label}`}
+                        onChange={(event) => setCaptacaoLabelDraft(event.target.value)}
+                        onBlur={() => commitRenameCaptacao(c)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); }
+                          if (event.key === "Escape") { setRenamingCaptacaoId(""); }
+                        }}
+                      />
+                    ) : (
+                      <strong
+                        className={canEdit ? "plan-captacao-label is-editable" : "plan-captacao-label"}
+                        onClick={() => startRenameCaptacao(c)}
+                        title={canEdit ? "Clique para renomear" : undefined}
+                      >{c.label}</strong>
+                    )}<span className={`plan-package-kind ${c.packageKind}`}>{c.packageKind === "capture" ? <><Camera size={12} /> Com captação</> : <><Palette size={12} /> Criação</>}</span><em>{count} conteúdos</em>{canEdit ? <button type="button" onClick={() => removeCaptacao(c)} aria-label={`Remover ${c.label}`}><Trash2 size={13} /></button> : null}</div>
                     {canEdit ? <div className="plan-package-kind-switch"><button type="button" className={c.packageKind === "creation" ? "is-active" : ""} onClick={() => setPackageKind(c.id, "creation")}><Palette size={13} /> Pacote de criação</button><button type="button" className={c.packageKind === "capture" ? "is-active" : ""} onClick={() => setPackageKind(c.id, "capture")}><Camera size={13} /> Exige captação</button></div> : null}
                     <div className={`plan-captacao-fields ${c.packageKind === "creation" ? "is-creation" : ""}`}>
                       <label><span>{c.packageKind === "capture" ? "Data sugerida" : "Prazo sugerido"}</span>{canEdit ? <input type="date" aria-label={`Data sugerida para ${c.label}`} value={suggestions.find((event) => event.eventType.endsWith(`:${c.id}`))?.eventDate || ""} onChange={(event) => setSuggestionDate(c.id, event.target.value)} /> : <small>{suggestions.find((event) => event.eventType.endsWith(`:${c.id}`))?.eventDate || "—"}</small>}</label>
