@@ -192,6 +192,16 @@ alter table tasks
   add column if not exists assignee_source text
     check (assignee_source in ('manual', 'captacao'));
 
+-- O que a tarefa É — só dois valores, porque só existem duas descrições
+-- possíveis: quem vira publicação tem roteiro e legenda, quem não vira só tem
+-- direcionamento e referência. Marca não entra aqui: dentro de um plano quem
+-- manda é o kind do plano (ver hasContentSections em description-sections).
+alter table tasks
+  add column if not exists kind text not null default 'tarefa';
+alter table tasks drop constraint if exists tasks_kind_check;
+alter table tasks
+  add constraint tasks_kind_check check (kind in ('tarefa', 'conteudo'));
+
 -- Direcionamento, roteiro, referência e legenda NÃO são colunas próprias —
 -- são seções escritas dentro de tasks.description (markdown-lite, com os
 -- títulos em **negrito**). Menos campos pra preencher, e o mesmo texto serve

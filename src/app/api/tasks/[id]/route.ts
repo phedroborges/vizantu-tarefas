@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isResponse, requireUser } from "@/lib/authz";
 import { DueDateLockedError, deleteTask, updateTask } from "@/lib/storage";
-import { TASK_STATUSES } from "@/lib/types";
+import { TASK_KINDS, TASK_STATUSES } from "@/lib/types";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireUser(["dono", "editor"]);
@@ -11,10 +11,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (body.status !== undefined && !TASK_STATUSES.some((status) => status.value === body.status)) {
     return NextResponse.json({ error: "Status inválido." }, { status: 400 });
   }
+  if (body.kind !== undefined && !TASK_KINDS.some((kind) => kind.value === body.kind)) {
+    return NextResponse.json({ error: "Tipo de tarefa inválido." }, { status: 400 });
+  }
   try {
     const task = await updateTask(id, {
       projectId: body.projectId,
       name: body.name,
+      kind: body.kind,
       dueDate: body.dueDate,
       assigneeId: body.assigneeId,
       assigneeSource: body.assigneeSource,

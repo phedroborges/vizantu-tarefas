@@ -30,6 +30,7 @@ import {
   ANNOUNCEMENT_SCOPES,
   DONE_STATUSES,
   PLAN_KINDS,
+  TASK_KINDS,
   TASK_STATUSES,
   USER_ROLES,
   type Member,
@@ -178,6 +179,7 @@ async function toolCreateTask(
     formatLabels?: string[];
     channelLabels?: string[];
     description?: string;
+    kind?: string;
     status?: string;
   },
   caller: CurrentUser,
@@ -189,10 +191,12 @@ async function toolCreateTask(
   const formatTagIds = await resolveTagIds(args.formatLabels, "formato");
   const channelTagIds = await resolveTagIds(args.channelLabels, "canal");
   const status = TASK_STATUSES.find((item) => item.value === args.status)?.value;
+  const kind = TASK_KINDS.find((item) => item.value === args.kind)?.value;
 
   const task = await createTask({
     name: args.name,
     projectId,
+    kind,
     assigneeId,
     dueDate: args.dueDate,
     description: args.description,
@@ -553,6 +557,12 @@ export const ASSISTANT_TOOLS: ChatCompletionTool[] = [
           formatLabels: { type: "array", items: { type: "string" }, description: "Ex.: Vídeo, Carrossel. Cria a etiqueta se não existir." },
           channelLabels: { type: "array", items: { type: "string" }, description: "Ex.: Instagram, YouTube. Cria a etiqueta se não existir." },
           description: { type: "string" },
+          kind: {
+            type: "string",
+            enum: TASK_KINDS.map((kind) => kind.value),
+            description:
+              "'conteudo' quando a tarefa vira uma publicação (vídeo, post, carrossel) — a descrição ganha as seções **Roteiro** e **Legenda**. 'tarefa' (padrão) pra qualquer outra entrega: aí a descrição tem só **Direcionamento** e **Referência**.",
+          },
           status: { type: "string", description: "Um dos: " + TASK_STATUSES.map((s) => s.value).join(", ") },
         },
         required: ["name", "projectName"],
@@ -715,7 +725,7 @@ export const ASSISTANT_TOOLS: ChatCompletionTool[] = [
           description: {
             type: "string",
             description:
-              "Descrição completa do item — direcionamento, roteiro, referência e legenda vão TODOS aqui, como seções em markdown (ex.: '**Direcionamento**\\n...\\n\\n**Roteiro**\\n...'). Não existem campos separados pra isso.",
+              "Descrição completa do item — direcionamento, roteiro, referência e legenda vão TODOS aqui, como seções em markdown (ex.: '**Direcionamento**\\n...\\n\\n**Roteiro**\\n...'). Não existem campos separados pra isso. Roteiro e legenda só existem em plano de conteúdo. Em plano de marca ou de processo, use só **Direcionamento** e **Referência**: briefing, plataforma, identidade, manual e passo de onboarding não viram publicação.",
           },
         },
         required: ["planId", "name"],

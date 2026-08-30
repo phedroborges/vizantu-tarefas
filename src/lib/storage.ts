@@ -30,6 +30,7 @@ import type {
   Tag,
   TagKind,
   Task,
+  TaskKind,
   TaskListKind,
   TaskStatus,
   UserRole,
@@ -301,6 +302,7 @@ export class DueDateLockedError extends Error {
 export type TaskInput = {
   projectId: string;
   name: string;
+  kind?: TaskKind;
   dueDate?: string;
   assigneeId?: string;
   assigneeSource?: "manual" | "captacao";
@@ -320,6 +322,7 @@ type TaskRow = {
   id: string;
   project_id: string;
   name: string;
+  kind: TaskKind | null;
   due_date: string | null;
   assignee_id: string | null;
   assignee_source: "manual" | "captacao" | null;
@@ -345,6 +348,7 @@ function mapTask(row: TaskRow): Task {
     id: row.id,
     projectId: row.project_id,
     name: row.name,
+    kind: row.kind ?? "tarefa",
     dueDate: row.due_date ?? undefined,
     assigneeId: row.assignee_id ?? undefined,
     assigneeSource: row.assignee_source ?? undefined,
@@ -364,6 +368,18 @@ function mapTask(row: TaskRow): Task {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+// O kind do plano dono viaja junto com a tarefa (ver Task.planKind em types).
+// É o que decide as seções da descrição: marca não tem roteiro nem legenda.
+// Uma consulta só, e nenhuma quando não há item de plano no lote — o caminho
+// da tarefa avulsa (inclusive o autosave) não paga nada por isso.
+async function attachPlanKind(tasks: Task[]): Promise<Task[]> {
+  const planIds = [...new Set(tasks.map((task) => task.planId).filter(Boolean))] as string[];
+  if (!planIds.length) return tasks;
+  const rows = unwrap(await getSupabase().from("plans").select("id, kind").in("id", planIds)) as { id: string; kind: PlanKind }[];
+  const kindByPlan = new Map(rows.map((row) => [row.id, row.kind]));
+  return tasks.map((task) => (task.planId ? { ...task, planKind: kindByPlan.get(task.planId) } : task));
 }
 
 // ---------- Automação estratégica ⇄ criativa ----------
@@ -401,12 +417,15 @@ function transitionStatusHistory(history: StatusHistoryEntry[], next: TaskStatus
 
 export async function listTasks(): Promise<Task[]> {
   const rows = unwrap(await getSupabase().from("tasks").select("*")) as TaskRow[];
-  return rows.map(mapTask).sort((a, b) => (a.dueDate || "9999-99-99").localeCompare(b.dueDate || "9999-99-99"));
+  const tasks = await attachPlanKind(rows.map(mapTask));
+  return tasks.sort((a, b) => (a.dueDate || "9999-99-99").localeCompare(b.dueDate || "9999-99-99"));
 }
 
 export async function getTask(id: string): Promise<Task | undefined> {
   const row = unwrap(await getSupabase().from("tasks").select("*").eq("id", id).maybeSingle());
-  return row ? mapTask(row as TaskRow) : undefined;
+  if (!row) return undefined;
+  const [task] = await attachPlanKind([mapTask(row as TaskRow)]);
+  return task;
 }
 
 export async function createTask(input: TaskInput): Promise<Task> {
@@ -428,6 +447,7 @@ export async function createTask(input: TaskInput): Promise<Task> {
         id: newId(),
         project_id: input.projectId,
         name: input.name.trim(),
+        kind: input.kind || "tarefa",
         due_date: input.dueDate || null,
         assignee_id: assigneeId,
         assignee_source: assigneeSource,
@@ -453,7 +473,8 @@ export async function createTask(input: TaskInput): Promise<Task> {
       .select()
       .single(),
   );
-  return mapTask(row as TaskRow);
+  const [task] = await attachPlanKind([mapTask(row as TaskRow)]);
+  return task;
 }
 
 // Cria uma cópia independente da tarefa — mesmos dados, mas id, comentários e
@@ -465,6 +486,7 @@ export async function duplicateTask(id: string): Promise<Task | undefined> {
   return createTask({
     projectId: current.projectId,
     name: `${current.name} (cópia)`,
+    kind: current.kind,
     dueDate: current.dueDate,
     assigneeId: current.assigneeId,
     assigneeSource: current.assigneeSource,
@@ -500,6 +522,7 @@ export async function updateTask(
   const update: Record<string, unknown> = { updated_at: nowIso() };
   if (patch.projectId !== undefined) update.project_id = patch.projectId;
   if (patch.name !== undefined) update.name = patch.name.trim();
+  if (patch.kind !== undefined) update.kind = patch.kind;
   if (patch.dueDate !== undefined) update.due_date = patch.dueDate || null;
   if (patch.assigneeId !== undefined) {
     update.assignee_id = patch.assigneeId || null;
@@ -534,7 +557,7 @@ export async function updateTask(
 
   const row = unwrap(await getSupabase().from("tasks").update(update).eq("id", id).select().maybeSingle());
   if (!row) return undefined;
-  const updated = mapTask(row as TaskRow);
+  const [updated] = await attachPlanKind([mapTask(row as TaskRow)]);
   await syncApprovalRoundFromTask(updated);
   return updated;
 }
@@ -814,7 +837,8 @@ export async function deletePlanCaptacao(id: string): Promise<boolean> {
 // Plano quanto pelo dashboard do cliente no vizantu-planos.
 export async function listPlanTasks(planId: string): Promise<Task[]> {
   const rows = unwrap(await getSupabase().from("tasks").select("*").eq("plan_id", planId)) as TaskRow[];
-  return rows.map(mapTask).sort((a, b) => (a.sequenceOrder ?? 0) - (b.sequenceOrder ?? 0));
+  const tasks = await attachPlanKind(rows.map(mapTask));
+  return tasks.sort((a, b) => (a.sequenceOrder ?? 0) - (b.sequenceOrder ?? 0));
 }
 
 // ---------- Clientes e link mágico (consumidos pelo vizantu-planos) ----------

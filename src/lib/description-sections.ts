@@ -1,17 +1,27 @@
-// Padrão de descrição dos itens de plano: as MESMAS seções pra todo item,
-// sempre — não é markdown que alguém precisa lembrar de digitar. A UI mostra
-// um bloco por seção; aqui só fica a conversão entre esse formato estruturado
-// e o texto salvo em tasks.description (que precisa continuar sendo texto
-// puro, porque a IA lê/escreve nele e o vizantu-planos mostra pro cliente).
+// Padrão de descrição de TODA tarefa — item de plano, etapa de marca ou tarefa
+// avulsa: as mesmas seções, na mesma ordem, sempre. Não é markdown que alguém
+// precisa lembrar de digitar. A UI mostra um bloco por seção; aqui só fica a
+// conversão entre esse formato estruturado e o texto salvo em
+// tasks.description (que precisa continuar sendo texto puro, porque a IA
+// lê/escreve nele e o vizantu-planos mostra pro cliente).
+//
+// "scope" é o que muda de tela pra tela — nunca o formato salvo. Direcionamento
+// e Referência valem pra qualquer entrega: um Briefing de marca também tem "o
+// que precisa acontecer" e "no que se basear". Roteiro e Legenda só existem
+// quando a entrega é uma publicação — plataforma de marca, manual, identidade
+// visual e passo de processo não têm roteiro nem legenda.
+
+import type { PlanKind, TaskKind } from "./types";
 
 export const DESCRIPTION_SECTIONS = [
-  { key: "direcionamento", label: "Direcionamento", placeholder: "O que precisa acontecer nesse conteúdo, o contexto, o que gravar/fazer" },
-  { key: "roteiro", label: "Roteiro", placeholder: "Cena, fala, lettering — o roteiro em si" },
-  { key: "legenda", label: "Legenda", placeholder: "Texto complementar da publicação e CTA" },
-  { key: "referencia", label: "Referência", placeholder: "Links ou descrição do que serve de referência" },
+  { key: "direcionamento", label: "Direcionamento", scope: "sempre", placeholder: "O que precisa acontecer nesse conteúdo, o contexto, o que gravar/fazer" },
+  { key: "roteiro", label: "Roteiro", scope: "conteudo", placeholder: "Cena, fala, lettering — o roteiro em si" },
+  { key: "legenda", label: "Legenda", scope: "conteudo", placeholder: "Texto complementar da publicação e CTA" },
+  { key: "referencia", label: "Referência", scope: "sempre", placeholder: "Links ou descrição do que serve de referência" },
 ] as const;
 
-export type DescriptionSectionKey = (typeof DESCRIPTION_SECTIONS)[number]["key"];
+export type DescriptionSection = (typeof DESCRIPTION_SECTIONS)[number];
+export type DescriptionSectionKey = DescriptionSection["key"];
 export type DescriptionSections = Record<DescriptionSectionKey, string> & { livre: string };
 
 const LABEL_TO_KEY = new Map<string, DescriptionSectionKey>(
@@ -81,4 +91,45 @@ export function serializeDescription(sections: DescriptionSections): string {
     if (value) parts.push(`**${section.label}**\n${value}`);
   }
   return parts.join("\n\n");
+}
+
+// ---------- Quais seções cada tela mostra ----------
+// Duas fontes, nessa ordem, e nunca as duas ao mesmo tempo:
+//
+// 1. Dentro de um plano, o PLANO manda. Todo item de um plano de conteúdo é
+//    conteúdo; etapa de marca e passo de processo não são, e não adianta
+//    marcar o contrário numa tarefa só. Por isso o seletor nem aparece ali.
+// 2. Fora de um plano, o SELETOR manda — é o único lugar onde a resposta não
+//    está em lugar nenhum, então quem cria diz. O padrão é "tarefa": começa em
+//    direcionamento e referência, e vira conteúdo quando alguém disser que é.
+export function hasContentSections(task: { planKind?: PlanKind; kind?: TaskKind }): boolean {
+  return task.planKind ? task.planKind === "content" : task.kind === "conteudo";
+}
+
+// O seletor só faz sentido onde ele decide alguma coisa: numa tarefa de plano
+// a resposta já vem do plano, e um seletor que não muda nada é pior que
+// nenhum. Os botões "+ Roteiro" continuam sendo a saída pro caso excepcional.
+export function taskKindIsEditable(task: { planKind?: PlanKind }): boolean {
+  return !task.planKind;
+}
+
+// Seção de conteúdo escondida que JÁ tem texto continua aparecendo: numa marca
+// antiga (que herdou Roteiro/Legenda de quando a estrutura era igual pra todo
+// item de plano) ou quando alguém revelou o bloco de propósito. A tela nunca
+// esconde o que alguém escreveu — e o serialize continua salvando tudo.
+export function descriptionLayout(
+  sections: DescriptionSections,
+  options: { content: boolean; revealed?: readonly DescriptionSectionKey[] },
+): { visible: DescriptionSection[]; hidden: DescriptionSection[] } {
+  const visible: DescriptionSection[] = [];
+  const hidden: DescriptionSection[] = [];
+  for (const section of DESCRIPTION_SECTIONS) {
+    const show =
+      section.scope === "sempre" ||
+      options.content ||
+      options.revealed?.includes(section.key) ||
+      Boolean(sections[section.key]?.trim());
+    (show ? visible : hidden).push(section);
+  }
+  return { visible, hidden };
 }

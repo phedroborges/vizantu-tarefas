@@ -5,9 +5,10 @@ import { useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { TagPickerPopover } from "@/components/tag-picker";
+import { emptySections, serializeDescription } from "@/lib/description-sections";
 import { formatDueDate, todayIso } from "@/lib/dates";
-import { STATUS_GROUPS, TASK_STATUSES } from "@/lib/types";
-import type { Member, Project, StatusColor, Tag, Task, TaskStatus } from "@/lib/types";
+import { STATUS_GROUPS, TASK_KINDS, TASK_STATUSES } from "@/lib/types";
+import type { Member, Project, StatusColor, Tag, Task, TaskKind, TaskStatus } from "@/lib/types";
 
 // Criação rápida: nome e descrição no centro, todo o resto como pílulas
 // compactas embaixo — nada de linha rotulada por campo. Cada pílula mostra o
@@ -37,7 +38,16 @@ export function QuickTaskModal({
   onTagCreated: (tag: Tag) => void;
 }) {
   const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
+  // O que se escreve aqui é o Direcionamento da tarefa, não um texto solto: a
+  // descrição tem uma estrutura só em todo lugar do app, e a criação rápida
+  // preenche o primeiro bloco dela. Assim a tarefa já nasce no formato em que
+  // o modal completo vai abrir, em vez de virar um bloco "Anotações" avulso.
+  const [direcionamento, setDirecionamento] = useState("");
+  // Toda tarefa nasce em "tarefa": direcionamento e referência. Quem está
+  // criando um conteúdo diz aqui, e aí a descrição ganha roteiro e legenda no
+  // modal completo. É a única pergunta que o app não tem como responder
+  // sozinho — dentro de um plano, o plano já responde.
+  const [kind, setKind] = useState<TaskKind>("tarefa");
   const [projectId, setProjectId] = useState(defaultProjectId || projects[0]?.id || "");
   const [assigneeId, setAssigneeId] = useState(currentUserId || "");
   const [status, setStatus] = useState<TaskStatus>("rascunho");
@@ -65,7 +75,8 @@ export function QuickTaskModal({
       body: JSON.stringify({
         projectId,
         name,
-        description,
+        kind,
+        description: direcionamento.trim() ? serializeDescription({ ...emptySections(), direcionamento: direcionamento.trim() }) : "",
         assigneeId: assigneeId || undefined,
         status,
         dueDate: dueDate || undefined,
@@ -109,6 +120,20 @@ export function QuickTaskModal({
               </div>
             </PopoverContent>
           </Popover>
+
+          <div className="kind-toggle" role="group" aria-label="Tipo da tarefa">
+            {TASK_KINDS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                className={kind === option.value ? "is-on" : ""}
+                aria-pressed={kind === option.value}
+                onClick={() => setKind(option.value)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="qt-body">
@@ -130,9 +155,9 @@ export function QuickTaskModal({
           />
           <textarea
             className="qt-desc"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Escreva uma descrição (opcional)"
+            value={direcionamento}
+            onChange={(e) => setDirecionamento(e.target.value)}
+            placeholder="Direcionamento — o que precisa acontecer (opcional)"
             rows={3}
             maxLength={4000}
           />

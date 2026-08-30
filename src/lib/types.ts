@@ -166,15 +166,32 @@ export const TASK_LIST_KINDS: { value: TaskListKind; label: string }[] = [
   { value: "criativa", label: "Criativa" },
 ];
 
+// O que a tarefa É — e, por consequência, quais seções a descrição tem. Só
+// dois valores porque só existem duas descrições possíveis: quem vira
+// publicação tem roteiro e legenda, quem não vira só tem direcionamento e
+// referência. Marca não é um valor daqui: dentro de um plano quem manda é o
+// kind do plano, e o seletor nem aparece (ver hasContentSections).
+export type TaskKind = "tarefa" | "conteudo";
+
+export const TASK_KINDS: { value: TaskKind; label: string }[] = [
+  { value: "tarefa", label: "Tarefa" },
+  { value: "conteudo", label: "Conteúdo" },
+];
+
 // ---------- Tarefa ----------
 // planId/captacaoId/etc só são preenchidos quando a tarefa é um item de um
 // Plano (ver Plan mais abaixo) — em qualquer outro caso ficam undefined e a
 // tarefa se comporta exatamente como antes.
+//
+// planKind NÃO é coluna: é o kind do plano dono, anexado no storage e levado
+// junto com a tarefa. Quem abre o modal a partir de /tarefas não tem o plano
+// em mãos, e a descrição precisa saber se a entrega é conteúdo ou marca.
 
 export type Task = {
   id: string;
   projectId: string;
   name: string;
+  kind: TaskKind;
   dueDate?: string;
   assigneeId?: string;
   assigneeSource?: "manual" | "captacao";
@@ -189,6 +206,7 @@ export type Task = {
   statusHistory: StatusHistoryEntry[];
   comments: Comment[];
   planId?: string;
+  planKind?: PlanKind;
   captacaoId?: string;
   sequenceOrder?: number;
   createdAt: string;

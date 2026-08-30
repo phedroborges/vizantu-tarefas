@@ -1,6 +1,6 @@
 "use client";
 
-import { AlignLeft, CalendarDays, Check, Copy, ExternalLink, Folder, ImagePlus, Link2, Loader2, Send, Share2, Trash2, User, X } from "lucide-react";
+import { AlignLeft, CalendarDays, Check, Copy, ExternalLink, Folder, ImagePlus, Link2, Loader2, Plus, Send, Share2, Trash2, User, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -9,15 +9,17 @@ import { TagPicker } from "@/components/tag-picker";
 import { TaskStatusControl } from "@/components/task-status-control";
 import { RichTextField } from "@/components/rich-text-field";
 import { useConfirm } from "@/components/confirm-dialog";
-import { DESCRIPTION_SECTIONS, parseDescription, serializeDescription } from "@/lib/description-sections";
+import { descriptionLayout, hasContentSections, parseDescription, serializeDescription, taskKindIsEditable, type DescriptionSectionKey } from "@/lib/description-sections";
 import { formatDateTime, isOverdue, todayIso } from "@/lib/dates";
 import { resizeImageFile } from "@/lib/resize-image";
-import type { Member, Project, StatusColor, Tag, TagKind, Task, TaskStatus } from "@/lib/types";
+import { TASK_KINDS } from "@/lib/types";
+import type { Member, Project, StatusColor, Tag, TagKind, Task, TaskKind, TaskStatus } from "@/lib/types";
 import { celebrateFrom } from "@/lib/celebrate";
 
 type Draft = {
   projectId: string;
   name: string;
+  kind: TaskKind;
   dueDate: string;
   assigneeId: string;
   assigneeSource: "manual" | "captacao";
@@ -46,6 +48,7 @@ function draftFromTask(task: Task | null, defaultProjectId: string, currentUserI
   return {
     projectId: task?.projectId || defaultProjectId,
     name: task?.name || "",
+    kind: task?.kind || "tarefa",
     dueDate: task ? task.dueDate || "" : todayIso(),
     assigneeId: task ? task.assigneeId || NO_ASSIGNEE : currentUserId || NO_ASSIGNEE,
     assigneeSource: task?.assigneeSource || "manual",
@@ -63,6 +66,7 @@ function buildPayload(draft: Draft) {
   return {
     projectId: draft.projectId,
     name: draft.name,
+    kind: draft.kind,
     dueDate: draft.dueDate || undefined,
     assigneeId: draft.assigneeId === NO_ASSIGNEE ? null : draft.assigneeId,
     assigneeSource: draft.assigneeSource,
@@ -113,6 +117,10 @@ export function TaskModal({
 }) {
   const [draft, setDraft] = useState<Draft>(() => draftFromTask(task, defaultProjectId, currentUserId));
   const [sections, setSections] = useState(() => parseDescription(task?.description));
+  // Blocos de conteúdo que uma tarefa de marca não mostra por padrão e alguém
+  // pediu pra abrir. Vive só enquanto o modal está aberto: ao reabrir, o que
+  // tiver texto continua aparecendo sozinho (ver descriptionLayout).
+  const [revealed, setRevealed] = useState<DescriptionSectionKey[]>([]);
   const [liveTaskId, setLiveTaskId] = useState(task?.id);
   const [statusHistory, setStatusHistory] = useState(task?.statusHistory ?? []);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -223,6 +231,19 @@ export function TaskModal({
   }
 
   const isPlanItem = Boolean(task?.planId);
+
+  // A estrutura da descrição é UMA só e vale pra toda tarefa — item de plano,
+  // etapa de marca ou avulsa. O que varia é o par roteiro/legenda, e quem
+  // decide é o plano quando existe um, senão o seletor no topo da descrição.
+  // Entrega que não vira publicação não tem esses dois blocos: eles ficam
+  // guardados atrás de um botão em vez de pedir um preenchimento que não
+  // existe. Trocar o tipo nunca apaga texto — o que já foi escrito continua
+  // aparecendo (ver descriptionLayout).
+  const { visible: visibleSections, hidden: hiddenSections } = descriptionLayout(sections, {
+    content: hasContentSections({ planKind: task?.planKind, kind: draft.kind }),
+    revealed,
+  });
+  const canPickKind = taskKindIsEditable({ planKind: task?.planKind });
 
   // A descrição continua sendo UM campo de texto no banco (a IA lê/escreve
   // nele, e o cliente vê ele no vizantu-planos) — aqui só é editada por
@@ -485,6 +506,22 @@ export function TaskModal({
             <div className="task-modal-pane-desc">
               <div className="task-desc-head">
                 <span className="meta-row-label task-desc-label"><AlignLeft size={13} /> Descrição</span>
+                {canPickKind ? (
+                  <div className="kind-toggle" role="group" aria-label="Tipo da tarefa">
+                    {TASK_KINDS.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={draft.kind === option.value ? "is-on" : ""}
+                        aria-pressed={draft.kind === option.value}
+                        disabled={!canEdit}
+                        onClick={() => updateField("kind", option.value, { immediate: true })}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
                 {canEdit ? (
                   <button
                     type="button"
@@ -520,48 +557,53 @@ export function TaskModal({
                   ))}
                 </div>
               ) : null}
-              {/* Item de plano tem SEMPRE as mesmas seções, em toda tarefa —
-                  é o padrão da casa, não markdown que alguém precisa lembrar
-                  de digitar. Tarefa comum segue com a descrição livre. */}
-              {isPlanItem ? (
-                <div className="desc-doc">
-                  {sections.livre.trim() ? (
-                    <section className="desc-block">
-                      <h4 className="desc-block-title">Anotações</h4>
-                      <RichTextField
-                        className="desc-block-text"
-                        value={sections.livre}
-                        disabled={!canEdit}
-                        onChange={(value) => updateSection("livre", value)}
-                        onError={setError}
-                      />
-                    </section>
-                  ) : null}
-                  {DESCRIPTION_SECTIONS.map((section) => (
-                    <section className="desc-block" key={section.key}>
-                      <h4 className="desc-block-title">{section.label}</h4>
-                      <RichTextField
-                        className="desc-block-text"
-                        value={sections[section.key]}
-                        disabled={!canEdit}
-                        onChange={(value) => updateSection(section.key, value)}
-                        onError={setError}
-                        placeholder={section.placeholder}
-                      />
-                    </section>
-                  ))}
-                </div>
-              ) : (
-                <RichTextField
-                  className="task-desc-textarea"
-                  value={draft.description}
-                  disabled={!canEdit}
-                  onChange={(value) => updateField("description", value)}
-                  onError={setError}
-                  placeholder="Vazio — clique para escrever a descrição"
-                  maxLength={4000}
-                />
-              )}
+              {/* TODA tarefa tem as mesmas seções, na mesma ordem — é o
+                  padrão da casa, não markdown que alguém precisa lembrar de
+                  digitar. Antes isso valia só pra item de plano, e a tarefa
+                  avulsa caía num textarea solto; era a mesma descrição com
+                  duas caras. Quem varia agora é o conjunto de blocos, pela
+                  natureza da entrega (ver descriptionLayout). */}
+              <div className="desc-doc">
+                {sections.livre.trim() ? (
+                  <section className="desc-block">
+                    <h4 className="desc-block-title">Anotações</h4>
+                    <RichTextField
+                      className="desc-block-text"
+                      value={sections.livre}
+                      disabled={!canEdit}
+                      onChange={(value) => updateSection("livre", value)}
+                      onError={setError}
+                    />
+                  </section>
+                ) : null}
+                {visibleSections.map((section) => (
+                  <section className="desc-block" key={section.key}>
+                    <h4 className="desc-block-title">{section.label}</h4>
+                    <RichTextField
+                      className="desc-block-text"
+                      value={sections[section.key]}
+                      disabled={!canEdit}
+                      onChange={(value) => updateSection(section.key, value)}
+                      onError={setError}
+                      placeholder={section.placeholder}
+                    />
+                  </section>
+                ))}
+                {canEdit && hiddenSections.length ? (
+                  <div className="desc-add-row">
+                    {hiddenSections.map((section) => (
+                      <button
+                        key={section.key}
+                        type="button"
+                        className="desc-add-button"
+                        onClick={() => setRevealed((current) => [...current, section.key])}
+                      >
+                        <Plus size={11} /> {section.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
 
