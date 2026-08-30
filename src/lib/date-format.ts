@@ -1,6 +1,6 @@
 // Formatos de data do prazo das tarefas. Antes existia só "16 ago" fixo, que
 // não diz se é semana que vem ou mês passado sem a pessoa fazer a conta.
-// Cada modo é uma escolha de quem está olhando (ver use-date-format.ts), e não
+// Cada modo é uma escolha de quem está olhando (ver lib/preferences.ts), e não
 // uma decisão tomada aqui.
 
 import { todayIso } from "./dates";

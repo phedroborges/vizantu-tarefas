@@ -19,8 +19,9 @@ import { TaskModal } from "@/components/task-modal";
 import { QuickTaskModal } from "@/components/quick-task-modal";
 import { TagPickerPopover } from "@/components/tag-picker";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useTaskColumns } from "@/lib/use-task-columns";
-import { useDateFormat } from "@/lib/use-date-format";
+import { usePreferences } from "@/lib/use-preferences";
+import { migrateLocalPreferences } from "@/lib/migrate-local-preferences";
+import { toggleColumn as toggleColumnKey, type MemberPreferences } from "@/lib/preferences";
 import { formatTaskDate, type DateFormatKey } from "@/lib/date-format";
 import { StatusTag } from "@/components/status-tag";
 import { Avatar, AvatarName } from "@/components/avatar";
@@ -142,7 +143,10 @@ export function TarefasView({
   initialFormatTags,
   initialChannelTags,
   initialStatusColors,
+  initialPreferences,
+  hasSavedPreferences = false,
   canEdit = true,
+  canEditStatusColors = false,
   currentUserId,
   initialTaskId,
 }: {
@@ -152,7 +156,10 @@ export function TarefasView({
   initialFormatTags: Tag[];
   initialChannelTags: Tag[];
   initialStatusColors: StatusColor[];
+  initialPreferences: MemberPreferences;
+  hasSavedPreferences?: boolean;
   canEdit?: boolean;
+  canEditStatusColors?: boolean;
   currentUserId: string;
   initialTaskId?: string;
 }) {
@@ -160,13 +167,13 @@ export function TarefasView({
   const [formatTags, setFormatTags] = useState(initialFormatTags);
   const [channelTags, setChannelTags] = useState(initialChannelTags);
   const [statusColors, setStatusColors] = useState(initialStatusColors);
-  const [view, setView] = useState<"lista" | "calendario">("lista");
+
   const [query, setQuery] = useState("");
   const [projectFilter, setProjectFilter] = useState("");
   const [assigneeFilter, setAssigneeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [listFilter, setListFilter] = useState<TaskListKind | "">("");
-  const [showFinalized, setShowFinalized] = useState(false);
+
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const withDue = initialTasks.filter((task) => task.dueDate).map((task) => monthKeyFromDate(task.dueDate!));
     return withDue.sort().at(-1) || currentMonthKey();
@@ -177,8 +184,25 @@ export function TarefasView({
   const [toast, setToast] = useState("");
   const [quickAddTitle, setQuickAddTitle] = useState("");
   const [isQuickAdding, setIsQuickAdding] = useState(false);
-  const { visible: visibleColumns, toggle: toggleColumn } = useTaskColumns();
-  const { format: dateFormat, setFormat: setDateFormat } = useDateFormat();
+  // Jeito de ver: da pessoa, guardado na conta (ver lib/preferences.ts). As
+  // cores dos status NÃO entram aqui — são padrão do time.
+  const { preferences, update: updatePreferences, replace: replacePreferences } = usePreferences(initialPreferences);
+
+  // Virada de uma vez só: recolhe o que sobrou do localStorage das versões
+  // antigas, salva na conta e limpa o navegador. Ver migrate-local-preferences.
+  useEffect(() => {
+    let active = true;
+    void migrateLocalPreferences(hasSavedPreferences).then((migrated) => {
+      if (active && migrated) replacePreferences(migrated);
+    });
+    return () => { active = false; };
+  }, [hasSavedPreferences, replacePreferences]);
+  const { taskView: view, taskColumns: visibleColumns, dateFormat, showFinalized } = preferences;
+  const setView = (next: MemberPreferences["taskView"]) => updatePreferences({ taskView: next });
+  const setShowFinalized = (next: boolean) => updatePreferences({ showFinalized: next });
+  const setDateFormat = (next: MemberPreferences["dateFormat"]) => updatePreferences({ dateFormat: next });
+  const toggleColumn = (key: MemberPreferences["taskColumns"][number]) =>
+    updatePreferences({ taskColumns: toggleColumnKey(visibleColumns, key) });
 
   const projectById = useMemo(() => new Map(initialProjects.map((project) => [project.id, project])), [initialProjects]);
   const memberById = useMemo(() => new Map(initialMembers.map((member) => [member.id, member])), [initialMembers]);
@@ -494,7 +518,7 @@ export function TarefasView({
               setStatusColors(colors);
               showToast("Cores dos status atualizadas.");
             }}
-            canEdit={canEdit}
+            canEditStatusColors={canEditStatusColors}
           />
 
           {view === "lista" ? (

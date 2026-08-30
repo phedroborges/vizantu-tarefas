@@ -40,7 +40,7 @@ export function TaskToolbar({
   onDateFormatChange,
   statusColors,
   onStatusColorsSaved,
-  canEdit,
+  canEditStatusColors = false,
 }: {
   filters: TaskFilters;
   onFiltersChange: (next: Partial<TaskFilters>) => void;
@@ -54,7 +54,9 @@ export function TaskToolbar({
   onDateFormatChange: (format: DateFormatKey) => void;
   statusColors: StatusColor[];
   onStatusColorsSaved: (colors: StatusColor[]) => void;
-  canEdit: boolean;
+  // Cor de status é padrão do time, não gosto de quem olha: só o dono muda.
+  // O resto deste menu (formato de data, colunas) é preferência de cada um.
+  canEditStatusColors?: boolean;
 }) {
   const activeCount = countActiveFilters(filters);
 
@@ -162,10 +164,11 @@ export function TaskToolbar({
                   ))}
                 </div>
               ) : null}
-              {canEdit ? (
+              {canEditStatusColors ? (
                 <div className="toolbar-section">
                   <span className="toolbar-section-label">Cores dos status</span>
                   <StatusColorPicker colors={statusColors} onSaved={onStatusColorsSaved} />
+                  <small className="toolbar-section-hint">Vale pro time inteiro.</small>
                 </div>
               ) : null}
             </div>

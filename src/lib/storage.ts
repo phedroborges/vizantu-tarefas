@@ -1,5 +1,6 @@
 import { isOverdue } from "./dates";
 import { derivePlanStage, formatRequiresCapture, nextApprovalReviewVersion, taskStatusAfterClientDecision } from "./approval-workflow";
+import { mergePreferences, normalizePreferences, type MemberPreferences } from "./preferences";
 import { inheritsCaptureEditor } from "./assignee-inheritance";
 import { getSupabase } from "./supabase-client";
 import { BRAND_STAGES, DEFAULT_STATUS_COLORS, TASK_STATUSES } from "./types";
@@ -1426,6 +1427,38 @@ export async function appendAssistantMessages(id: string, newMessages: Assistant
 // então a lista devolvida aqui SEMPRE tem as 12 etapas, customizadas ou não.
 
 type StatusColorRow = { status: TaskStatus; color: string };
+
+// ---------- Preferências de exibição (por pessoa) ----------
+
+// Sempre normalizado na saída: o jsonb é dado solto, e uma coluna que deixe de
+// existir numa versão futura não pode quebrar a tela de quem tinha ela salva.
+export async function getMemberPreferences(memberId: string): Promise<MemberPreferences> {
+  return (await readMemberPreferences(memberId)).preferences;
+}
+
+// `saved` separa "nunca configurou" de "configurou e deu no padrão". Só a
+// primeira aceita a migração do que ficou no localStorage da versão antiga —
+// senão um navegador desatualizado sobrescreveria a escolha feita em outra
+// máquina.
+export async function readMemberPreferences(memberId: string): Promise<{ preferences: MemberPreferences; saved: boolean }> {
+  const row = unwrap(
+    await getSupabase().from("member_preferences").select("preferences").eq("member_id", memberId).maybeSingle(),
+  ) as { preferences: unknown } | null;
+  return { preferences: normalizePreferences(row?.preferences), saved: Boolean(row) };
+}
+
+// Faz o merge sobre o que já está salvo, então um PATCH parcial ("só mudei pra
+// calendário") não apaga as colunas que a pessoa tinha escolhido.
+export async function saveMemberPreferences(memberId: string, patch: unknown): Promise<MemberPreferences> {
+  const current = await getMemberPreferences(memberId);
+  const next = mergePreferences(current, patch);
+  unwrap(
+    await getSupabase()
+      .from("member_preferences")
+      .upsert({ member_id: memberId, preferences: next, updated_at: nowIso() }, { onConflict: "member_id" }),
+  );
+  return next;
+}
 
 export async function listStatusColors(): Promise<StatusColor[]> {
   const rows = unwrap(await getSupabase().from("status_colors").select("status, color")) as StatusColorRow[];

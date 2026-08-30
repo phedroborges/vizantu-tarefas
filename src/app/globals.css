@@ -281,6 +281,7 @@ a.upcoming-item { color: inherit; text-decoration: none; }
 .toolbar-section { display: grid; gap: 3px; }
 .toolbar-section + .toolbar-section { padding-top: 11px; border-top: 1px solid var(--line); }
 .toolbar-section-label { padding-bottom: 3px; color: var(--muted-text); font-size: 9.5px; font-weight: 720; text-transform: uppercase; letter-spacing: .06em; }
+.toolbar-section-hint { display: block; padding-top: 5px; color: var(--muted-text); font-size: 10px; }
 .toolbar-radio, .toolbar-check { display: flex; align-items: center; gap: 8px; padding: 5px 4px; font-size: 12px; color: var(--dark); cursor: pointer; }
 .toolbar-radio:hover, .toolbar-check:hover { background: #fafbf9; }
 .toolbar-radio small { margin-left: auto; color: var(--muted-text); font-size: 10.5px; }

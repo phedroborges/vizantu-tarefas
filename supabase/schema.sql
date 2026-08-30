@@ -358,3 +358,12 @@ alter table members
 alter table projects
   add column if not exists avatar_url text,
   add column if not exists avatar_color text;
+
+-- Preferências de exibição por pessoa (lista/calendário, colunas, formato de
+-- data). As cores dos status ficam em status_colors: são padrão do time.
+create table if not exists member_preferences (
+  member_id uuid primary key references members(id) on delete cascade,
+  preferences jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+alter table member_preferences enable row level security;
