@@ -1,6 +1,6 @@
 "use client";
 
-import { AlignLeft, CalendarDays, Check, Copy, ExternalLink, Folder, ImagePlus, Link2, Loader2, Plus, Send, Share2, Trash2, User, X } from "lucide-react";
+import { AlignLeft, CalendarDays, Check, Copy, ExternalLink, Folder, ImagePlus, Link2, Loader2, Plus, Send, Share2, Trash2, TriangleAlert, User, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -10,7 +10,7 @@ import { TaskStatusControl } from "@/components/task-status-control";
 import { RichTextField } from "@/components/rich-text-field";
 import { useConfirm } from "@/components/confirm-dialog";
 import { descriptionLayout, hasContentSections, parseDescription, serializeDescription, taskKindIsEditable, type DescriptionSectionKey } from "@/lib/description-sections";
-import { formatDateTime, isOverdue, todayIso } from "@/lib/dates";
+import { formatDateTime, isOverdue, overdueDays, todayIso } from "@/lib/dates";
 import { resizeImageFile } from "@/lib/resize-image";
 import { TASK_KINDS } from "@/lib/types";
 import type { Member, Project, StatusColor, Tag, TagKind, Task, TaskKind, TaskStatus } from "@/lib/types";
@@ -154,6 +154,7 @@ export function TaskModal({
 
   const isEditing = Boolean(liveTaskId);
   const dateLocked = isEditing && isOverdue(draft.dueDate, draft.status);
+  const lateDays = isEditing ? overdueDays(draft.dueDate, draft.status) : 0;
   const colorByStatus = useMemo(() => new Map(statusColors.map((entry) => [entry.status, entry.color])), [statusColors]);
 
   // Salva de verdade — cria a tarefa no primeiro autosave com nome+projeto
@@ -409,7 +410,6 @@ export function TaskModal({
               <TaskStatusControl
                 status={draft.status}
                 statusHistory={statusHistory}
-                dueDate={draft.dueDate}
                 color={colorByStatus.get(draft.status)}
                 onChange={(value) => {
                   // Mesmo marco do lado de fora (ver patchTask em tarefas-view):
@@ -421,13 +421,23 @@ export function TaskModal({
               </div>
 
               <MetaRow icon={<CalendarDays size={13} />} label="Entrega">
-                <input
-                  className="meta-date"
-                  type="date"
-                  value={draft.dueDate}
-                  disabled={dateLocked}
-                  onChange={(e) => updateField("dueDate", e.target.value, { immediate: true })}
-                />
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <input
+                    className="meta-date"
+                    type="date"
+                    value={draft.dueDate}
+                    disabled={dateLocked}
+                    onChange={(e) => updateField("dueDate", e.target.value, { immediate: true })}
+                  />
+                  {/* O atraso é fato da data, não do status — por isso o aviso
+                      mora ao lado do prazo e não na etapa. */}
+                  {lateDays ? (
+                    <span className="due-flag">
+                      <TriangleAlert size={12} strokeWidth={2.4} />
+                      atrasada há {lateDays} {lateDays === 1 ? "dia" : "dias"}
+                    </span>
+                  ) : null}
+                </div>
               </MetaRow>
               {dateLocked ? (
                 <p className="form-message" style={{ marginTop: -4 }}>

@@ -22,8 +22,9 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrig
 import { usePreferences } from "@/lib/use-preferences";
 import { migrateLocalPreferences } from "@/lib/migrate-local-preferences";
 import { toggleColumn as toggleColumnKey, type MemberPreferences } from "@/lib/preferences";
-import { formatTaskDate, type DateFormatKey } from "@/lib/date-format";
+import type { DateFormatKey } from "@/lib/date-format";
 import { StatusTag } from "@/components/status-tag";
+import { DueDateValue } from "@/components/due-date-value";
 import { Avatar, AvatarName } from "@/components/avatar";
 import { celebrateFrom } from "@/lib/celebrate";
 import { TaskToolbar } from "@/components/task-toolbar";
@@ -41,8 +42,14 @@ function statusOf(task: Task): string {
 }
 
 function statusLabel(task: Task): string {
-  if (isOverdue(task.dueDate, task.status)) return "Atrasada";
   return TASK_STATUSES.find((status) => status.value === task.status)?.label || task.status;
+}
+
+// Prazo com o atraso anexado — o atraso é fato da DATA, e é assim que ele
+// chega ao assistente também.
+function dueLabel(task: Task): string {
+  if (!task.dueDate) return "sem prazo";
+  return isOverdue(task.dueDate, task.status) ? `${task.dueDate} (atrasada)` : task.dueDate;
 }
 
 // Filtro = status exato (dos 12) ou "atrasada" — mais preciso que filtrar só por grupo.
@@ -55,7 +62,7 @@ function InlineStatusCell({ task, colorByStatus, onChange }: { task: Task; color
   return (
     <Select items={STATUS_LABELS} value={task.status} onValueChange={(value) => value && onChange(value as TaskStatus, triggerRef.current)}>
       <SelectTrigger ref={triggerRef} className="meta-trigger cell-trigger status-trigger" onClick={(event) => event.stopPropagation()}>
-        <StatusTag status={task.status} overdue={isOverdue(task.dueDate, task.status)} colorByStatus={colorByStatus} />
+        <StatusTag status={task.status} colorByStatus={colorByStatus} />
       </SelectTrigger>
       <SelectContent>
         {STATUS_GROUPS.map((statusGroup) => (
@@ -131,7 +138,7 @@ function InlineDueDateCell({ task, locked, dateFormat, onChange, onLockedClick }
         setEditing(true);
       }}
     >
-      {formatTaskDate(task.dueDate, dateFormat)}
+      <DueDateValue dueDate={task.dueDate} status={task.status} dateFormat={dateFormat} />
     </button>
   );
 }
@@ -257,7 +264,7 @@ export function TarefasView({
     if (selectedTask && selectedTask !== "new") {
       const project = projectById.get(selectedTask.projectId);
       const assignee = selectedTask.assigneeId ? memberById.get(selectedTask.assigneeId)?.name : null;
-      return `O usuário está com o modal de edição aberto na tarefa "${selectedTask.name}" (projeto ${project?.name || "sem projeto"}, responsável ${assignee || "sem responsável"}, status ${statusLabel(selectedTask)}, prazo ${selectedTask.dueDate || "sem prazo"}). Se a pergunta for curta ou usar "essa tarefa"/"ela"/"aqui", é sobre essa tarefa.`;
+      return `O usuário está com o modal de edição aberto na tarefa "${selectedTask.name}" (projeto ${project?.name || "sem projeto"}, responsável ${assignee || "sem responsável"}, status ${statusLabel(selectedTask)}, prazo ${dueLabel(selectedTask)}). Se a pergunta for curta ou usar "essa tarefa"/"ela"/"aqui", é sobre essa tarefa.`;
     }
     if (selectedTask === "new") {
       return "O usuário está com o modal de criação de uma nova tarefa aberto, ainda sem nome definido.";
@@ -394,9 +401,9 @@ export function TarefasView({
         return member ? <AvatarName name={member.name} imageUrl={member.avatarUrl} /> : "—";
       }
       case "dueDate":
-        return formatTaskDate(task.dueDate, dateFormat);
+        return <DueDateValue dueDate={task.dueDate} status={task.status} dateFormat={dateFormat} />;
       case "status":
-        return <StatusTag status={task.status} overdue={isOverdue(task.dueDate, task.status)} colorByStatus={colorByStatus} />;
+        return <StatusTag status={task.status} colorByStatus={colorByStatus} />;
       case "lists":
         return task.lists.length ? task.lists.map((kind) => <span className="badge list" key={kind}>{LIST_LABELS[kind]}</span>) : "—";
       case "driveLink":
@@ -620,7 +627,7 @@ export function TarefasView({
                     {noDueTasks.map((task) => (
                       <li className="upcoming-item" key={task.id} onClick={() => setSelectedTask(task)} style={{ cursor: "pointer" }}>
                         <div><strong>{task.name}</strong><span>{projectById.get(task.projectId)?.name || "Sem projeto"}</span></div>
-                        <StatusTag status={task.status} overdue={isOverdue(task.dueDate, task.status)} colorByStatus={colorByStatus} />
+                        <StatusTag status={task.status} colorByStatus={colorByStatus} />
                       </li>
                     ))}
                   </ul>

@@ -990,6 +990,15 @@ a.upcoming-item { color: inherit; text-decoration: none; }
 .avatar-picker-error { margin: 0; color: #912d28; font-size: 11px; font-weight: 600; }
 
 /* ---------- Tarefa atrasada: precisa saltar da tabela ---------- */
+/* O atraso é informação de PRAZO: aparece na coluna de entrega, em vermelho,
+   sem nunca esconder a etapa real em que a tarefa está. */
+.due-value.overdue { display: inline-grid; gap: 1px; color: #c8452c; }
+.due-value-date { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; }
+.due-value-date svg { flex: none; }
+.due-value.overdue small { font-size: 9.5px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; }
+.due-flag { display: inline-flex; align-items: center; gap: 5px; background: #fdeae5; color: #c8452c; padding: 4px 8px; font-size: 10px; font-weight: 720; letter-spacing: .02em; text-transform: uppercase; }
+.due-flag svg { flex: none; }
+
 /* O tremor roda UMA vez ao aparecer, não em loop: chamar atenção é o objetivo,
    mas uma linha tremendo pra sempre inviabiliza ler e clicar na própria linha.
    Quem prefere menos movimento (prefers-reduced-motion) recebe só a cor. */

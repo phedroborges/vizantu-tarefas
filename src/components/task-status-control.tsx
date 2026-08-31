@@ -4,7 +4,7 @@ import { ChevronDown, CircleDot, Clock3 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { MetaRow } from "@/components/meta-row";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { formatDuration, isOverdue, summarizeStatusDurations } from "@/lib/dates";
+import { formatDuration, summarizeStatusDurations } from "@/lib/dates";
 import { STATUS_GROUPS, TASK_STATUSES, type StatusHistoryEntry, type TaskStatus } from "@/lib/types";
 
 // Base UI's <Select.Value> só resolve o rótulo se o Root receber esse mapa —
@@ -14,13 +14,11 @@ const STATUS_LABELS: Record<string, string> = Object.fromEntries(TASK_STATUSES.m
 export function TaskStatusControl({
   status,
   statusHistory,
-  dueDate,
   color,
   onChange,
 }: {
   status: TaskStatus;
   statusHistory: StatusHistoryEntry[];
-  dueDate?: string;
   color?: string;
   onChange: (next: TaskStatus) => void;
 }) {
@@ -37,9 +35,10 @@ export function TaskStatusControl({
   }, [statusHistory, hasHistory]);
 
   const currentEntry = hasHistory ? visitedDurations.find(({ def }) => def.value === status)?.entry : undefined;
-  const overdue = Boolean(dueDate && isOverdue(dueDate, status));
-  const statusGroup = overdue ? "atrasada" : TASK_STATUSES.find((item) => item.value === status)?.group;
-  const colorStyle = !overdue && color ? ({ "--status-color": color } as React.CSSProperties) : undefined;
+  // Atraso não entra aqui: quem passou do prazo continua na etapa em que
+  // está. O aviso fica na linha de Entrega (ver task-modal).
+  const statusGroup = TASK_STATUSES.find((item) => item.value === status)?.group;
+  const colorStyle = color ? ({ "--status-color": color } as React.CSSProperties) : undefined;
 
   return (
     <MetaRow icon={<CircleDot size={13} />} label="Status">
