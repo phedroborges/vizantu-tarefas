@@ -8,6 +8,7 @@ import { MetaRow } from "@/components/meta-row";
 import { TagPicker } from "@/components/tag-picker";
 import { TaskStatusControl } from "@/components/task-status-control";
 import { RichTextField } from "@/components/rich-text-field";
+import { renderScriptView } from "@/components/script-table";
 import { useConfirm } from "@/components/confirm-dialog";
 import { descriptionLayout, hasContentSections, parseDescription, serializeDescription, taskKindIsEditable, type DescriptionSectionKey } from "@/lib/description-sections";
 import { formatDateTime, isOverdue, overdueDays, todayIso } from "@/lib/dates";
@@ -596,6 +597,11 @@ export function TaskModal({
                       onChange={(value) => updateSection(section.key, value)}
                       onError={setError}
                       placeholder={section.placeholder}
+                      // Roteiro de vídeo aparece em cena, fala e lettering; o
+                      // resto (carrossel, estático) segue como texto. Quem
+                      // decide é o próprio roteiro escrito, não uma marcação
+                      // extra que alguém teria que lembrar de ligar.
+                      renderView={section.key === "roteiro" ? renderScriptView : undefined}
                     />
                   </section>
                 ))}

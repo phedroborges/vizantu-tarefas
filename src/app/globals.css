@@ -723,6 +723,42 @@ a.upcoming-item { color: inherit; text-decoration: none; }
 .markdown-lite-image img { display: block; max-width: 100%; max-height: 340px; width: auto; border: 1px solid var(--line); }
 .markdown-lite-image:hover img { border-color: var(--brand-strong); }
 
+/* Tabela do roteiro de vídeo: cena, fala e lettering. O texto salvo continua
+   sendo texto — a tabela é a leitura dele (ver video-script.ts). Clicar nela
+   entra em edição igual a qualquer outro campo da descrição, e o que aparece
+   no textarea é o mesmo roteiro escrito à mão. */
+.script-table-wrap { white-space: normal; }
+.script-table-intro { white-space: pre-wrap; margin-bottom: 10px; }
+
+.script-table {
+  width: 100%; border-collapse: collapse; table-layout: fixed;
+  font-size: 12.5px; line-height: 1.55;
+}
+.script-table th {
+  padding: 0 10px 5px; border-bottom: 1px solid var(--line);
+  text-align: left; font-size: 9.5px; font-weight: 730; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--brand-strong);
+}
+.script-table th:first-child, .script-table td:first-child { padding-left: 0; }
+.script-table th:last-child, .script-table td:last-child { padding-right: 0; }
+.script-table td { padding: 9px 10px; border-bottom: 1px solid #f0f2ef; vertical-align: top; }
+.script-table tr:last-child td { border-bottom: 0; }
+
+/* Fala é a coluna que o produtor lê em voz alta, então ela fica com o maior
+   pedaço da largura; lettering são duas ou três palavras e não precisa de
+   espaço nenhum além disso. */
+.script-table th:nth-child(1) { width: 32%; }
+.script-table th:nth-child(2) { width: 44%; }
+.script-table th:nth-child(3) { width: 24%; }
+
+.script-scene-label {
+  display: block; margin-bottom: 3px; font-size: 10px; font-weight: 730;
+  text-transform: uppercase; letter-spacing: .05em; color: var(--dark);
+}
+.script-scene-label em { display: block; font-style: normal; font-weight: 600; color: var(--muted-text); }
+.script-cell-text { display: block; white-space: pre-wrap; }
+.script-lettering .script-cell-text { font-weight: 650; color: var(--brand-strong); }
+
 /* Alvo de arrasto e upload em andamento, iguais nos dois modos do campo. */
 .is-drop-target { outline: 2px dashed var(--brand-strong); outline-offset: 3px; background: #f7f3ff; }
 .is-uploading { opacity: .6; cursor: progress; }

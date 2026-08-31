@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AutoTextarea } from "@/components/auto-textarea";
 import { renderMarkdownLite } from "@/components/markdown-lite";
 import { imageMarkdown, imagesFromTransfer, uploadImageFile } from "@/lib/upload-image";
@@ -16,6 +16,12 @@ import { imageMarkdown, imagesFromTransfer, uploadImageFile } from "@/lib/upload
 // Imagem entra por Ctrl+V ou arrastando, direto no ponto do cursor: sobe pro
 // storage e vira um ![](url) no texto. É por isso que a imagem fica ONDE foi
 // colada, em vez de ir pra faixa de anexos no topo da tarefa.
+//
+// `renderView` deixa quem chama trocar SÓ a exibição por algo melhor que
+// texto corrido — hoje, o roteiro de vídeo virando tabela. Devolvendo null
+// ele cai no markdown-lite de sempre, e a edição continua sendo o mesmo
+// textarea com o mesmo texto cru: a tabela é uma leitura do texto, nunca um
+// segundo lugar onde o roteiro é guardado.
 export function RichTextField({
   value,
   onChange,
@@ -24,6 +30,7 @@ export function RichTextField({
   disabled,
   className,
   maxLength,
+  renderView,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -32,6 +39,7 @@ export function RichTextField({
   disabled?: boolean;
   className?: string;
   maxLength?: number;
+  renderView?: (value: string) => ReactNode | null;
 }) {
   const [editing, setEditing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -126,9 +134,10 @@ export function RichTextField({
   }
 
   const empty = !value.trim();
+  const custom = empty ? null : renderView?.(value) ?? null;
   return (
     <div
-      className={`${className || ""} rich-text-view${empty ? " is-empty" : ""}${disabled ? " is-disabled" : ""}${stateClass}`}
+      className={`${className || ""} rich-text-view${custom ? " has-custom-view" : ""}${empty ? " is-empty" : ""}${disabled ? " is-disabled" : ""}${stateClass}`}
       // Sem o disabled o campo continua alcançável por teclado, igual ao
       // textarea que ele substitui.
       tabIndex={disabled ? undefined : 0}
@@ -137,7 +146,7 @@ export function RichTextField({
       onFocus={disabled ? undefined : () => setEditing(true)}
       {...dropProps}
     >
-      {empty ? placeholder : renderMarkdownLite(value)}
+      {empty ? placeholder : custom ?? renderMarkdownLite(value)}
     </div>
   );
 }

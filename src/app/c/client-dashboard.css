@@ -176,6 +176,14 @@
 .cd-item-description .markdown-lite-link { color: var(--cd-purple-strong); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
 .cd-item-description .markdown-lite-link:hover { color: var(--cd-purple); }
 .cd-script-heading { display: flex; align-items: center; gap: 8px; margin: 16px 0 2px; }
+/* A mesma tabela do roteiro, nas cores do painel do cliente. É o lugar onde
+   ela mais serve: quem aprova precisa ver de relance o que é imagem, o que é
+   fala e o que aparece escrito na tela. */
+.cd-script-table { margin: 10px 0 4px; }
+.cd-script-table .script-table th { color: var(--cd-purple-strong); border-bottom-color: var(--cd-line); }
+.cd-script-table .script-table td { border-bottom-color: var(--cd-line); }
+.cd-script-table .script-scene-label { color: var(--cd-ink); }
+.cd-script-table .script-lettering .script-cell-text { color: var(--cd-purple-strong); }
 .cd-item-description > .cd-script-heading:first-child { margin-top: 0; }
 .cd-script-heading strong { color: var(--cd-ink); font-weight: 760; }
 .cd-copy-script { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; color: var(--cd-purple-strong); background: #f1ebff; border: 1px solid #d7c5ff; font: inherit; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; line-height: 1; cursor: pointer; }

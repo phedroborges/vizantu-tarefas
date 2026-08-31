@@ -4,6 +4,7 @@ import { AlertCircle, ArrowRight, CalendarDays, Check, CheckCircle2, ChevronLeft
 import { useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { renderMarkdownLite } from "@/components/markdown-lite";
 import { burst } from "@/lib/confetti";
+import { renderScriptView } from "@/components/script-table";
 import { descriptionHeadingKey, parseDescription } from "@/lib/description-sections";
 import "../app/c/client-dashboard.css";
 
@@ -425,14 +426,28 @@ function CopyScriptButton({ script }: { script: string }) {
 // Mesma descrição de sempre, só que com o cabeçalho do roteiro virando uma
 // linha com o botão ao lado. Sem seção de roteiro (ou sem texto nela), cai no
 // render normal — nenhum botão órfão aparece.
+//
+// Quando o roteiro é de vídeo, o corpo dele vira a tabela de cena, fala e
+// lettering. É aqui que a tabela mais importa: o cliente aprova sem precisar
+// decifrar qual linha é imagem, qual é fala e qual é o texto na tela. O botão
+// de copiar continua copiando o TEXTO do roteiro, que é o que vai pro
+// produtor.
 export function ItemDescription({ text }: { text: string }) {
   const script = parseDescription(text).roteiro;
   const lines = text.split("\n");
   const headingIndex = lines.findIndex((line) => descriptionHeadingKey(line) === "roteiro");
   if (!script || headingIndex < 0) return <>{renderMarkdownLite(text)}</>;
 
+  // Onde o roteiro acaba: no próximo cabeçalho de seção. Sem esse limite a
+  // tabela engoliria a legenda e a referência que vêm depois dele.
+  const nextHeading = lines.findIndex((line, index) => index > headingIndex && descriptionHeadingKey(line) !== null);
+  const end = nextHeading < 0 ? lines.length : nextHeading;
+  const table = renderScriptView(lines.slice(headingIndex + 1, end).join("\n"), "cd-script-table");
+
   const before = lines.slice(0, headingIndex).join("\n").replace(/\s+$/, "");
-  const after = lines.slice(headingIndex + 1).join("\n").replace(/^\n+/, "");
+  // Sem tabela, o depois do cabeçalho continua sendo um pedaço só de texto —
+  // exatamente como era antes de existir tabela nenhuma.
+  const after = lines.slice(table ? end : headingIndex + 1).join("\n").replace(/^\n+/, "");
   // O cabeçalho vira um bloco próprio (o CSS cuida do respiro em volta): as
   // quebras de linha aqui seriam nós de texto soltos no container, que não
   // tem pre-wrap, e colapsariam num espaço — o "Roteiro" grudaria na linha
@@ -444,6 +459,7 @@ export function ItemDescription({ text }: { text: string }) {
         <strong>Roteiro</strong>
         <CopyScriptButton script={script} />
       </span>
+      {table}
       {after ? renderMarkdownLite(after) : null}
     </>
   );
