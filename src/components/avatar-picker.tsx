@@ -3,6 +3,7 @@
 import { Trash2, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import { Avatar } from "@/components/avatar";
+import { networkError, responseError } from "@/lib/request-error";
 import { AVATAR_COLORS } from "@/lib/avatar";
 
 // Escolha da identidade visual: envia uma foto ou (quando `withColor`) escolhe
@@ -32,14 +33,13 @@ export function AvatarPicker({
       const body = new FormData();
       body.append("file", file);
       const response = await fetch("/api/uploads", { method: "POST", body });
-      const result = await response.json().catch(() => ({}));
       if (!response.ok) {
-        setError(result.error || "Não foi possível enviar a imagem.");
+        setError(await responseError(response, "enviar a imagem"));
         return;
       }
-      onChange({ avatarUrl: result.url });
+      onChange({ avatarUrl: (await response.json()).url });
     } catch {
-      setError("Falha de conexão ao enviar a imagem.");
+      setError(networkError("enviar a imagem"));
     } finally {
       setBusy(false);
       // Permite reenviar o MESMO arquivo depois de remover — sem isto o input

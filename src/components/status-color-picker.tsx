@@ -3,6 +3,7 @@
 import { Palette } from "lucide-react";
 import { useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { networkError, responseError } from "@/lib/request-error";
 import { STATUS_GROUPS, TASK_STATUSES } from "@/lib/types";
 import type { StatusColor, TaskStatus } from "@/lib/types";
 
@@ -36,15 +37,15 @@ export function StatusColorPicker({
       });
       // Uma resposta que não é JSON (erro de proxy, página de erro do
       // servidor) explodia aqui e o botão ficava preso em "Salvando...".
-      const result = await response.json().catch(() => ({}));
       if (!response.ok) {
-        setError(result.error || `Não foi possível salvar (erro ${response.status}).`);
+        setError(await responseError(response, "salvar as cores"));
         return;
       }
+      const result = await response.json().catch(() => ({}));
       onSaved(result.colors);
       setOpen(false);
     } catch {
-      setError("Falha de conexão — tente de novo.");
+      setError(networkError("salvar as cores"));
     } finally {
       setIsSaving(false);
     }

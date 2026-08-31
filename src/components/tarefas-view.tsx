@@ -12,6 +12,7 @@ import {
   moveMonth,
   todayIso,
 } from "@/lib/dates";
+import { responseError } from "@/lib/request-error";
 import { useSetPageDetail } from "@/lib/page-context";
 import { STATUS_GROUPS, TASK_COLUMNS, TASK_LIST_KINDS, TASK_STATUSES } from "@/lib/types";
 import type { Member, Project, StatusColor, Tag, Task, TaskColumnKey, TaskListKind, TaskStatus } from "@/lib/types";
@@ -338,8 +339,8 @@ export function TarefasView({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+    if (!response.ok) return showToast(await responseError(response, "salvar a alteração"));
     const result = await response.json();
-    if (!response.ok) return showToast(result.error || "Não foi possível salvar a alteração.");
     setTasks((current) => current.map((item) => (item.id === taskId ? result.task : item)));
     // Entrou em "Para aprovação" agora (e não já estava lá): a demanda saiu da
     // mão do time. Mesmo confete que o cliente vê ao aprovar.
@@ -360,10 +361,10 @@ export function TarefasView({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, projectId }),
     });
-    const result = await response.json();
     setIsQuickAdding(false);
-    if (!response.ok) return showToast(result.error || "Não foi possível criar a tarefa.");
-    setTasks((current) => [result.task, ...current]);
+    if (!response.ok) return showToast(await responseError(response, "criar a tarefa"));
+    const created = (await response.json()).task;
+    setTasks((current) => [created, ...current]);
     setQuickAddTitle("");
   }
 

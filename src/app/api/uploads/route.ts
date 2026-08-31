@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { apiFailure } from "@/lib/api-error";
 import { isResponse, requireUser } from "@/lib/authz";
 import { getSupabase, getSupabaseStorageBucket } from "@/lib/supabase-client";
 
@@ -37,7 +38,7 @@ export async function POST(request: NextRequest) {
   const { error } = await getSupabase()
     .storage.from(bucket)
     .upload(filename, file, { contentType: file.type, cacheControl: "31536000" });
-  if (error) return NextResponse.json({ error: `Falha ao enviar imagem: ${error.message}` }, { status: 500 });
+  if (error) return apiFailure(error, "enviar a imagem");
 
   const { data } = getSupabase().storage.from(bucket).getPublicUrl(filename);
   return NextResponse.json({ url: data.publicUrl }, { status: 201 });

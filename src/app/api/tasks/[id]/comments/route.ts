@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { apiFailure } from "@/lib/api-error";
 import { isResponse, requireUser } from "@/lib/authz";
 import { addComment } from "@/lib/storage";
 
@@ -10,7 +11,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!body?.text || typeof body.text !== "string" || !body.text.trim()) {
     return NextResponse.json({ error: "Escreva um comentário." }, { status: 400 });
   }
-  const task = await addComment(id, { author: body.author || "Equipe", text: body.text });
-  if (!task) return NextResponse.json({ error: "Tarefa não encontrada." }, { status: 404 });
-  return NextResponse.json({ task }, { status: 201 });
+  try {
+    const task = await addComment(id, { author: body.author || "Equipe", text: body.text });
+    if (!task) return NextResponse.json({ error: "Tarefa não encontrada." }, { status: 404 });
+    return NextResponse.json({ task }, { status: 201 });
+  } catch (error) {
+    return apiFailure(error, "enviar o comentário");
+  }
 }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { apiFailure } from "@/lib/api-error";
 import { isResponse, requireUser } from "@/lib/authz";
 import { DueDateLockedError, deleteTask, updateTask } from "@/lib/storage";
 import { TASK_KINDS, TASK_STATUSES } from "@/lib/types";
@@ -39,7 +40,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (error instanceof DueDateLockedError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
-    throw error;
+    // Qualquer outra falha vira uma frase em português em vez da página de
+    // erro do Next, que o navegador não consegue ler como JSON.
+    return apiFailure(error, "salvar a tarefa");
   }
 }
 
@@ -47,7 +50,11 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
   const auth = await requireUser(["dono", "editor"]);
   if (isResponse(auth)) return auth;
   const { id } = await params;
-  const removed = await deleteTask(id);
-  if (!removed) return NextResponse.json({ error: "Tarefa não encontrada." }, { status: 404 });
-  return NextResponse.json({ ok: true });
+  try {
+    const removed = await deleteTask(id);
+    if (!removed) return NextResponse.json({ error: "Tarefa não encontrada." }, { status: 404 });
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return apiFailure(error, "excluir a tarefa");
+  }
 }

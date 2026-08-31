@@ -1,5 +1,6 @@
 "use client";
 
+import { networkError, responseError } from "@/lib/request-error";
 import { resizeImageFile } from "@/lib/resize-image";
 
 // Mesmos tipos que /api/uploads aceita — checar aqui evita subir um PDF
@@ -21,9 +22,15 @@ export function imagesFromTransfer(data: DataTransfer | null): File[] {
 export async function uploadImageFile(file: File): Promise<string> {
   const formData = new FormData();
   formData.append("file", await resizeImageFile(file));
-  const response = await fetch("/api/uploads", { method: "POST", body: formData });
+  let response: Response;
+  try {
+    response = await fetch("/api/uploads", { method: "POST", body: formData });
+  } catch {
+    throw new Error(networkError("enviar a imagem"));
+  }
+  if (!response.ok) throw new Error(await responseError(response, "enviar a imagem"));
   const result = await response.json().catch(() => ({}));
-  if (!response.ok || !result.url) throw new Error(result.error || "Falha ao enviar imagem.");
+  if (!result.url) throw new Error("Não foi possível enviar a imagem. O servidor respondeu sem o endereço do arquivo.");
   return result.url as string;
 }
 

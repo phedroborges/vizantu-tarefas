@@ -5,6 +5,7 @@ import { useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { TagPickerPopover } from "@/components/tag-picker";
+import { responseError } from "@/lib/request-error";
 import { emptySections, serializeDescription } from "@/lib/description-sections";
 import { formatDueDate, todayIso } from "@/lib/dates";
 import { STATUS_GROUPS, TASK_KINDS, TASK_STATUSES } from "@/lib/types";
@@ -84,10 +85,9 @@ export function QuickTaskModal({
         channelTagIds,
       }),
     });
-    const result = await response.json();
     setIsSaving(false);
-    if (!response.ok) return setError(result.error || "Não foi possível criar a tarefa.");
-    onCreated(result.task);
+    if (!response.ok) return setError(await responseError(response, "criar a tarefa"));
+    onCreated((await response.json()).task);
   }
 
   // Enter cria (é o caminho de 90% dos casos); Shift+Enter quebra linha na

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { apiFailure } from "@/lib/api-error";
 import { filterTasksByAccess, filterTasksByListAccess, isResponse, requireUser } from "@/lib/authz";
 import { createTask, listTasks } from "@/lib/storage";
 import { TASK_KINDS, TASK_STATUSES } from "@/lib/types";
@@ -27,23 +28,27 @@ export async function POST(request: NextRequest) {
   if (body.kind !== undefined && !TASK_KINDS.some((kind) => kind.value === body.kind)) {
     return NextResponse.json({ error: "Tipo de tarefa inválido." }, { status: 400 });
   }
-  const task = await createTask({
-    projectId: body.projectId,
-    name: body.name,
-    kind: body.kind,
-    dueDate: body.dueDate,
-    assigneeId: body.assigneeId,
-    assigneeSource: body.assigneeSource,
-    description: body.description,
-    images: body.images,
-    driveLink: body.driveLink,
-    formatTagIds: body.formatTagIds,
-    channelTagIds: body.channelTagIds,
-    categoryTagIds: body.categoryTagIds,
-    status: body.status,
-    planId: body.planId,
-    captacaoId: body.captacaoId,
-    sequenceOrder: body.sequenceOrder,
-  });
-  return NextResponse.json({ task }, { status: 201 });
+  try {
+    const task = await createTask({
+      projectId: body.projectId,
+      name: body.name,
+      kind: body.kind,
+      dueDate: body.dueDate,
+      assigneeId: body.assigneeId,
+      assigneeSource: body.assigneeSource,
+      description: body.description,
+      images: body.images,
+      driveLink: body.driveLink,
+      formatTagIds: body.formatTagIds,
+      channelTagIds: body.channelTagIds,
+      categoryTagIds: body.categoryTagIds,
+      status: body.status,
+      planId: body.planId,
+      captacaoId: body.captacaoId,
+      sequenceOrder: body.sequenceOrder,
+    });
+    return NextResponse.json({ task }, { status: 201 });
+  } catch (error) {
+    return apiFailure(error, "criar a tarefa");
+  }
 }

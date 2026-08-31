@@ -12,6 +12,7 @@ import { renderScriptView } from "@/components/script-table";
 import { useConfirm } from "@/components/confirm-dialog";
 import { descriptionLayout, hasContentSections, parseDescription, serializeDescription, taskKindIsEditable, type DescriptionSectionKey } from "@/lib/description-sections";
 import { formatDateTime, isOverdue, overdueDays, todayIso } from "@/lib/dates";
+import { networkError, responseError } from "@/lib/request-error";
 import { resizeImageFile } from "@/lib/resize-image";
 import { TASK_KINDS } from "@/lib/types";
 import type { Member, Project, StatusColor, Tag, TagKind, Task, TaskKind, TaskStatus } from "@/lib/types";
@@ -179,12 +180,16 @@ export function TaskModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(buildPayload(current)),
       });
-      const result = await response.json();
+      // A resposta de erro nem sempre é JSON (uma exceção no servidor volta
+      // como página de erro do Next). Ler o corpo antes de checar o `ok`
+      // estourava aqui dentro e caía no catch de conexão lá embaixo, dizendo
+      // "falha de conexão" pra um erro que o servidor tinha explicado.
       if (!response.ok) {
         setSaveState("error");
-        setError(result.error || "Não foi possível salvar.");
+        setError(await responseError(response, isCreate ? "criar a tarefa" : "salvar a tarefa"));
         return;
       }
+      const result = await response.json();
       setError("");
       if (isCreate) {
         liveTaskIdRef.current = result.task.id;
@@ -195,7 +200,7 @@ export function TaskModal({
       onSaved(result.task);
     } catch {
       setSaveState("error");
-      setError("Falha de conexão — tente de novo.");
+      setError(networkError("salvar a tarefa"));
     } finally {
       inFlightRef.current = false;
       if (pendingRef.current) {
@@ -263,7 +268,7 @@ export function TaskModal({
       setLinkCopied(true);
       window.setTimeout(() => setLinkCopied(false), 1800);
     } catch {
-      setError("Não foi possível copiar o link.");
+      setError("Não foi possível copiar o link. Copie da barra de endereço do navegador.");
     }
   }
 
@@ -271,7 +276,7 @@ export function TaskModal({
     if (!liveTaskId) return;
     if (!(await confirm({ title: "Excluir tarefa", message: `Excluir a tarefa "${draft.name}"? Essa ação não pode ser desfeita.`, confirmLabel: "Excluir", danger: true }))) return;
     const response = await fetch(`/api/tasks/${liveTaskId}`, { method: "DELETE" });
-    if (!response.ok) return setError("Não foi possível excluir a tarefa.");
+    if (!response.ok) return setError(await responseError(response, "excluir a tarefa"));
     onDeleted(liveTaskId);
   }
 
@@ -279,10 +284,9 @@ export function TaskModal({
     if (!liveTaskId || isDuplicating) return;
     setIsDuplicating(true);
     const response = await fetch(`/api/tasks/${liveTaskId}/duplicate`, { method: "POST" });
-    const result = await response.json();
     setIsDuplicating(false);
-    if (!response.ok) return setError(result.error || "Não foi possível duplicar a tarefa.");
-    onDuplicated(result.task);
+    if (!response.ok) return setError(await responseError(response, "duplicar a tarefa"));
+    onDuplicated((await response.json()).task);
   }
 
   async function addImageFiles(files: FileList | null) {
@@ -294,10 +298,14 @@ export function TaskModal({
         const resized = await resizeImageFile(file);
         const formData = new FormData();
         formData.append("file", resized);
-        const response = await fetch("/api/uploads", { method: "POST", body: formData });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || "Falha ao enviar imagem.");
-        updateField("images", [...draft.images, result.url], { immediate: true });
+        let response: Response;
+        try {
+          response = await fetch("/api/uploads", { method: "POST", body: formData });
+        } catch {
+          throw new Error(networkError("enviar a imagem"));
+        }
+        if (!response.ok) throw new Error(await responseError(response, "enviar a imagem"));
+        updateField("images", [...draft.images, (await response.json()).url], { immediate: true });
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível enviar a imagem.");
@@ -321,10 +329,9 @@ export function TaskModal({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ author, text: commentText }),
     });
-    const result = await response.json();
     setIsSendingComment(false);
-    if (!response.ok) return setError(result.error || "Não foi possível enviar o comentário.");
-    setComments(result.task.comments);
+    if (!response.ok) return setError(await responseError(response, "enviar o comentário"));
+    setComments((await response.json()).task.comments);
     setCommentText("");
   }
 
