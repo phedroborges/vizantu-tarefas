@@ -1088,3 +1088,116 @@ a.upcoming-item { color: inherit; text-decoration: none; }
 .member-avatar-button:hover .member-avatar-overlay, .member-avatar-button:focus-visible .member-avatar-overlay { opacity: 1; }
 .member-avatar-clear { border: 0; background: none; padding: 0; color: var(--muted-text); font-size: 9px; cursor: pointer; }
 .member-avatar-clear:hover { color: #a22d27; }
+
+/* ---------- Contratos ---------- */
+
+.contratos-split { grid-template-columns: minmax(240px, .6fr) minmax(520px, 2fr); }
+.contrato-painel { min-width: 0; }
+
+.contrato-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.contrato-corpo { padding: 18px 22px 28px; }
+
+.contrato-pendencias, .contrato-pronto {
+  margin: 0 0 16px; padding: 8px 12px; font-size: 11.5px; font-weight: 600;
+  border-left: 3px solid;
+}
+.contrato-pendencias { border-color: var(--danger); color: var(--danger); background: #fdf3f2; }
+.contrato-pronto { border-color: var(--approved); color: #4e7a1e; background: #f4f9ec; }
+
+.contrato-grupo { margin-bottom: 18px; }
+.contrato-grupo h4 {
+  display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 10px;
+  font-weight: 730; text-transform: uppercase; letter-spacing: .06em; color: var(--brand-strong);
+}
+.contrato-grupo h4 small { font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--muted-text); font-size: 10.5px; }
+.contrato-dica { margin: 0 0 8px; font-size: 11px; color: var(--muted-text); }
+
+.contrato-campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px 14px; }
+.contrato-campo { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.contrato-campo > span { font-size: 10.5px; font-weight: 650; color: var(--dark); }
+.contrato-campo > small { font-size: 10px; color: var(--muted-text); }
+.contrato-campo input, .contrato-campo textarea {
+  width: 100%; padding: 6px 9px; border: 1px solid var(--line); background: #fff;
+  font: inherit; font-size: 12.5px; color: var(--dark); resize: vertical;
+}
+.contrato-campo input:focus, .contrato-campo textarea:focus { outline: none; border-color: var(--brand-strong); }
+
+.contrato-modelos { display: grid; gap: 8px; }
+.contrato-modelo {
+  display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; text-align: left;
+  border: 1px solid var(--line); background: #fff; cursor: pointer; font: inherit;
+}
+.contrato-modelo strong { font-size: 12.5px; color: var(--dark); }
+.contrato-modelo small { font-size: 11px; color: var(--muted-text); }
+.contrato-modelo.is-on { border-color: var(--brand-strong); background: #f6f1ff; }
+
+/* O documento. Mesma medida da folha impressa, pra prévia e PDF não terem
+   duas caras: quem confere na tela está conferindo o que vai sair. */
+.contract-doc {
+  margin-top: 20px; padding: 26px 30px; background: #fff; border: 1px solid var(--line);
+  color: #101010; font-size: 13px; line-height: 1.75;
+}
+.contract-doc-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  padding-bottom: 10px; margin-bottom: 22px; border-bottom: 1px solid var(--line);
+}
+.contract-doc-header img { width: 116px; height: auto; }
+.contract-doc-header span { font-size: 9.5px; letter-spacing: .1em; color: var(--muted-text); text-transform: uppercase; }
+
+.contract-doc h1 { margin: 0 0 22px; font-size: 21px; line-height: 1.25; font-weight: 800; letter-spacing: -.01em; }
+.contract-doc h2 { margin: 24px 0 10px; font-size: 13px; font-weight: 780; letter-spacing: .01em; }
+.contract-doc p { margin: 0 0 10px; text-align: justify; }
+.contract-doc ul { margin: 0 0 10px; padding-left: 20px; }
+.contract-doc li { margin-bottom: 5px; text-align: justify; }
+.contract-doc strong { font-weight: 720; }
+
+/* Campo que ninguém preencheu. Existe pra ser impossível de não ver, inclusive
+   se alguém imprimir assim mesmo. */
+.contract-pending {
+  background: #ffe8a3; color: #7a5200; padding: 0 3px; font-weight: 650;
+  box-decoration-break: clone;
+}
+
+.contract-signatures { margin-top: 46px; }
+.contract-signatures p { margin: 0 0 34px; text-align: left; }
+
+/* ---------- Impressão: exportar o contrato em PDF ---------- */
+/* Exportar é imprimir. O navegador já gera PDF melhor do que qualquer
+   biblioteca que a gente fosse carregar, e imprimindo o MESMO documento da
+   tela não existe a chance clássica do PDF sair diferente da prévia. */
+@media print {
+  /* A margem de cima é maior que as outras de propósito: é dentro dela que o
+     cabeçalho fixo mora, repetido em toda página como no contrato que a casa
+     já mandava. Se o conteúdo começasse no topo, o cabeçalho passaria por
+     cima das primeiras linhas da página 2 em diante. */
+  @page { size: A4; margin: 32mm 16mm 18mm; }
+
+  /* Some com a aplicação inteira e deixa só o contrato. O visibility (em vez
+     de display:none) preserva a posição do documento na árvore, que é o que
+     mantém o cabeçalho fixo funcionando em toda página. */
+  body * { visibility: hidden; }
+  .contract-doc, .contract-doc * { visibility: visible; }
+  .no-print, .no-print *, .admin-sidebar, .admin-mobile-bar, .admin-menu-backdrop { display: none !important; }
+
+  /* Os contêineres da aplicação deixam de rolar e de recortar: o documento
+     precisa fluir por quantas páginas ele tiver. */
+  .admin-shell, .admin-main, .admin-page, .split-layout, .panel, .modal-body, .contrato-corpo, .contrato-painel {
+    display: block !important; overflow: visible !important;
+    max-height: none !important; height: auto !important;
+    margin: 0 !important; padding: 0 !important; border: 0 !important; background: #fff !important;
+  }
+
+  .contract-doc {
+    position: absolute; left: 0; top: 0; width: 100%;
+    margin: 0; padding: 0; border: 0; font-size: 11.5pt; line-height: 1.6;
+  }
+  .contract-doc-header {
+    position: fixed; top: -18mm; left: 0; right: 0;
+    margin: 0; padding-bottom: 5px; background: #fff;
+  }
+  .contract-doc h1 { font-size: 19pt; }
+  .contract-doc h2 { font-size: 11.5pt; break-after: avoid; page-break-after: avoid; }
+  .contract-doc p, .contract-doc li { orphans: 3; widows: 3; }
+  .contract-signatures { break-inside: avoid; page-break-inside: avoid; }
+  .contract-pending { background: #ffe8a3 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

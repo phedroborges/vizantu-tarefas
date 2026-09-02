@@ -375,6 +375,32 @@ export type Announcement = {
 
 // ---------- Base de conhecimento (playbooks consultados pela IA) ----------
 
+// Contrato: o modelo da casa preenchido com os dados de um cliente. O texto
+// das cláusulas viaja DENTRO do contrato (body), não por referência ao modelo
+// — contrato assinado não muda quando o modelo melhora.
+export const CONTRACT_STATUSES = [
+  { value: "rascunho", label: "Rascunho" },
+  { value: "enviado", label: "Enviado" },
+  { value: "assinado", label: "Assinado" },
+  { value: "encerrado", label: "Encerrado" },
+] as const;
+
+export type ContractStatus = (typeof CONTRACT_STATUSES)[number]["value"];
+
+export type Contract = {
+  id: string;
+  projectId?: string;
+  title: string;
+  templateId: string;
+  paymentMode: "pre" | "pos";
+  status: ContractStatus;
+  fields: Record<string, string>;
+  body: string;
+  createdBy?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type KnowledgeDoc = {
   id: string;
   title: string;

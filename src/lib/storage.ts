@@ -10,6 +10,8 @@ import type {
   AssistantConversation,
   AssistantMessage,
   ClientSatisfactionScore,
+  Contract,
+  ContractStatus,
   KnowledgeDoc,
   Member,
   Plan,
@@ -1606,4 +1608,98 @@ export async function acknowledgeAnnouncement(announcementId: string, memberId: 
       .from("announcement_acknowledgements")
       .upsert({ announcement_id: announcementId, member_id: memberId, acknowledged_at: nowIso() }),
   );
+}
+
+// ---------- Contratos ----------
+
+type ContractRow = {
+  id: string;
+  project_id: string | null;
+  title: string;
+  template_id: string;
+  payment_mode: "pre" | "pos";
+  status: ContractStatus;
+  fields: Record<string, string> | null;
+  body: string;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+function mapContract(row: ContractRow): Contract {
+  return {
+    id: row.id,
+    projectId: row.project_id ?? undefined,
+    title: row.title,
+    templateId: row.template_id,
+    paymentMode: row.payment_mode,
+    status: row.status,
+    fields: row.fields ?? {},
+    body: row.body,
+    createdBy: row.created_by ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function listContracts(): Promise<Contract[]> {
+  const rows = unwrap(await getSupabase().from("contracts").select("*").order("updated_at", { ascending: false }));
+  return (rows as ContractRow[]).map(mapContract);
+}
+
+export async function getContract(id: string): Promise<Contract | undefined> {
+  const row = unwrap(await getSupabase().from("contracts").select("*").eq("id", id).maybeSingle());
+  return row ? mapContract(row as ContractRow) : undefined;
+}
+
+export async function createContract(input: {
+  title: string;
+  templateId: string;
+  paymentMode: "pre" | "pos";
+  body: string;
+  fields?: Record<string, string>;
+  projectId?: string | null;
+  createdBy?: string;
+}): Promise<Contract> {
+  const now = nowIso();
+  const row = unwrap(
+    await getSupabase()
+      .from("contracts")
+      .insert({
+        id: newId(),
+        project_id: input.projectId || null,
+        title: input.title.trim(),
+        template_id: input.templateId,
+        payment_mode: input.paymentMode,
+        status: "rascunho",
+        fields: input.fields ?? {},
+        body: input.body,
+        created_by: input.createdBy || null,
+        created_at: now,
+        updated_at: now,
+      })
+      .select()
+      .single(),
+  );
+  return mapContract(row as ContractRow);
+}
+
+export async function updateContract(
+  id: string,
+  patch: Partial<Pick<Contract, "title" | "status" | "fields" | "body" | "paymentMode" | "projectId">>,
+): Promise<Contract | undefined> {
+  const update: Record<string, unknown> = { updated_at: nowIso() };
+  if (patch.title !== undefined) update.title = patch.title.trim();
+  if (patch.status !== undefined) update.status = patch.status;
+  if (patch.fields !== undefined) update.fields = patch.fields;
+  if (patch.body !== undefined) update.body = patch.body;
+  if (patch.paymentMode !== undefined) update.payment_mode = patch.paymentMode;
+  if (patch.projectId !== undefined) update.project_id = patch.projectId || null;
+  const row = unwrap(await getSupabase().from("contracts").update(update).eq("id", id).select().maybeSingle());
+  return row ? mapContract(row as ContractRow) : undefined;
+}
+
+export async function deleteContract(id: string): Promise<boolean> {
+  const rows = unwrap(await getSupabase().from("contracts").delete().eq("id", id).select("id"));
+  return (rows as unknown[]).length > 0;
 }
