@@ -10,7 +10,7 @@
 // contrato que sai com um buraco silencioso no lugar do valor é pior que um
 // contrato que não sai.
 
-import { CONTRACT_FIELD_BY_KEY } from "./contract-templates";
+import { CONTRACT_FIELD_BY_KEY, type PaymentStructure } from "./contract-templates";
 import { formatarReais, reaisPorExtenso } from "./numero-extenso";
 
 export type ContractFields = Record<string, string>;
@@ -88,16 +88,68 @@ function qualificacao(fields: ContractFields): string {
   return partes.join(", ");
 }
 
+export type Faixa = { meses: number; valor: number };
+
+// As faixas são escritas como "3 x 2000", uma por linha. Texto em vez de JSON
+// porque o campo é editado por gente (e pela IA), e "3 x 2000" é legível dos
+// dois lados. O separador aceita x, × ou "meses" no meio, porque é o que sai
+// naturalmente de quem digita rápido.
+export function parseFaixas(raw: string | undefined): Faixa[] {
+  const faixas: Faixa[] = [];
+  for (const linha of (raw || "").split("\n")) {
+    const match = /^\s*(\d+)\s*(?:x|×|mes(?:es)?\s*x?)\s*R?\$?\s*([\d.,]+)/i.exec(linha);
+    if (!match) continue;
+    const meses = Number(match[1]);
+    const bruto = match[2];
+    const valor = Number(bruto.includes(",") ? bruto.replaceAll(".", "").replace(",", ".") : bruto);
+    if (meses > 0 && Number.isFinite(valor) && valor > 0) faixas.push({ meses, valor });
+  }
+  return faixas;
+}
+
+export function formatFaixas(faixas: Faixa[]): string {
+  return faixas.map((faixa) => `${faixa.meses} x ${faixa.valor}`).join("\n");
+}
+
+// "do 1º ao 3º mês", ou "no 1º mês" quando a faixa dura um mês só. É o texto
+// que entra na tabela dentro da cláusula de pagamento.
+export function tabelaEscalonamento(faixas: Faixa[]): string {
+  let mes = 1;
+  return faixas
+    .map((faixa) => {
+      const fim = mes + faixa.meses - 1;
+      const intervalo = mes === fim ? `no ${mes}º mês` : `do ${mes}º ao ${fim}º mês`;
+      const linha = `- ${intervalo}: R$ ${formatarReais(faixa.valor)} (${reaisPorExtenso(faixa.valor)}) por mês`;
+      mes = fim + 1;
+      return linha;
+    })
+    .join("\n");
+}
+
 // Tudo que o texto pode pedir e não é digitado.
-export function derivedFields(fields: ContractFields, paymentMode: "pre" | "pos"): ContractFields {
+export function derivedFields(
+  fields: ContractFields,
+  paymentMode: "pre" | "pos",
+  structure: PaymentStructure = "mensal",
+): ContractFields {
   const mensal = numero(fields, "valor_mensal");
-  const meses = Math.trunc(numero(fields, "vigencia_meses")) || 0;
   const parcelas = Math.trunc(numero(fields, "parcelas")) || 0;
   const verba = numero(fields, "verba_minima");
-  // No contrato mensal o total vem da mensalidade. No de projeto quem manda é
-  // o valor total digitado no campo de mensalidade (é o mesmo campo de valor,
-  // com outro papel), e a parcela é que sai da divisão.
-  const total = meses ? mensal * meses : mensal;
+  const faixas = structure === "escalonado" ? parseFaixas(fields.escalonamento) : [];
+
+  // No contrato escalonado a vigência e o total são a SOMA das faixas, nunca
+  // campos digitados. Um degrau a mais muda os dois de uma vez, e deixar
+  // alguém redigitar é criar a chance de o contrato dizer 12 meses numa
+  // cláusula e 9 na outra.
+  const meses = faixas.length
+    ? faixas.reduce((soma, faixa) => soma + faixa.meses, 0)
+    : Math.trunc(numero(fields, "vigencia_meses")) || 0;
+  // No mensal o total vem da mensalidade. No de projeto quem manda é o valor
+  // digitado no campo de valor (é o mesmo campo, com outro papel), e a parcela
+  // é que sai da divisão.
+  const total = faixas.length
+    ? faixas.reduce((soma, faixa) => soma + faixa.meses * faixa.valor, 0)
+    : meses ? mensal * meses : mensal;
   const parcela = parcelas ? total / parcelas : 0;
   const inicio = (fields.vigencia_inicio || "").trim();
   const fim = somarMeses(inicio, meses);
@@ -109,16 +161,20 @@ export function derivedFields(fields: ContractFields, paymentMode: "pre" | "pos"
     vigencia_fim: fim,
     data_assinatura_extenso: dataPorExtenso(fields.data_assinatura || ""),
     primeiro_vencimento: primeiroVencimento(fields, paymentMode),
+    vigencia_meses: meses ? String(meses) : "",
     qtd_total_conteudos: String(
       Math.trunc(numero(fields, "qtd_estaticos")) + Math.trunc(numero(fields, "qtd_carrosseis")) + Math.trunc(numero(fields, "qtd_videos")),
     ),
   };
 
+  if (faixas.length) derived.tabela_escalonamento = tabelaEscalonamento(faixas);
+  if (total) {
+    derived.valor_total_formatado = formatarReais(total);
+    derived.valor_total_extenso = reaisPorExtenso(total);
+  }
   if (mensal) {
     derived.valor_mensal_formatado = formatarReais(mensal);
     derived.valor_mensal_extenso = reaisPorExtenso(mensal);
-    derived.valor_total_formatado = formatarReais(total);
-    derived.valor_total_extenso = reaisPorExtenso(total);
   }
   if (parcela) {
     derived.valor_parcela_formatado = formatarReais(parcela);
@@ -151,8 +207,16 @@ export type RenderedContract = {
   missing: string[];
 };
 
-export function renderContract(body: string, fields: ContractFields, paymentMode: "pre" | "pos"): RenderedContract {
-  const values: ContractFields = { ...fields, ...derivedFields(fields, paymentMode) };
+export function renderContract(
+  body: string,
+  fields: ContractFields,
+  paymentMode: "pre" | "pos",
+  structure: PaymentStructure = "mensal",
+): RenderedContract {
+  // O derivado vence o digitado de propósito: num contrato escalonado a
+  // vigência que vale é a soma das faixas, mesmo que tenha sobrado um número
+  // velho no campo de meses.
+  const values: ContractFields = { ...fields, ...derivedFields(fields, paymentMode, structure) };
   const missing = new Set<string>();
 
   const text = body.replace(PLACEHOLDER, (_full, key: string) => {
@@ -169,4 +233,16 @@ export function renderContract(body: string, fields: ContractFields, paymentMode
 export function contractFileName(title: string): string {
   const limpo = title.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-");
   return `contrato-${limpo.toLowerCase() || "sem-titulo"}`;
+}
+
+// O valor do contrato em uma linha, pra lista. Devolve vazio quando ainda não
+// dá pra saber: a lista mostra "sem valor" em vez de "R$ 0,00", que seria uma
+// informação errada em vez de uma informação faltando.
+export function contractTotal(
+  fields: ContractFields,
+  paymentMode: "pre" | "pos",
+  structure: PaymentStructure = "mensal",
+): string {
+  const total = derivedFields(fields, paymentMode, structure).valor_total_formatado;
+  return total ? `R$ ${total}` : "";
 }

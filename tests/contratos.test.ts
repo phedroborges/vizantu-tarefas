@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildContractBody, CONTRACT_FIELDS } from "../src/lib/contract-templates";
-import { derivedFields, renderContract } from "../src/lib/contract-render";
+import { buildContractBody, buildPaymentClause, CONTRACT_FIELDS, replacePaymentClause } from "../src/lib/contract-templates";
+import { contractTotal, derivedFields, parseFaixas, renderContract } from "../src/lib/contract-render";
 
 // O cliente novo que o Phedro mandou junto com o pedido.
 const TARGET = {
@@ -111,5 +111,71 @@ describe("preenchimento do contrato", () => {
     const comPonto = renderContract(body, { ...TARGET, valor_mensal: "2.797,00" }, "pre").text;
     const semPonto = renderContract(body, TARGET, "pre").text;
     expect(comPonto).toBe(semPonto);
+  });
+});
+
+describe("contrato escalonado", () => {
+  const body = buildContractBody("gestao_marca", "pre", "escalonado");
+  // O caso do Phedro: 3 meses a 2 mil, 3 a 2500, 6 a 3 mil.
+  const DEGRAUS = { ...TARGET, escalonamento: "3 x 2000\n3 x 2500\n6 x 3000", vigencia_meses: "6" };
+
+  it("12. a vigência é a soma das faixas, não o que está digitado no campo", () => {
+    expect(derivedFields(DEGRAUS, "pre", "escalonado").vigencia_meses).toBe("12");
+  });
+
+  it("13. o total soma cada degrau pelos meses dele", () => {
+    // 3x2000 + 3x2500 + 6x3000 = 6000 + 7500 + 18000
+    const derived = derivedFields(DEGRAUS, "pre", "escalonado");
+    expect(derived.valor_total_formatado).toBe("31.500,00");
+    expect(derived.valor_total_extenso).toBe("trinta e um mil e quinhentos reais");
+  });
+
+  it("14. a tabela nomeia o intervalo de cada degrau", () => {
+    const { text } = renderContract(body, DEGRAUS, "pre", "escalonado");
+    expect(text).toContain("do 1º ao 3º mês: R$ 2.000,00 (dois mil reais) por mês");
+    expect(text).toContain("do 4º ao 6º mês: R$ 2.500,00 (dois mil e quinhentos reais) por mês");
+    expect(text).toContain("do 7º ao 12º mês: R$ 3.000,00 (três mil reais) por mês");
+  });
+
+  it("15. a vigência do contrato acompanha os 12 meses das faixas", () => {
+    const { text } = renderContract(body, DEGRAUS, "pre", "escalonado");
+    expect(text).toContain("01 de setembro de 2026 a 01 de setembro de 2027");
+    expect(text).toContain("O contrato vigorará por 12 meses");
+  });
+
+  it("16. faixa de um mês só é lida como mês, não como intervalo", () => {
+    const { text } = renderContract(body, { ...DEGRAUS, escalonamento: "1 x 1000\n2 x 2000" }, "pre", "escalonado");
+    expect(text).toContain("no 1º mês: R$ 1.000,00");
+    expect(text).toContain("do 2º ao 3º mês: R$ 2.000,00");
+  });
+
+  it("17. aceita as formas que se digita na correria", () => {
+    const escritas = ["3 x 2000", "3x2000", "3 meses x 2000", "3 × R$ 2.000,00"];
+    for (const escrita of escritas) {
+      expect(parseFaixas(escrita), escrita).toEqual([{ meses: 3, valor: 2000 }]);
+    }
+  });
+
+  it("18. trocar a estrutura reescreve só a cláusula 3", () => {
+    const mensal = buildContractBody("gestao_marca", "pre", "mensal");
+    const trocado = replacePaymentClause(mensal, buildPaymentClause("gestao_marca", "escalonado", "pre"));
+    expect(trocado).toContain("mensalidades escalonadas");
+    expect(trocado).not.toContain("durante {{vigencia_meses}} meses, totalizando");
+    // Fora da cláusula 3, o documento continua idêntico ao que estava.
+    const semPagamento = (t: string) => t.replace(/## CLÁUSULA 3[\s\S]*?(?=## CLÁUSULA 4)/, "");
+    expect(semPagamento(trocado)).toBe(semPagamento(mensal));
+  });
+
+  it("19. uma edição manual em outra cláusula sobrevive à troca de estrutura", () => {
+    const original = buildContractBody("gestao_marca", "pre", "mensal")
+      .replace("antecedência mínima de 30 (trinta) dias", "antecedência mínima de 60 (sessenta) dias");
+    const trocado = replacePaymentClause(original, buildPaymentClause("gestao_marca", "escalonado", "pre"));
+    expect(trocado).toContain("60 (sessenta) dias");
+  });
+
+  it("20. o valor da lista sai do total, e some quando não dá pra calcular", () => {
+    expect(contractTotal(DEGRAUS, "pre", "escalonado")).toBe("R$ 31.500,00");
+    expect(contractTotal(TARGET, "pre", "mensal")).toBe("R$ 16.782,00");
+    expect(contractTotal({}, "pre", "mensal")).toBe("");
   });
 });

@@ -393,6 +393,7 @@ export type Contract = {
   title: string;
   templateId: string;
   paymentMode: "pre" | "pos";
+  paymentStructure: "mensal" | "escalonado" | "projeto";
   status: ContractStatus;
   fields: Record<string, string>;
   body: string;

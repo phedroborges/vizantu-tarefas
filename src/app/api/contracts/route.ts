@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiFailure } from "@/lib/api-error";
 import { isResponse, requireUser } from "@/lib/authz";
-import { buildContractBody, type ContractTemplateId, type PaymentMode } from "@/lib/contract-templates";
+import { buildContractBody, defaultStructure, PAYMENT_STRUCTURES, type ContractTemplateId, type PaymentMode, type PaymentStructure } from "@/lib/contract-templates";
 import { createContract, listContracts } from "@/lib/storage";
 
 // Contrato tem valor, CNPJ e condição comercial. Fica com o dono, não com
@@ -29,6 +29,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Escolha um modelo de contrato." }, { status: 400 });
   }
   const paymentMode: PaymentMode = body.paymentMode === "pos" ? "pos" : "pre";
+  const paymentStructure: PaymentStructure = PAYMENT_STRUCTURES.some((s) => s.id === body.paymentStructure)
+    ? body.paymentStructure
+    : defaultStructure(templateId);
 
   try {
     // O texto do modelo é COPIADO agora. A partir daqui este contrato é um
@@ -37,7 +40,8 @@ export async function POST(request: NextRequest) {
       title: body.title,
       templateId,
       paymentMode,
-      body: buildContractBody(templateId, paymentMode),
+      paymentStructure,
+      body: buildContractBody(templateId, paymentMode, paymentStructure),
       fields: typeof body.fields === "object" && body.fields ? body.fields : {},
       projectId: body.projectId || null,
       createdBy: auth.id,

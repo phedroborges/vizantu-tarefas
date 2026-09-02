@@ -25,3 +25,17 @@ create table if not exists contracts (
 
 create index if not exists contracts_project_id_idx on contracts(project_id);
 alter table contracts enable row level security;
+
+-- Como o dinheiro é cobrado, separado de QUANDO é cobrado (payment_mode).
+-- São eixos independentes: um contrato escalonado pode ser pré ou pós-pago do
+-- mesmo jeito que um de mensalidade fixa.
+--
+-- 'escalonado' existe porque contrato de degrau ("3 meses a 2 mil, 3 a 2500,
+-- 6 a 3 mil") não cabe num campo de valor mensal só. O total, a vigência e a
+-- tabela de faixas passam a sair das faixas, não da digitação.
+alter table contracts add column if not exists payment_structure text not null default 'mensal';
+alter table contracts drop constraint if exists contracts_payment_structure_check;
+alter table contracts
+  add constraint contracts_payment_structure_check check (payment_structure in ('mensal', 'escalonado', 'projeto'));
+
+update contracts set payment_structure = 'projeto' where template_id = 'criacao_marca';

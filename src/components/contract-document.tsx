@@ -3,6 +3,7 @@
 import Image from "next/image";
 import type { ReactNode } from "react";
 import { renderContract, type ContractFields } from "@/lib/contract-render";
+import type { PaymentStructure } from "@/lib/contract-templates";
 
 // O contrato na tela, no mesmo formato em que ele sai impresso. Não existe uma
 // "prévia" diferente do documento final: o que aparece aqui é exatamente o que
@@ -89,16 +90,18 @@ export function ContractDocument({
   body,
   fields,
   paymentMode,
+  paymentStructure = "mensal",
   clientName,
   kindLabel,
 }: {
   body: string;
   fields: ContractFields;
   paymentMode: "pre" | "pos";
+  paymentStructure?: PaymentStructure;
   clientName: string;
   kindLabel: string;
 }) {
-  const { text } = renderContract(body, fields, paymentMode);
+  const { text } = renderContract(body, fields, paymentMode, paymentStructure);
   const blocks = parseContractBlocks(text);
 
   return (

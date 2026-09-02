@@ -16,7 +16,7 @@ export type ContractField = {
   label: string;
   hint?: string;
   group: "cliente" | "contrato" | "escopo";
-  type?: "texto" | "linhas" | "numero" | "data";
+  type?: "texto" | "linhas" | "numero" | "data" | "faixas";
   /** Valor que já vem preenchido, porque quase nunca muda. */
   padrao?: string;
 };
@@ -35,6 +35,7 @@ export const CONTRACT_FIELDS: ContractField[] = [
 
   { key: "marca", label: "Marca ou pessoa atendida", group: "contrato", hint: "Aparece no objeto do contrato. Ex.: a marca Sanfér, a carreira e a marca pessoal de Richard Sanfer" },
   { key: "vigencia_meses", label: "Vigência em meses", group: "contrato", type: "numero", padrao: "6" },
+  { key: "escalonamento", label: "Faixas de valor", group: "contrato", type: "faixas", hint: "Só no contrato escalonado. A vigência e o total saem daqui" },
   { key: "vigencia_inicio", label: "Início da vigência", group: "contrato", type: "data" },
   { key: "valor_mensal", label: "Valor mensal em R$", group: "contrato", type: "numero", hint: "Só o número. O extenso e o total saem daqui" },
   { key: "dia_vencimento", label: "Dia do vencimento", group: "contrato", type: "numero", padrao: "25" },
@@ -65,7 +66,19 @@ export const DERIVED_KEYS = [
 ] as const;
 
 export type ContractTemplateId = "gestao_marca" | "criacao_marca" | "branco";
+
+// Dois eixos independentes. QUANDO se paga (antes ou dentro do mês de
+// execução) e COMO o valor é montado (mensalidade fixa, mensalidade em
+// degraus, ou projeto fechado em parcelas). Um contrato escalonado pode ser
+// pré ou pós-pago exatamente como um de mensalidade fixa.
 export type PaymentMode = "pre" | "pos";
+export type PaymentStructure = "mensal" | "escalonado" | "projeto";
+
+export const PAYMENT_STRUCTURES: { id: PaymentStructure; label: string; descricao: string }[] = [
+  { id: "mensal", label: "Mensalidade fixa", descricao: "O mesmo valor todo mês durante a vigência." },
+  { id: "escalonado", label: "Escalonado", descricao: "O valor sobe em degraus. A vigência e o total saem das faixas." },
+  { id: "projeto", label: "Projeto em parcelas", descricao: "Valor fechado, dividido em parcelas." },
+];
 
 export const CONTRACT_TEMPLATES: { id: ContractTemplateId; label: string; descricao: string; temPagamentoMensal: boolean }[] = [
   { id: "gestao_marca", label: "Gestão de marca", descricao: "Estratégia, Instagram, tráfego pago, criação de peças e edição de vídeo. Mensal.", temPagamentoMensal: true },
@@ -190,6 +203,40 @@ const PAGAMENTO_MENSAL: Record<PaymentMode, string> = {
 3.2. A CONTRATADA emitirá a documentação fiscal correspondente aos valores recebidos.
 
 3.3. O atraso acarretará multa de 2% sobre o débito, juros de 1% ao mês calculados proporcionalmente e correção monetária. Após notificação e prazo de 3 (três) dias úteis sem regularização, a CONTRATADA poderá suspender os serviços e prazos, sem que isso caracterize inadimplemento seu.`,
+};
+
+// Contrato em degraus. A tabela de faixas vira uma lista dentro da cláusula
+// (o {{tabela_escalonamento}} expande em linhas "- do 1º ao 3º mês: ..."), e
+// o total sai da soma das faixas, não de um campo digitado. O aviso de que o
+// reajuste já está contratado evita a conversa de aditivo lá na frente.
+const PAGAMENTO_ESCALONADO: Record<PaymentMode, string> = {
+  pre: `## CLÁUSULA 3 – REMUNERAÇÃO E PAGAMENTO
+
+3.1. Pelos serviços, a CONTRATANTE pagará à CONTRATADA mensalidades escalonadas ao longo dos {{vigencia_meses}} meses de vigência, por {{forma_pagamento}}, conforme a tabela abaixo:
+
+{{tabela_escalonamento}}
+
+3.2. O valor total do contrato é de **R$ {{valor_total_formatado}} ({{valor_total_extenso}})**.
+
+3.3. O pagamento é antecipado. A primeira mensalidade vence em **{{primeiro_vencimento}}** e as demais no dia {{dia_vencimento}} de cada mês, sempre antes do início do mês de execução a que se referem. A execução de cada competência mensal tem início após a confirmação do pagamento correspondente.
+
+3.4. Os valores da tabela acima já estão contratados e reajustam automaticamente nas datas indicadas, sem necessidade de aditivo. A CONTRATADA emitirá a documentação fiscal correspondente aos valores recebidos.
+
+3.5. O atraso acarretará multa de 2% sobre o débito, juros de 1% ao mês calculados proporcionalmente e correção monetária. Após notificação e prazo de 3 (três) dias úteis sem regularização, a CONTRATADA poderá suspender os serviços e prazos, sem que isso caracterize inadimplemento seu.`,
+
+  pos: `## CLÁUSULA 3 – REMUNERAÇÃO E PAGAMENTO
+
+3.1. Pelos serviços, a CONTRATANTE pagará à CONTRATADA mensalidades escalonadas ao longo dos {{vigencia_meses}} meses de vigência, por {{forma_pagamento}}, conforme a tabela abaixo:
+
+{{tabela_escalonamento}}
+
+3.2. O valor total do contrato é de **R$ {{valor_total_formatado}} ({{valor_total_extenso}})**.
+
+3.3. A primeira mensalidade vence em **{{primeiro_vencimento}}** e as demais no dia {{dia_vencimento}} dos meses subsequentes.
+
+3.4. Os valores da tabela acima já estão contratados e reajustam automaticamente nas datas indicadas, sem necessidade de aditivo. A CONTRATADA emitirá a documentação fiscal correspondente aos valores recebidos.
+
+3.5. O atraso acarretará multa de 2% sobre o débito, juros de 1% ao mês calculados proporcionalmente e correção monetária. Após notificação e prazo de 3 (três) dias úteis sem regularização, a CONTRATADA poderá suspender os serviços e prazos, sem que isso caracterize inadimplemento seu.`,
 };
 
 const PAGAMENTO_PROJETO: Record<PaymentMode, string> = {
@@ -328,9 +375,38 @@ function numerarClausulas(texto: string, primeira: number): string {
   return ordem.reduce((atual, chave, indice) => atual.replaceAll(`{{${chave}}}`, String(primeira + indice)), texto);
 }
 
+// A cláusula 3 sozinha. Fica separada porque ela é a única que muda quando
+// alguém troca a estrutura de pagamento de um contrato que já existe — e aí a
+// troca precisa mexer só nela, preservando qualquer edição feita no resto do
+// documento.
+export function buildPaymentClause(templateId: ContractTemplateId, structure: PaymentStructure, mode: PaymentMode): string {
+  if (structure === "escalonado") return PAGAMENTO_ESCALONADO[mode];
+  if (structure === "projeto") return PAGAMENTO_PROJETO[mode];
+  // Mensalidade fixa num contrato de projeto não existe: o modelo de criação
+  // de marca sempre fecha em parcelas.
+  return templateId === "criacao_marca" ? PAGAMENTO_PROJETO[mode] : PAGAMENTO_MENSAL[mode];
+}
+
+// Troca a cláusula 3 de um contrato JÁ existente sem tocar em mais nada. O
+// recorte vai do cabeçalho da 3 até o começo da 4, que é o único par de
+// âncoras que sobrevive a alguém ter reescrito o miolo da cláusula.
+export function replacePaymentClause(body: string, novaClausula: string): string {
+  const inicio = body.search(/^## CLÁUSULA 3\b/m);
+  if (inicio < 0) return body;
+  const resto = body.slice(inicio);
+  const fim = resto.search(/^## CLÁUSULA 4\b/m);
+  return fim < 0
+    ? body.slice(0, inicio) + novaClausula
+    : body.slice(0, inicio) + novaClausula + "\n\n" + resto.slice(fim);
+}
+
+export function defaultStructure(templateId: ContractTemplateId): PaymentStructure {
+  return templateId === "criacao_marca" ? "projeto" : "mensal";
+}
+
 // Monta o texto completo do modelo, já com a cláusula de pagamento certa e a
 // numeração fechada. É este texto que é copiado pro contrato.
-export function buildContractBody(templateId: ContractTemplateId, paymentMode: PaymentMode): string {
+export function buildContractBody(templateId: ContractTemplateId, paymentMode: PaymentMode, structure?: PaymentStructure): string {
   if (templateId === "branco") {
     return `${ABERTURA}\n\n## CLÁUSULA 1 – OBJETO\n\n1.1. \n\n${numerarClausulas(FECHAMENTO, 2)}`
       .replaceAll("{{titulo_servico}}", "SERVIÇOS")
@@ -339,7 +415,7 @@ export function buildContractBody(templateId: ContractTemplateId, paymentMode: P
 
   const gestao = templateId === "gestao_marca";
   const escopo = gestao ? ESCOPO_GESTAO : ESCOPO_CRIACAO;
-  const pagamento = (gestao ? PAGAMENTO_MENSAL : PAGAMENTO_PROJETO)[paymentMode];
+  const pagamento = buildPaymentClause(templateId, structure ?? defaultStructure(templateId), paymentMode);
   const corpo = [ABERTURA, escopo, pagamento, CLAUSULAS_COMUNS, FECHAMENTO].join("\n\n");
 
   return numerarClausulas(corpo, 4)

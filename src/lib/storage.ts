@@ -1618,6 +1618,7 @@ type ContractRow = {
   title: string;
   template_id: string;
   payment_mode: "pre" | "pos";
+  payment_structure: "mensal" | "escalonado" | "projeto";
   status: ContractStatus;
   fields: Record<string, string> | null;
   body: string;
@@ -1633,6 +1634,7 @@ function mapContract(row: ContractRow): Contract {
     title: row.title,
     templateId: row.template_id,
     paymentMode: row.payment_mode,
+    paymentStructure: row.payment_structure || "mensal",
     status: row.status,
     fields: row.fields ?? {},
     body: row.body,
@@ -1656,6 +1658,7 @@ export async function createContract(input: {
   title: string;
   templateId: string;
   paymentMode: "pre" | "pos";
+  paymentStructure: "mensal" | "escalonado" | "projeto";
   body: string;
   fields?: Record<string, string>;
   projectId?: string | null;
@@ -1671,6 +1674,7 @@ export async function createContract(input: {
         title: input.title.trim(),
         template_id: input.templateId,
         payment_mode: input.paymentMode,
+        payment_structure: input.paymentStructure,
         status: "rascunho",
         fields: input.fields ?? {},
         body: input.body,
@@ -1686,7 +1690,7 @@ export async function createContract(input: {
 
 export async function updateContract(
   id: string,
-  patch: Partial<Pick<Contract, "title" | "status" | "fields" | "body" | "paymentMode" | "projectId">>,
+  patch: Partial<Pick<Contract, "title" | "status" | "fields" | "body" | "paymentMode" | "paymentStructure" | "projectId">>,
 ): Promise<Contract | undefined> {
   const update: Record<string, unknown> = { updated_at: nowIso() };
   if (patch.title !== undefined) update.title = patch.title.trim();
@@ -1694,6 +1698,7 @@ export async function updateContract(
   if (patch.fields !== undefined) update.fields = patch.fields;
   if (patch.body !== undefined) update.body = patch.body;
   if (patch.paymentMode !== undefined) update.payment_mode = patch.paymentMode;
+  if (patch.paymentStructure !== undefined) update.payment_structure = patch.paymentStructure;
   if (patch.projectId !== undefined) update.project_id = patch.projectId || null;
   const row = unwrap(await getSupabase().from("contracts").update(update).eq("id", id).select().maybeSingle());
   return row ? mapContract(row as ContractRow) : undefined;

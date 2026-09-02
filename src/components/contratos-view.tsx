@@ -2,11 +2,12 @@
 
 import { FileText, Plus, Printer, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ContractAssistant } from "@/components/contract-assistant";
 import { ContractDocument } from "@/components/contract-document";
 import { useConfirm } from "@/components/confirm-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { CONTRACT_FIELDS, CONTRACT_TEMPLATES, type ContractTemplateId, type PaymentMode } from "@/lib/contract-templates";
-import { renderContract } from "@/lib/contract-render";
+import { CONTRACT_FIELDS, CONTRACT_TEMPLATES, PAYMENT_STRUCTURES, defaultStructure, type ContractTemplateId, type PaymentMode, type PaymentStructure } from "@/lib/contract-templates";
+import { contractTotal, parseFaixas, renderContract } from "@/lib/contract-render";
 import { networkError, responseError } from "@/lib/request-error";
 import { CONTRACT_STATUSES, type Contract, type Project } from "@/lib/types";
 
@@ -48,8 +49,14 @@ export function ContratosView({ initialContracts, projects }: { initialContracts
   const { missing, campos } = useMemo(() => {
     if (!selected) return { missing: [] as string[], campos: [] as typeof CONTRACT_FIELDS };
     const usadas = usedFieldKeys(selected.body);
+    const escalonado = selected.paymentStructure === "escalonado";
+    // Num contrato escalonado a vigência sai da soma das faixas, então o campo
+    // de meses deixa de existir: mostrá-lo seria oferecer um número que o
+    // documento ignora.
+    if (escalonado) { usadas.add("escalonamento"); usadas.delete("vigencia_meses"); usadas.delete("valor_mensal"); }
+    else usadas.delete("escalonamento");
     return {
-      missing: renderContract(selected.body, selected.fields, selected.paymentMode).missing,
+      missing: renderContract(selected.body, selected.fields, selected.paymentMode, selected.paymentStructure).missing,
       campos: CONTRACT_FIELDS.filter((field) => usadas.has(field.key)),
     };
   }, [selected]);
@@ -95,7 +102,7 @@ export function ContratosView({ initialContracts, projects }: { initialContracts
     patchSelected({ fields: { ...selected.fields, [key]: value } });
   }
 
-  async function criar(input: { title: string; templateId: ContractTemplateId; paymentMode: PaymentMode; projectId: string }) {
+  async function criar(input: { title: string; templateId: ContractTemplateId; paymentMode: PaymentMode; paymentStructure: PaymentStructure; projectId: string }) {
     setIsCreating(false);
     try {
       const response = await fetch("/api/contracts", {
@@ -168,6 +175,13 @@ export function ContratosView({ initialContracts, projects }: { initialContracts
                     <div className="project-row-title">
                       <strong>{contract.title || "Sem título"}</strong>
                       <span>
+                        {/* O valor primeiro: é o que se procura numa lista de
+                            contratos. Sem valor calculável, diz que falta em
+                            vez de mostrar R$ 0,00. */}
+                        <strong className="contrato-valor">
+                          {contractTotal(contract.fields, contract.paymentMode, contract.paymentStructure) || "sem valor"}
+                        </strong>
+                        {" · "}
                         {CONTRACT_TEMPLATES.find((t) => t.id === contract.templateId)?.label || contract.templateId}
                         {" · "}
                         {CONTRACT_STATUSES.find((s) => s.value === contract.status)?.label}
@@ -228,6 +242,27 @@ export function ContratosView({ initialContracts, projects }: { initialContracts
                       <p className="contrato-pronto">Contrato completo, pronto para exportar.</p>
                     )}
 
+                    <section className="contrato-grupo">
+                      <h4>Estrutura de pagamento <small>Trocar aqui reescreve só a cláusula 3</small></h4>
+                      <div className="contrato-modelos contrato-modelos-linha">
+                        {PAYMENT_STRUCTURES.map((option) => (
+                          <button
+                            key={option.id}
+                            type="button"
+                            className={selected.paymentStructure === option.id ? "contrato-modelo is-on" : "contrato-modelo"}
+                            onClick={() => patchSelected({ paymentStructure: option.id }, { immediate: true })}
+                          >
+                            <strong>{option.label}</strong>
+                            <small>{option.descricao}</small>
+                          </button>
+                        ))}
+                      </div>
+                      <div className="kind-toggle" role="group" aria-label="Quando paga" style={{ marginTop: 8 }}>
+                        <button type="button" className={selected.paymentMode === "pre" ? "is-on" : ""} onClick={() => patchSelected({ paymentMode: "pre" }, { immediate: true })}>Pré-pago</button>
+                        <button type="button" className={selected.paymentMode === "pos" ? "is-on" : ""} onClick={() => patchSelected({ paymentMode: "pos" }, { immediate: true })}>Pós-pago</button>
+                      </div>
+                    </section>
+
                     {GRUPOS.map((grupo) => {
                       const doGrupo = campos.filter((field) => field.group === grupo.key);
                       if (!doGrupo.length) return null;
@@ -238,7 +273,12 @@ export function ContratosView({ initialContracts, projects }: { initialContracts
                             {doGrupo.map((field) => (
                               <label className="contrato-campo" key={field.key}>
                                 <span>{field.label}</span>
-                                {field.type === "linhas" ? (
+                                {field.type === "faixas" ? (
+                                  <FaixasEditor
+                                    value={selected.fields[field.key] || ""}
+                                    onChange={(value) => setField(field.key, value)}
+                                  />
+                                ) : field.type === "linhas" ? (
                                   <textarea
                                     rows={2}
                                     value={selected.fields[field.key] || ""}
@@ -298,10 +338,19 @@ export function ContratosView({ initialContracts, projects }: { initialContracts
                     </div>
                   </div>
 
+                  <ContractAssistant
+                    key={selected.id}
+                    contract={selected}
+                    onContractUpdated={(atualizado) =>
+                      setContracts((current) => current.map((item) => (item.id === atualizado.id ? atualizado : item)))
+                    }
+                  />
+
                   <ContractDocument
                     body={selected.body}
                     fields={selected.fields}
                     paymentMode={selected.paymentMode}
+                    paymentStructure={selected.paymentStructure}
                     clientName={selected.fields.contratante_nome || selected.title}
                     kindLabel={CONTRACT_TEMPLATES.find((t) => t.id === selected.templateId)?.label.toUpperCase() || ""}
                   />
@@ -330,11 +379,12 @@ function NovoContratoModal({
 }: {
   projects: Project[];
   onClose: () => void;
-  onCreate: (input: { title: string; templateId: ContractTemplateId; paymentMode: PaymentMode; projectId: string }) => void;
+  onCreate: (input: { title: string; templateId: ContractTemplateId; paymentMode: PaymentMode; paymentStructure: PaymentStructure; projectId: string }) => void;
 }) {
   const [title, setTitle] = useState("");
   const [templateId, setTemplateId] = useState<ContractTemplateId>("gestao_marca");
   const [paymentMode, setPaymentMode] = useState<PaymentMode>("pre");
+  const [paymentStructure, setPaymentStructure] = useState<PaymentStructure>("mensal");
   const [projectId, setProjectId] = useState("");
   const template = CONTRACT_TEMPLATES.find((t) => t.id === templateId);
 
@@ -349,7 +399,7 @@ function NovoContratoModal({
           onSubmit={(e) => {
             e.preventDefault();
             if (!title.trim()) return;
-            onCreate({ title, templateId, paymentMode, projectId });
+            onCreate({ title, templateId, paymentMode, paymentStructure, projectId });
           }}
         >
           <div className="field">
@@ -365,7 +415,7 @@ function NovoContratoModal({
                   key={option.id}
                   type="button"
                   className={templateId === option.id ? "contrato-modelo is-on" : "contrato-modelo"}
-                  onClick={() => setTemplateId(option.id)}
+                  onClick={() => { setTemplateId(option.id); setPaymentStructure(defaultStructure(option.id)); }}
                 >
                   <strong>{option.label}</strong>
                   <small>{option.descricao}</small>
@@ -376,7 +426,26 @@ function NovoContratoModal({
 
           {template?.id !== "branco" ? (
             <div className="field">
-              <label>Pagamento</label>
+              <label>Estrutura de pagamento</label>
+              <div className="contrato-modelos contrato-modelos-linha">
+                {PAYMENT_STRUCTURES.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={paymentStructure === option.id ? "contrato-modelo is-on" : "contrato-modelo"}
+                    onClick={() => setPaymentStructure(option.id)}
+                  >
+                    <strong>{option.label}</strong>
+                    <small>{option.descricao}</small>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {template?.id !== "branco" ? (
+            <div className="field">
+              <label>Quando paga</label>
               <div className="kind-toggle" role="group" aria-label="Forma de pagamento">
                 <button type="button" className={paymentMode === "pre" ? "is-on" : ""} onClick={() => setPaymentMode("pre")}>Pré-pago</button>
                 <button type="button" className={paymentMode === "pos" ? "is-on" : ""} onClick={() => setPaymentMode("pos")}>Pós-pago</button>
@@ -406,5 +475,63 @@ function NovoContratoModal({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+
+// As faixas de um contrato escalonado. Uma linha por degrau, com os meses
+// acumulando na etiqueta ("do 4º ao 6º mês") pra ficar óbvio onde cada valor
+// começa a valer sem ninguém precisar somar de cabeça.
+function FaixasEditor({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const faixas = parseFaixas(value);
+  const linhas = faixas.length ? faixas : [{ meses: 0, valor: 0 }];
+
+  function grava(proximas: { meses: number; valor: number }[]) {
+    onChange(proximas.filter((f) => f.meses > 0 || f.valor > 0).map((f) => `${f.meses} x ${f.valor}`).join("\n"));
+  }
+
+  // Onde cada degrau começa e termina, calculado ANTES de renderizar: somar
+  // dentro do map obrigaria a mutar uma variável durante a renderização.
+  const intervalos: { inicio: number; fim: number }[] = [];
+  linhas.reduce((mes, faixa) => {
+    const fim = mes + Math.max(faixa.meses, 1) - 1;
+    intervalos.push({ inicio: mes, fim });
+    return fim + 1;
+  }, 1);
+
+  return (
+    <div className="contrato-faixas">
+      {linhas.map((faixa, index) => {
+        const { inicio, fim } = intervalos[index];
+        return (
+          <div className="contrato-faixa" key={index}>
+            <input
+              type="text"
+              inputMode="numeric"
+              aria-label="Meses"
+              value={faixa.meses || ""}
+              placeholder="meses"
+              onChange={(e) => grava(linhas.map((f, i) => (i === index ? { ...f, meses: Number(e.target.value.replace(/\D/g, "")) || 0 } : f)))}
+            />
+            <span>meses x R$</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              aria-label="Valor por mês"
+              value={faixa.valor || ""}
+              placeholder="valor"
+              onChange={(e) => grava(linhas.map((f, i) => (i === index ? { ...f, valor: Number(e.target.value.replace(/[^\d]/g, "")) || 0 } : f)))}
+            />
+            <small>{faixa.meses ? (inicio === fim ? `${inicio}º mês` : `${inicio}º ao ${fim}º`) : ""}</small>
+            {linhas.length > 1 ? (
+              <button type="button" onClick={() => grava(linhas.filter((_, i) => i !== index))} aria-label="Remover faixa">×</button>
+            ) : null}
+          </div>
+        );
+      })}
+      <button type="button" className="desc-add-button" onClick={() => grava([...linhas, { meses: 0, valor: 0 }])}>
+        + Faixa
+      </button>
+    </div>
   );
 }
