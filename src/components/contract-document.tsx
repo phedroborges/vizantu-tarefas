@@ -104,14 +104,32 @@ export function ContractDocument({
   const { text } = renderContract(body, fields, paymentMode, paymentStructure);
   const blocks = parseContractBlocks(text);
 
+  // O documento é uma tabela de uma coluna só, e isso não é enfeite: thead e
+  // tfoot são a ÚNICA forma que o navegador repete de verdade um cabeçalho em
+  // toda página impressa. A primeira tentativa usou position:fixed, que é o
+  // conselho que se acha por aí, e o resultado foi o cabeçalho aparecendo uma
+  // vez só, no pé da primeira página.
+  //
+  // O tfoot vazio existe pra reservar a margem de baixo em cada folha. Como a
+  // página é impressa com margem zero (pra o Chrome não desenhar a linha dele
+  // com data, URL e número), quem faz as margens do documento é o padding
+  // destas células.
   return (
     <article className="contract-doc">
-      {/* Cabeçalho fixo: na impressão ele se repete em toda página, igual ao
-          contrato que a casa já mandava. */}
-      <div className="contract-doc-header">
-        <Image src="/brand/vizantu-dark.svg" width={1518} height={296} alt="Vizantu" />
-        <span>{[clientName, kindLabel].filter(Boolean).join("  |  ")}</span>
-      </div>
+      <table className="contract-sheet">
+        <thead>
+          <tr>
+            <td className="contract-sheet-head">
+              <div className="contract-doc-header">
+                <Image src="/brand/vizantu-dark.svg" width={1518} height={296} alt="Vizantu" />
+                <span>{[clientName, kindLabel].filter(Boolean).join("  |  ")}</span>
+              </div>
+            </td>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td className="contract-sheet-body">
       <div className="contract-doc-body">
         {blocks.map((block, index) => {
           if (block.kind === "titulo") return <h1 key={index}>{renderInline(block.text, String(index))}</h1>;
@@ -139,6 +157,13 @@ export function ContractDocument({
           return <p key={index}>{renderInline(block.text, String(index))}</p>;
         })}
       </div>
+            </td>
+          </tr>
+        </tbody>
+        <tfoot>
+          <tr><td className="contract-sheet-foot" /></tr>
+        </tfoot>
+      </table>
     </article>
   );
 }

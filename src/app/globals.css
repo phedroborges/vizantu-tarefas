@@ -1137,6 +1137,12 @@ a.upcoming-item { color: inherit; text-decoration: none; }
   margin-top: 20px; padding: 26px 30px; background: #fff; border: 1px solid var(--line);
   color: #101010; font-size: 13px; line-height: 1.75;
 }
+/* O documento é uma tabela de uma coluna só (ver contract-document.tsx): é o
+   único jeito de o navegador repetir o cabeçalho em toda página impressa. Na
+   tela ela precisa ser invisível enquanto tabela. */
+.contract-sheet { width: 100%; border-collapse: collapse; }
+.contract-sheet td { padding: 0; border: 0; vertical-align: top; }
+
 .contract-doc-header {
   display: flex; align-items: center; justify-content: space-between; gap: 14px;
   padding-bottom: 10px; margin-bottom: 22px; border-bottom: 1px solid var(--line);
@@ -1166,11 +1172,15 @@ a.upcoming-item { color: inherit; text-decoration: none; }
    biblioteca que a gente fosse carregar, e imprimindo o MESMO documento da
    tela não existe a chance clássica do PDF sair diferente da prévia. */
 @media print {
-  /* A margem de cima é maior que as outras de propósito: é dentro dela que o
-     cabeçalho fixo mora, repetido em toda página como no contrato que a casa
-     já mandava. Se o conteúdo começasse no topo, o cabeçalho passaria por
-     cima das primeiras linhas da página 2 em diante. */
-  @page { size: A4; margin: 32mm 16mm 18mm; }
+  /* Margem zero na FOLHA, de propósito, por dois motivos.
+     O primeiro: sem margem o Chrome não tem onde desenhar a linha dele com
+     data, título, endereço da página e "1/7" numa fonte serifada que não é a
+     nossa. Aquilo é o cabeçalho do navegador, não do contrato, e não pode sair
+     num documento que vai pro cliente.
+     O segundo: quem faz as margens do documento passa a ser o padding das
+     células do thead/tbody/tfoot, e é isso que repete o cabeçalho da Vizantu
+     em toda página sem ele atropelar o texto. */
+  @page { size: A4; margin: 0; }
 
   /* Some com a aplicação inteira e deixa só o contrato. O visibility (em vez
      de display:none) preserva a posição do documento na árvore, que é o que
@@ -1191,10 +1201,22 @@ a.upcoming-item { color: inherit; text-decoration: none; }
     position: absolute; left: 0; top: 0; width: 100%;
     margin: 0; padding: 0; border: 0; font-size: 11.5pt; line-height: 1.6;
   }
+
+  /* thead e tfoot são a única coisa que o navegador repete de verdade em cada
+     página. O tfoot fica vazio: ele existe só pra reservar a margem de baixo,
+     que sem ele o texto encostaria no fim do papel. */
+  .contract-sheet thead { display: table-header-group; }
+  .contract-sheet tfoot { display: table-footer-group; }
+  .contract-sheet-head { padding: 14mm 16mm 0; }
+  .contract-sheet-body { padding: 0 16mm; }
+  .contract-sheet-foot { height: 14mm; }
+
   .contract-doc-header {
-    position: fixed; top: -18mm; left: 0; right: 0;
-    margin: 0; padding-bottom: 5px; background: #fff;
+    margin: 0 0 8mm; padding-bottom: 4px; background: #fff;
+    break-inside: avoid; page-break-inside: avoid;
   }
+  .contract-doc-header img { width: 34mm; }
+  .contract-doc-header span { font-size: 7pt; }
   .contract-doc h1 { font-size: 19pt; }
   .contract-doc h2 { font-size: 11.5pt; break-after: avoid; page-break-after: avoid; }
   .contract-doc p, .contract-doc li { orphans: 3; widows: 3; }
