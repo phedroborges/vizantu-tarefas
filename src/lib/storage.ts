@@ -295,12 +295,6 @@ export async function createTag(input: { kind: TagKind; label: string }): Promis
 
 // ---------- Tarefas ----------
 
-export class DueDateLockedError extends Error {
-  constructor() {
-    super("A tarefa está atrasada; a data de entrega não pode ser alterada.");
-  }
-}
-
 export type TaskInput = {
   projectId: string;
   name: string;
@@ -318,6 +312,7 @@ export type TaskInput = {
   planId?: string;
   captacaoId?: string;
   sequenceOrder?: number;
+  seasonal?: boolean;
 };
 
 type TaskRow = {
@@ -341,6 +336,7 @@ type TaskRow = {
   plan_id: string | null;
   captacao_id: string | null;
   sequence_order: number | null;
+  seasonal: boolean | null;
   created_at: string;
   updated_at: string;
 };
@@ -367,6 +363,7 @@ function mapTask(row: TaskRow): Task {
     planId: row.plan_id ?? undefined,
     captacaoId: row.captacao_id ?? undefined,
     sequenceOrder: row.sequence_order ?? undefined,
+    seasonal: row.seasonal ?? false,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -469,6 +466,7 @@ export async function createTask(input: TaskInput): Promise<Task> {
         plan_id: input.planId || null,
         captacao_id: input.captacaoId || null,
         sequence_order: input.sequenceOrder ?? null,
+        seasonal: input.seasonal ?? false,
         created_at: now,
         updated_at: now,
       })
@@ -502,6 +500,7 @@ export async function duplicateTask(id: string): Promise<Task | undefined> {
     planId: current.planId,
     captacaoId: current.captacaoId,
     sequenceOrder: current.sequenceOrder,
+    seasonal: current.seasonal,
   });
 }
 
@@ -512,14 +511,11 @@ export async function updateTask(
   const current = await getTask(id);
   if (!current) return undefined;
 
-  // Trava de data: checar ANTES de qualquer mutação, contra o status EFETIVO
-  // deste request (patch.status, se vier, senão o status atual) — assim um
-  // único PATCH que muda o status pra "Aprovado" e corrige a data ao mesmo
-  // tempo funciona em uma chamada só.
-  if (patch.dueDate !== undefined && patch.dueDate !== current.dueDate) {
-    const effectiveStatus = patch.status ?? current.status;
-    if (isOverdue(current.dueDate, effectiveStatus)) throw new DueDateLockedError();
-  }
+  // A data de uma tarefa atrasada já foi travada aqui, pra ninguém "resolver"
+  // o atraso empurrando o prazo. Na prática a trava impedia o único conserto
+  // que importa: quando o cliente demora pra aprovar, o plano inteiro atrasa
+  // junto e replanejar é obrigatório. O atraso continua registrado no aviso ao
+  // lado do prazo e no histórico de status, que é onde ele tem que aparecer.
 
   const update: Record<string, unknown> = { updated_at: nowIso() };
   if (patch.projectId !== undefined) update.project_id = patch.projectId;
@@ -548,6 +544,7 @@ export async function updateTask(
     }
   }
   if (patch.sequenceOrder !== undefined) update.sequence_order = patch.sequenceOrder;
+  if (patch.seasonal !== undefined) update.seasonal = patch.seasonal;
 
   if (patch.status !== undefined && patch.status !== current.status) {
     update.status = patch.status;

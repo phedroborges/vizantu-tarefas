@@ -1288,3 +1288,56 @@ a.upcoming-item { color: inherit; text-decoration: none; }
   font: inherit; font-size: 12.5px; resize: none;
 }
 .contrato-ia-form textarea:focus { outline: none; border-color: var(--brand-strong); }
+
+/* ---------- Calendário do plano ---------- */
+/* A lista por data responde "o que vem agora". Ela não responde "como está a
+   semana", que é a pergunta que aparece quando o cliente atrasa a aprovação e
+   tudo precisa ser remanejado. */
+
+.plan-calendar { margin-bottom: 18px; }
+.plan-calendar-nav { display: flex; align-items: center; gap: 8px; }
+.plan-calendar-nav strong { min-width: 130px; text-align: center; font-size: 12.5px; text-transform: capitalize; }
+
+.plan-calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; background: var(--line); border-top: 1px solid var(--line); }
+.plan-calendar-weekday {
+  padding: 6px 8px; background: #fafbf9; font-size: 9.5px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .06em; color: var(--muted-text);
+}
+.plan-calendar-day { min-height: 96px; padding: 5px 6px 7px; background: #fff; display: flex; flex-direction: column; gap: 3px; }
+.plan-calendar-day.is-empty { background: #fafbf9; }
+.plan-calendar-day.is-drop { background: #f1ebff; outline: 2px dashed var(--brand-strong); outline-offset: -2px; }
+.plan-calendar-daynum { display: flex; align-items: baseline; gap: 6px; margin-bottom: 2px; }
+.plan-calendar-daynum span { font-size: 10.5px; font-weight: 700; color: var(--muted-text); }
+.plan-calendar-falta { font-size: 9px; font-weight: 650; color: var(--danger); line-height: 1.2; }
+
+.plan-calendar-item {
+  display: flex; align-items: center; gap: 3px; width: 100%; padding: 3px 5px;
+  border: 0; border-left: 3px solid; text-align: left; cursor: grab;
+  font: inherit; font-size: 10px; line-height: 1.3; color: var(--dark);
+}
+.plan-calendar-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plan-calendar-item.is-dragging { opacity: .4; }
+/* Data fixa não arrasta: o cursor já diz isso antes de a pessoa tentar. */
+.plan-calendar-item.is-seasonal { cursor: default; font-weight: 650; }
+
+.cal-video { border-left-color: #6435e7; background: #f3eeff; }
+.cal-carrossel { border-left-color: #0f7b6c; background: #e9f6f3; }
+.cal-estatico { border-left-color: #b8730a; background: #fdf3e3; }
+.cal-outro { border-left-color: #8a8f89; background: #f3f4f2; }
+
+.plan-calendar-legend { display: flex; flex-wrap: wrap; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--line); font-size: 10px; color: var(--muted-text); }
+.plan-calendar-legend > span { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-left: 3px solid; }
+.plan-calendar-legend-lock, .plan-calendar-legend-warn { border-left-color: var(--line) !important; background: transparent !important; }
+
+.reschedule-list { list-style: none; margin: 12px 0 0; padding: 0; max-height: 300px; overflow-y: auto; }
+.reschedule-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid #f0f2ef; font-size: 12px; }
+.reschedule-list strong { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reschedule-list span { display: inline-flex; align-items: center; gap: 5px; flex: none; color: var(--brand-strong); font-weight: 650; font-size: 11px; }
+
+.reschedule-weeks { margin-top: 16px; padding: 10px 12px; background: #fdf3f2; border-left: 3px solid var(--danger); }
+.reschedule-weeks h4 { margin: 0 0 6px; font-size: 10px; font-weight: 730; text-transform: uppercase; letter-spacing: .06em; color: var(--danger); }
+.reschedule-weeks ul { margin: 0; padding-left: 16px; font-size: 11.5px; }
+.reschedule-weeks small { display: block; margin-top: 6px; font-size: 10.5px; color: var(--muted-text); }
+
+.seasonal-toggle { display: inline-flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--muted-text); cursor: pointer; }
+.seasonal-toggle input { accent-color: var(--brand-strong); }

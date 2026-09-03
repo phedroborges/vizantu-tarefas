@@ -37,6 +37,7 @@ export async function POST(request: NextRequest) {
       assigneeId: body.assigneeId,
       assigneeSource: body.assigneeSource,
       description: body.description,
+      seasonal: body.seasonal,
       images: body.images,
       driveLink: body.driveLink,
       formatTagIds: body.formatTagIds,

@@ -1,6 +1,6 @@
 "use client";
 
-import { AlignLeft, CalendarDays, Check, Copy, ExternalLink, Folder, ImagePlus, Link2, Loader2, Plus, Send, Share2, Trash2, TriangleAlert, User, X } from "lucide-react";
+import { AlignLeft, CalendarDays, Check, Copy, ExternalLink, Folder, ImagePlus, Link2, Loader2, Lock, Plus, Send, Share2, Trash2, TriangleAlert, User, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -11,7 +11,7 @@ import { RichTextField } from "@/components/rich-text-field";
 import { renderScriptView } from "@/components/script-table";
 import { useConfirm } from "@/components/confirm-dialog";
 import { descriptionLayout, hasContentSections, parseDescription, serializeDescription, taskKindIsEditable, type DescriptionSectionKey } from "@/lib/description-sections";
-import { formatDateTime, isOverdue, overdueDays, todayIso } from "@/lib/dates";
+import { formatDateTime, overdueDays, todayIso } from "@/lib/dates";
 import { networkError, responseError } from "@/lib/request-error";
 import { resizeImageFile } from "@/lib/resize-image";
 import { TASK_KINDS } from "@/lib/types";
@@ -26,6 +26,7 @@ type Draft = {
   assigneeId: string;
   assigneeSource: "manual" | "captacao";
   description: string;
+  seasonal: boolean;
   images: string[];
   driveLink: string;
   formatTagIds: string[];
@@ -55,6 +56,7 @@ function draftFromTask(task: Task | null, defaultProjectId: string, currentUserI
     assigneeId: task ? task.assigneeId || NO_ASSIGNEE : currentUserId || NO_ASSIGNEE,
     assigneeSource: task?.assigneeSource || "manual",
     description: task?.description || "",
+    seasonal: task?.seasonal || false,
     images: task?.images || [],
     driveLink: task?.driveLink || "",
     formatTagIds: task?.formatTagIds || [],
@@ -73,6 +75,7 @@ function buildPayload(draft: Draft) {
     assigneeId: draft.assigneeId === NO_ASSIGNEE ? null : draft.assigneeId,
     assigneeSource: draft.assigneeSource,
     description: draft.description,
+    seasonal: draft.seasonal,
     images: draft.images,
     driveLink: draft.driveLink,
     formatTagIds: draft.formatTagIds,
@@ -155,7 +158,6 @@ export function TaskModal({
   }, [draft.name]);
 
   const isEditing = Boolean(liveTaskId);
-  const dateLocked = isEditing && isOverdue(draft.dueDate, draft.status);
   const lateDays = isEditing ? overdueDays(draft.dueDate, draft.status) : 0;
   const colorByStatus = useMemo(() => new Map(statusColors.map((entry) => [entry.status, entry.color])), [statusColors]);
 
@@ -434,7 +436,6 @@ export function TaskModal({
                     className="meta-date"
                     type="date"
                     value={draft.dueDate}
-                    disabled={dateLocked}
                     onChange={(e) => updateField("dueDate", e.target.value, { immediate: true })}
                   />
                   {/* O atraso é fato da data, não do status — por isso o aviso
@@ -447,11 +448,21 @@ export function TaskModal({
                   ) : null}
                 </div>
               </MetaRow>
-              {dateLocked ? (
-                <p className="form-message" style={{ marginTop: -4 }}>
-                  Esta tarefa está atrasada — a data não pode ser alterada. Mude o status para &quot;Aprovado&quot;, &quot;Problema&quot; ou &quot;Finalizado&quot; se o atraso não depender mais dela.
-                </p>
-              ) : null}
+
+              {/* Data fixa: 7 de setembro no dia 8 não é conteúdo, é erro. É o
+                  que faz a reorganização automática e o arrastar no calendário
+                  deixarem este item onde ele está. */}
+              <MetaRow icon={<Lock size={13} />} label="Data fixa">
+                <label className="seasonal-toggle">
+                  <input
+                    type="checkbox"
+                    checked={draft.seasonal}
+                    disabled={!canEdit}
+                    onChange={(e) => updateField("seasonal", e.target.checked, { immediate: true })}
+                  />
+                  <span>{draft.seasonal ? "Não pode mudar de data" : "Pode ser remanejado"}</span>
+                </label>
+              </MetaRow>
 
               <TagPicker
                 kind="formato"

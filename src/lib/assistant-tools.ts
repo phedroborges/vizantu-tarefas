@@ -23,7 +23,6 @@ import {
   updateKnowledgeDoc,
   updatePlanCaptacao,
   updateTask,
-  DueDateLockedError,
 } from "./storage";
 import type { CurrentUser } from "./current-user";
 import {
@@ -257,7 +256,6 @@ async function toolUpdateTask(
     if (!task) return { error: "Tarefa não encontrada." };
     return { updated: summarizeTask(task, projectById, memberById) };
   } catch (error) {
-    if (error instanceof DueDateLockedError) return { error: error.message };
     throw error;
   }
 }
@@ -469,7 +467,6 @@ async function toolUpdatePlanItem(
     if (!task) return { error: "Item não encontrado." };
     return { updated: { id: task.id, name: task.name, status: statusLabel(task.status) } };
   } catch (error) {
-    if (error instanceof DueDateLockedError) return { error: error.message };
     throw error;
   }
 }

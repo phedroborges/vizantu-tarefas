@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiFailure } from "@/lib/api-error";
 import { isResponse, requireUser } from "@/lib/authz";
-import { DueDateLockedError, deleteTask, updateTask } from "@/lib/storage";
+import { deleteTask, updateTask } from "@/lib/storage";
 import { TASK_KINDS, TASK_STATUSES } from "@/lib/types";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -24,6 +24,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       assigneeId: body.assigneeId,
       assigneeSource: body.assigneeSource,
       description: body.description,
+      seasonal: body.seasonal,
       images: body.images,
       driveLink: body.driveLink,
       formatTagIds: body.formatTagIds,
@@ -37,11 +38,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (!task) return NextResponse.json({ error: "Tarefa não encontrada." }, { status: 404 });
     return NextResponse.json({ task });
   } catch (error) {
-    if (error instanceof DueDateLockedError) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
-    }
-    // Qualquer outra falha vira uma frase em português em vez da página de
-    // erro do Next, que o navegador não consegue ler como JSON.
     return apiFailure(error, "salvar a tarefa");
   }
 }

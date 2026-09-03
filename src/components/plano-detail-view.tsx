@@ -2,11 +2,14 @@
 
 import { CalendarDays, Camera, CheckCircle2, ClipboardList, FileCheck2, MessageSquareText, Palette, Plus, Send, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { PlanCalendar } from "@/components/plan-calendar";
+import { PlanRescheduleButton } from "@/components/plan-reschedule";
 import { TaskModal } from "@/components/task-modal";
 import { ClientLinkPanel } from "@/components/client-link-panel";
 import { useConfirm } from "@/components/confirm-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatDueDate } from "@/lib/dates";
+import { networkError, responseError } from "@/lib/request-error";
 import { summarizeApprovalRound } from "@/lib/approval-workflow";
 import { inheritsCaptureEditor } from "@/lib/assignee-inheritance";
 import { TASK_STATUSES } from "@/lib/types";
@@ -251,6 +254,30 @@ export function PlanoDetailView({
     if (!response.ok) showToast("Não foi possível mudar a captação.");
   }
 
+  // Arrastar no calendário é a mesma edição do campo de prazo, feita com a
+  // mão. A tela muda na hora e o PATCH vai atrás: soltar um card e esperar o
+  // servidor pra ver o card mudar de lugar seria arrastar em câmera lenta.
+  async function moveTaskDate(taskId: string, dueDate: string) {
+    const anterior = tasks.find((t) => t.id === taskId)?.dueDate;
+    setTasks((current) => current.map((t) => (t.id === taskId ? { ...t, dueDate } : t)));
+    try {
+      const response = await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dueDate }),
+      });
+      if (!response.ok) {
+        setTasks((current) => current.map((t) => (t.id === taskId ? { ...t, dueDate: anterior } : t)));
+        return setToast(await responseError(response, "mudar a data"));
+      }
+      const { task } = await response.json();
+      setTasks((current) => current.map((t) => (t.id === taskId ? task : t)));
+    } catch {
+      setTasks((current) => current.map((t) => (t.id === taskId ? { ...t, dueDate: anterior } : t)));
+      setToast(networkError("mudar a data"));
+    }
+  }
+
   function onTaskSaved(task: Task) {
     setTasks((current) => (current.some((t) => t.id === task.id) ? current.map((t) => (t.id === task.id ? task : t)) : [...current, task]));
   }
@@ -468,8 +495,29 @@ export function PlanoDetailView({
             </section>
           ) : null}
 
+          {isContent ? (
+            <PlanCalendar
+              tasks={tasks}
+              formatTags={formatTags}
+              canEdit={canEdit}
+              onMove={moveTaskDate}
+              onOpen={setEditingTask}
+            />
+          ) : null}
+
           <section className="panel list-panel">
-            <div className="panel-head"><h2>Itens ({tasks.length})</h2></div>
+            <div className="panel-head">
+              <h2>Itens ({tasks.length})</h2>
+              {isContent && canEdit ? (
+                <PlanRescheduleButton
+                  planId={plan.id}
+                  onApplied={(atualizadas) => {
+                    setTasks(atualizadas);
+                    setToast("Calendário reorganizado.");
+                  }}
+                />
+              ) : null}
+            </div>
             {isContent ? (
               <>
                 {formatTags.map((t) => renderFormatGroup(t.id, t.label))}

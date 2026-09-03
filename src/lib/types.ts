@@ -209,6 +209,9 @@ export type Task = {
   planKind?: PlanKind;
   captacaoId?: string;
   sequenceOrder?: number;
+  /** Conteúdo com data fixa (7 de setembro, Dia Mundial X). Nunca é movido
+      pela reorganização automática do calendário. */
+  seasonal?: boolean;
   createdAt: string;
   updatedAt: string;
 };
