@@ -12,6 +12,9 @@ import type {
   ClientSatisfactionScore,
   Contract,
   ContractStatus,
+  CredentialKind,
+  ProjectCredential,
+  ProjectProfile,
   KnowledgeDoc,
   Member,
   Plan,
@@ -1704,4 +1707,117 @@ export async function updateContract(
 export async function deleteContract(id: string): Promise<boolean> {
   const rows = unwrap(await getSupabase().from("contracts").delete().eq("id", id).select("id"));
   return (rows as unknown[]).length > 0;
+}
+
+// ---------- Perfil do cliente e credenciais ----------
+
+type ProfileRow = {
+  project_id: string; razao_social: string | null; documento: string | null; endereco: string | null;
+  cidade: string | null; segmento: string | null; site: string | null;
+  responsavel_nome: string | null; responsavel_telefone: string | null; responsavel_email: string | null;
+  objetivos: string | null; publico: string | null; historico: string | null; observacoes: string | null;
+  updated_at: string;
+};
+
+const PROFILE_FIELDS = [
+  ["razaoSocial", "razao_social"], ["documento", "documento"], ["endereco", "endereco"],
+  ["cidade", "cidade"], ["segmento", "segmento"], ["site", "site"],
+  ["responsavelNome", "responsavel_nome"], ["responsavelTelefone", "responsavel_telefone"],
+  ["responsavelEmail", "responsavel_email"], ["objetivos", "objetivos"], ["publico", "publico"],
+  ["historico", "historico"], ["observacoes", "observacoes"],
+] as const;
+
+function mapProfile(row: ProfileRow): ProjectProfile {
+  const profile: ProjectProfile = { projectId: row.project_id, updatedAt: row.updated_at };
+  for (const [chave, coluna] of PROFILE_FIELDS) {
+    const valor = row[coluna];
+    if (valor) profile[chave] = valor;
+  }
+  return profile;
+}
+
+export async function getProjectProfile(projectId: string): Promise<ProjectProfile | undefined> {
+  const row = unwrap(await getSupabase().from("project_profiles").select("*").eq("project_id", projectId).maybeSingle());
+  return row ? mapProfile(row as ProfileRow) : undefined;
+}
+
+// Upsert: o perfil nasce no primeiro salvamento, sem alguém precisar "criar
+// ficha" antes de escrever nela.
+export async function saveProjectProfile(projectId: string, patch: Partial<ProjectProfile>): Promise<ProjectProfile> {
+  const update: Record<string, unknown> = { project_id: projectId, updated_at: nowIso() };
+  for (const [chave, coluna] of PROFILE_FIELDS) {
+    if (patch[chave] !== undefined) update[coluna] = String(patch[chave] ?? "").trim() || null;
+  }
+  const row = unwrap(await getSupabase().from("project_profiles").upsert(update, { onConflict: "project_id" }).select().single());
+  return mapProfile(row as ProfileRow);
+}
+
+type CredentialRow = {
+  id: string; project_id: string; label: string; kind: CredentialKind;
+  username: string | null; url: string | null; notes: string | null;
+  secret_encrypted: string | null; created_at: string; updated_at: string;
+};
+
+// O segredo cifrado nunca entra no objeto devolvido. Quem quiser ler chama
+// revealCredentialSecret, que é uma porta só, fácil de auditar.
+function mapCredential(row: CredentialRow): ProjectCredential {
+  return {
+    id: row.id, projectId: row.project_id, label: row.label, kind: row.kind,
+    username: row.username ?? undefined, url: row.url ?? undefined, notes: row.notes ?? undefined,
+    hasSecret: Boolean(row.secret_encrypted),
+    createdAt: row.created_at, updatedAt: row.updated_at,
+  };
+}
+
+export async function listProjectCredentials(projectId: string): Promise<ProjectCredential[]> {
+  const rows = unwrap(
+    await getSupabase().from("project_credentials").select("*").eq("project_id", projectId).order("created_at"),
+  );
+  return (rows as CredentialRow[]).map(mapCredential);
+}
+
+export async function createProjectCredential(input: {
+  projectId: string; label: string; kind: CredentialKind;
+  username?: string; url?: string; notes?: string; secretEncrypted?: string; createdBy?: string;
+}): Promise<ProjectCredential> {
+  const now = nowIso();
+  const row = unwrap(
+    await getSupabase().from("project_credentials").insert({
+      id: newId(), project_id: input.projectId, label: input.label.trim(), kind: input.kind,
+      username: input.username?.trim() || null, url: input.url?.trim() || null, notes: input.notes?.trim() || null,
+      secret_encrypted: input.secretEncrypted || null, created_by: input.createdBy || null,
+      created_at: now, updated_at: now,
+    }).select().single(),
+  );
+  return mapCredential(row as CredentialRow);
+}
+
+export async function updateProjectCredential(
+  id: string,
+  patch: { label?: string; kind?: CredentialKind; username?: string; url?: string; notes?: string; secretEncrypted?: string | null },
+): Promise<ProjectCredential | undefined> {
+  const update: Record<string, unknown> = { updated_at: nowIso() };
+  if (patch.label !== undefined) update.label = patch.label.trim();
+  if (patch.kind !== undefined) update.kind = patch.kind;
+  if (patch.username !== undefined) update.username = patch.username.trim() || null;
+  if (patch.url !== undefined) update.url = patch.url.trim() || null;
+  if (patch.notes !== undefined) update.notes = patch.notes.trim() || null;
+  // undefined mantém o segredo que já está lá; null apaga; string troca.
+  if (patch.secretEncrypted !== undefined) update.secret_encrypted = patch.secretEncrypted;
+  const row = unwrap(await getSupabase().from("project_credentials").update(update).eq("id", id).select().maybeSingle());
+  return row ? mapCredential(row as CredentialRow) : undefined;
+}
+
+export async function deleteProjectCredential(id: string): Promise<boolean> {
+  const rows = unwrap(await getSupabase().from("project_credentials").delete().eq("id", id).select("id"));
+  return (rows as unknown[]).length > 0;
+}
+
+// A única leitura do segredo no sistema inteiro.
+export async function readCredentialSecret(id: string): Promise<{ projectId: string; secret: string | null } | undefined> {
+  const row = unwrap(
+    await getSupabase().from("project_credentials").select("project_id, secret_encrypted").eq("id", id).maybeSingle(),
+  ) as { project_id: string; secret_encrypted: string | null } | null;
+  if (!row) return undefined;
+  return { projectId: row.project_id, secret: row.secret_encrypted };
 }

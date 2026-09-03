@@ -405,6 +405,52 @@ export type Contract = {
   updatedAt: string;
 };
 
+// Perfil do cliente: o que a equipe precisa saber sobre ele e não cabe numa
+// tarefa. Vive separado de projects porque é uma ficha, não um cadastro.
+export type ProjectProfile = {
+  projectId: string;
+  razaoSocial?: string;
+  documento?: string;
+  endereco?: string;
+  cidade?: string;
+  segmento?: string;
+  site?: string;
+  responsavelNome?: string;
+  responsavelTelefone?: string;
+  responsavelEmail?: string;
+  objetivos?: string;
+  publico?: string;
+  historico?: string;
+  observacoes?: string;
+  updatedAt: string;
+};
+
+export const CREDENTIAL_KINDS = [
+  { value: "instagram", label: "Instagram" },
+  { value: "meta", label: "Meta / Facebook" },
+  { value: "google", label: "Google" },
+  { value: "site", label: "Site / Hospedagem" },
+  { value: "api", label: "API / Chave" },
+  { value: "outro", label: "Outro" },
+] as const;
+
+export type CredentialKind = (typeof CREDENTIAL_KINDS)[number]["value"];
+
+// A senha NUNCA viaja dentro deste tipo. O que a lista carrega é se existe um
+// segredo guardado, não o segredo. Revelar é uma chamada separada e explícita.
+export type ProjectCredential = {
+  id: string;
+  projectId: string;
+  label: string;
+  kind: CredentialKind;
+  username?: string;
+  url?: string;
+  notes?: string;
+  hasSecret: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type KnowledgeDoc = {
   id: string;
   title: string;

@@ -1,6 +1,8 @@
 "use client";
 
-import { Copy, Folders, Link2, Pencil, Search, Trash2, X } from "lucide-react";
+import NextLink from "next/link";
+
+import { Copy, Folders, Link2, Pencil, Search, Trash2, X, IdCard } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useConfirm } from "@/components/confirm-dialog";
 import { Avatar } from "@/components/avatar";
@@ -239,6 +241,7 @@ export function ProjetosView({
                             ) : (
                               <button className="icon-button" type="button" onClick={() => generateLink(project)} title="Gerar link do cliente" aria-label={`Gerar link de ${project.name}`}><Link2 size={14} /></button>
                             )}
+                            <NextLink className="icon-button" href={`/projetos/${project.id}`} title="Abrir perfil do cliente" aria-label={`Perfil de ${project.name}`}><IdCard size={14} /></NextLink>
                             <button className="icon-button" type="button" onClick={() => startEdit(project)} title="Editar" aria-label={`Editar ${project.name}`}><Pencil size={14} /></button>
                             <button className="icon-button" type="button" onClick={() => remove(project)} title="Excluir" aria-label={`Excluir ${project.name}`}><Trash2 size={14} /></button>
                           </>
