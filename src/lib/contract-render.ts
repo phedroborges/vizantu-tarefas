@@ -185,10 +185,6 @@ export function derivedFields(
     derived.verba_minima_extenso = reaisPorExtenso(verba);
   }
 
-  const local = (fields.foro || "").trim();
-  const assinatura = derived.data_assinatura_extenso;
-  if (local || assinatura) derived.local_data = [local, assinatura].filter(Boolean).join(", ") + ".";
-
   // Lista de e-mails numa linha só, do jeito que a cláusula lê.
   const emails = (fields.emails_vizantu || "").split("\n").map((linha) => linha.trim()).filter(Boolean);
   if (emails.length) derived.emails_vizantu = emails.join(" / ");
@@ -196,9 +192,62 @@ export function derivedFields(
   return derived;
 }
 
+// Como cada buraco do documento se chama em português. Sem este mapa, o
+// contrato saía com «vigencia_inicio_extenso» escrito no meio da cláusula: o
+// nome da variável, não o nome da coisa. Quem lê a marca precisa entender o
+// que está faltando sem conhecer o código.
+const DERIVED_LABELS: Record<string, string> = {
+  vigencia_inicio_extenso: "Início da vigência",
+  vigencia_fim_extenso: "Fim da vigência",
+  data_assinatura_extenso: "Data de assinatura",
+  primeiro_vencimento: "Primeiro vencimento",
+  valor_mensal_formatado: "Valor mensal",
+  valor_mensal_extenso: "Valor mensal",
+  valor_total_formatado: "Valor total",
+  valor_total_extenso: "Valor total",
+  valor_parcela_formatado: "Valor da parcela",
+  valor_parcela_extenso: "Valor da parcela",
+  verba_minima_formatada: "Verba mínima de tráfego",
+  verba_minima_extenso: "Verba mínima de tráfego",
+  tabela_escalonamento: "Faixas de valor",
+  contratante_qualificacao: "Dados do cliente",
+  qtd_total_conteudos: "Quantidades do mês",
+  local_data: "Cidade e data da assinatura",
+};
+
+// De qual CAMPO cada buraco derivado depende. É outra pergunta: no documento
+// interessa o nome do buraco ("Fim da vigência"), mas na lista de pendências
+// interessa o que a pessoa tem que digitar pra fechar aquilo (o início da
+// vigência, que é de onde o fim sai).
+const DERIVED_SOURCES: Record<string, string> = {
+  vigencia_inicio_extenso: "vigencia_inicio",
+  vigencia_fim_extenso: "vigencia_inicio",
+  data_assinatura_extenso: "data_assinatura",
+  primeiro_vencimento: "vigencia_inicio",
+  valor_mensal_formatado: "valor_mensal",
+  valor_mensal_extenso: "valor_mensal",
+  valor_total_formatado: "valor_mensal",
+  valor_total_extenso: "valor_mensal",
+  valor_parcela_formatado: "valor_mensal",
+  valor_parcela_extenso: "valor_mensal",
+  verba_minima_formatada: "verba_minima",
+  verba_minima_extenso: "verba_minima",
+  tabela_escalonamento: "escalonamento",
+  contratante_qualificacao: "contratante_documento",
+};
+
 // Marca o que falta com um texto que ninguém manda pro cliente por engano.
 export function pendingMarker(key: string): string {
-  return `«${CONTRACT_FIELD_BY_KEY.get(key)?.label || key}»`;
+  return `«${CONTRACT_FIELD_BY_KEY.get(key)?.label || DERIVED_LABELS[key] || key}»`;
+}
+
+// Os campos que a pessoa precisa preencher pra fechar as pendências, sem
+// repetição: valor mensal aparece em quatro buracos do texto e é UMA coisa
+// pra digitar.
+export function missingInputLabels(missing: string[]): string[] {
+  const chaves = new Set(missing.map((key) => DERIVED_SOURCES[key] ?? key));
+  const labels = [...chaves].map((key) => CONTRACT_FIELD_BY_KEY.get(key)?.label || DERIVED_LABELS[key] || key);
+  return [...new Set(labels)];
 }
 
 export type RenderedContract = {

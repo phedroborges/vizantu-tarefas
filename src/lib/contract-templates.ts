@@ -107,7 +107,7 @@ const FECHAMENTO = `## CLÁUSULA {{n_disposicoes}} – DISPOSIÇÕES GERAIS E FO
 {{n_disposicoes}}.4. Fica eleito o foro da comarca de {{foro}} para dirimir controvérsias decorrentes deste contrato, com renúncia a qualquer outro, sem prejuízo de tentativa prévia de solução amigável.
 
 :::assinaturas
-{{local_data}}
+{{foro}}, {{data_assinatura_extenso}}.
 
 **VIZANTU LTDA**
 CNPJ nº 45.724.220/0001-04

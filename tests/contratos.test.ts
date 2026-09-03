@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildContractBody, buildPaymentClause, CONTRACT_FIELDS, replacePaymentClause } from "../src/lib/contract-templates";
-import { contractTotal, derivedFields, parseFaixas, renderContract } from "../src/lib/contract-render";
+import { contractTotal, derivedFields, missingInputLabels, parseFaixas, pendingMarker, renderContract } from "../src/lib/contract-render";
 
 // O cliente novo que o Phedro mandou junto com o pedido.
 const TARGET = {
@@ -177,5 +177,46 @@ describe("contrato escalonado", () => {
     expect(contractTotal(DEGRAUS, "pre", "escalonado")).toBe("R$ 31.500,00");
     expect(contractTotal(TARGET, "pre", "mensal")).toBe("R$ 16.782,00");
     expect(contractTotal({}, "pre", "mensal")).toBe("");
+  });
+});
+
+
+describe("o que falta no contrato", () => {
+  const body = buildContractBody("gestao_marca", "pre", "mensal");
+  // O contrato da Target como estava ao ser exportado: sem início de vigência
+  // e sem data de assinatura.
+  const SEM_DATAS = { ...TARGET, vigencia_inicio: "", data_assinatura: "" };
+
+  it("21. o buraco no texto tem nome de gente, não nome de variável", () => {
+    const { text } = renderContract(body, SEM_DATAS, "pre", "mensal");
+    expect(text).toContain("«Início da vigência»");
+    expect(text).toContain("«Data de assinatura»");
+    expect(text).not.toContain("vigencia_inicio_extenso");
+    expect(text).not.toContain("_extenso»");
+  });
+
+  it("22. a lista de pendências diz o que digitar, sem repetir", () => {
+    const { missing } = renderContract(body, { ...TARGET, valor_mensal: "" }, "pre", "mensal");
+    // O valor mensal abre quatro lacunas no texto e continua sendo um campo só.
+    expect(missing.length).toBeGreaterThan(1);
+    expect(missingInputLabels(missing)).toEqual(["Valor mensal em R$"]);
+  });
+
+  it("23. sem data de assinatura, o fecho acusa a falta em vez de virar 'Mineiros-GO.'", () => {
+    const { text } = renderContract(body, SEM_DATAS, "pre", "mensal");
+    expect(text).toContain("Mineiros-GO, «Data de assinatura».");
+    expect(text).not.toContain("Mineiros-GO.\n");
+  });
+
+  it("24. contrato completo não tem marca nenhuma sobrando", () => {
+    const completo = { ...TARGET, data_assinatura: "2026-09-03" };
+    const { text, missing } = renderContract(body, completo, "pre", "mensal");
+    expect(missing).toEqual([]);
+    expect(text).not.toContain("«");
+    expect(text).toContain("Mineiros-GO, 03 de setembro de 2026.");
+  });
+
+  it("25. campo digitável mantém o rótulo do formulário", () => {
+    expect(pendingMarker("contratante_nome")).toBe("«Nome / Razão social»");
   });
 });

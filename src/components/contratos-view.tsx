@@ -7,7 +7,7 @@ import { ContractDocument } from "@/components/contract-document";
 import { useConfirm } from "@/components/confirm-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { CONTRACT_FIELDS, CONTRACT_TEMPLATES, PAYMENT_STRUCTURES, defaultStructure, type ContractTemplateId, type PaymentMode, type PaymentStructure } from "@/lib/contract-templates";
-import { contractTotal, parseFaixas, renderContract } from "@/lib/contract-render";
+import { contractTotal, missingInputLabels, parseFaixas, renderContract } from "@/lib/contract-render";
 import { networkError, responseError } from "@/lib/request-error";
 import { CONTRACT_STATUSES, type Contract, type Project } from "@/lib/types";
 
@@ -236,7 +236,10 @@ export function ContratosView({ initialContracts, projects }: { initialContracts
                   <div className="no-print">
                     {missing.length ? (
                       <p className="contrato-pendencias">
-                        Faltam {missing.length} {missing.length === 1 ? "campo" : "campos"}. Eles aparecem marcados no documento.
+                        {/* O que digitar, não quantos buracos existem: um valor
+                            mensal em branco abre quatro lacunas no texto e
+                            continua sendo UM campo pra preencher. */}
+                        Falta preencher: {missingInputLabels(missing).join(", ")}.
                       </p>
                     ) : (
                       <p className="contrato-pronto">Contrato completo, pronto para exportar.</p>
