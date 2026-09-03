@@ -190,7 +190,7 @@ const PAGAMENTO_MENSAL: Record<PaymentMode, string> = {
 
 3.1. Pelos serviços, a CONTRATANTE pagará à CONTRATADA a mensalidade de **R$ {{valor_mensal_formatado}} ({{valor_mensal_extenso}})**, durante {{vigencia_meses}} meses, totalizando R$ {{valor_total_formatado}} ({{valor_total_extenso}}), por {{forma_pagamento}}.
 
-3.2. O pagamento é antecipado. A primeira mensalidade vence em **{{primeiro_vencimento}}** e as demais no dia {{dia_vencimento}} de cada mês, sempre antes do início do mês de execução a que se referem.
+3.2. O pagamento é antecipado. A primeira mensalidade **{{primeiro_vencimento_frase}}** e as demais no dia {{dia_vencimento}} de cada mês, sempre antes do início do mês de execução a que se referem.
 
 3.3. A execução de cada competência mensal tem início após a confirmação do pagamento correspondente. A CONTRATADA emitirá a documentação fiscal correspondente aos valores recebidos.
 
@@ -198,7 +198,7 @@ const PAGAMENTO_MENSAL: Record<PaymentMode, string> = {
 
   pos: `## CLÁUSULA 3 – REMUNERAÇÃO E PAGAMENTO
 
-3.1. Pelos serviços, a CONTRATANTE pagará à CONTRATADA a mensalidade de **R$ {{valor_mensal_formatado}} ({{valor_mensal_extenso}})**, durante {{vigencia_meses}} meses, totalizando R$ {{valor_total_formatado}} ({{valor_total_extenso}}), por {{forma_pagamento}}, com vencimento da primeira mensalidade em **{{primeiro_vencimento}}** e das demais no dia {{dia_vencimento}} dos meses subsequentes.
+3.1. Pelos serviços, a CONTRATANTE pagará à CONTRATADA a mensalidade de **R$ {{valor_mensal_formatado}} ({{valor_mensal_extenso}})**, durante {{vigencia_meses}} meses, totalizando R$ {{valor_total_formatado}} ({{valor_total_extenso}}), por {{forma_pagamento}}, com a primeira mensalidade que **{{primeiro_vencimento_frase}}** e as demais no dia {{dia_vencimento}} dos meses subsequentes.
 
 3.2. A CONTRATADA emitirá a documentação fiscal correspondente aos valores recebidos.
 
@@ -218,7 +218,7 @@ const PAGAMENTO_ESCALONADO: Record<PaymentMode, string> = {
 
 3.2. O valor total do contrato é de **R$ {{valor_total_formatado}} ({{valor_total_extenso}})**.
 
-3.3. O pagamento é antecipado. A primeira mensalidade vence em **{{primeiro_vencimento}}** e as demais no dia {{dia_vencimento}} de cada mês, sempre antes do início do mês de execução a que se referem. A execução de cada competência mensal tem início após a confirmação do pagamento correspondente.
+3.3. O pagamento é antecipado. A primeira mensalidade **{{primeiro_vencimento_frase}}** e as demais no dia {{dia_vencimento}} de cada mês, sempre antes do início do mês de execução a que se referem. A execução de cada competência mensal tem início após a confirmação do pagamento correspondente.
 
 3.4. Os valores da tabela acima já estão contratados e reajustam automaticamente nas datas indicadas, sem necessidade de aditivo. A CONTRATADA emitirá a documentação fiscal correspondente aos valores recebidos.
 
@@ -232,7 +232,7 @@ const PAGAMENTO_ESCALONADO: Record<PaymentMode, string> = {
 
 3.2. O valor total do contrato é de **R$ {{valor_total_formatado}} ({{valor_total_extenso}})**.
 
-3.3. A primeira mensalidade vence em **{{primeiro_vencimento}}** e as demais no dia {{dia_vencimento}} dos meses subsequentes.
+3.3. A primeira mensalidade **{{primeiro_vencimento_frase}}** e as demais no dia {{dia_vencimento}} dos meses subsequentes.
 
 3.4. Os valores da tabela acima já estão contratados e reajustam automaticamente nas datas indicadas, sem necessidade de aditivo. A CONTRATADA emitirá a documentação fiscal correspondente aos valores recebidos.
 
@@ -244,7 +244,7 @@ const PAGAMENTO_PROJETO: Record<PaymentMode, string> = {
 
 3.1. Pelo projeto, a CONTRATANTE pagará à CONTRATADA o valor total de **R$ {{valor_total_formatado}} ({{valor_total_extenso}})**, em {{parcelas}} parcelas de R$ {{valor_parcela_formatado}} ({{valor_parcela_extenso}}), por {{forma_pagamento}}.
 
-3.2. O pagamento é antecipado. A primeira parcela vence em **{{primeiro_vencimento}}** e as demais no dia {{dia_vencimento}} dos meses seguintes. O início dos trabalhos ocorre após a confirmação da primeira parcela.
+3.2. O pagamento é antecipado. A primeira parcela **{{primeiro_vencimento_frase}}** e as demais no dia {{dia_vencimento}} dos meses seguintes. O início dos trabalhos ocorre após a confirmação da primeira parcela.
 
 3.3. A CONTRATADA emitirá a documentação fiscal correspondente aos valores recebidos.
 
@@ -252,7 +252,7 @@ const PAGAMENTO_PROJETO: Record<PaymentMode, string> = {
 
   pos: `## CLÁUSULA 3 – REMUNERAÇÃO E PAGAMENTO
 
-3.1. Pelo projeto, a CONTRATANTE pagará à CONTRATADA o valor total de **R$ {{valor_total_formatado}} ({{valor_total_extenso}})**, em {{parcelas}} parcelas de R$ {{valor_parcela_formatado}} ({{valor_parcela_extenso}}), por {{forma_pagamento}}, com a primeira parcela vencendo em **{{primeiro_vencimento}}** e as demais no dia {{dia_vencimento}} dos meses subsequentes.
+3.1. Pelo projeto, a CONTRATANTE pagará à CONTRATADA o valor total de **R$ {{valor_total_formatado}} ({{valor_total_extenso}})**, em {{parcelas}} parcelas de R$ {{valor_parcela_formatado}} ({{valor_parcela_extenso}}), por {{forma_pagamento}}, com a primeira parcela que **{{primeiro_vencimento_frase}}** e as demais no dia {{dia_vencimento}} dos meses subsequentes.
 
 3.2. A entrega final dos arquivos abertos ocorre após a quitação integral do projeto. A CONTRATADA emitirá a documentação fiscal correspondente aos valores recebidos.
 

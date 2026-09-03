@@ -49,15 +49,31 @@ function somarMeses(iso: string, meses: number): string {
 // O primeiro vencimento é uma data que ninguém deveria digitar: ela sai do
 // início da vigência e do dia combinado. No pré-pago vence antes do mês de
 // execução, no pós-pago vence dentro dele.
-function primeiroVencimento(fields: ContractFields, paymentMode: "pre" | "pos"): string {
+function primeiroVencimentoIso(fields: ContractFields, paymentMode: "pre" | "pos"): string {
   const inicio = (fields.vigencia_inicio || "").trim();
   const dia = Math.min(Math.max(Math.trunc(numero(fields, "dia_vencimento")) || 0, 1), 28);
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(inicio);
   if (!match || !dia) return "";
   const [, ano, mes] = match;
   const deslocamento = paymentMode === "pre" ? -1 : 0;
-  const data = new Date(Date.UTC(Number(ano), Number(mes) - 1 + deslocamento, dia));
-  return dataPorExtenso(data.toISOString().slice(0, 10));
+  return new Date(Date.UTC(Number(ano), Number(mes) - 1 + deslocamento, dia)).toISOString().slice(0, 10);
+}
+
+// A frase inteira, e não só a data, porque num caso ela não é uma data.
+//
+// No pré-pago a primeira mensalidade vence um mês ANTES do início da vigência.
+// Quando o contrato é assinado depois disso (que é o normal: fecha em setembro
+// pra começar em setembro), a conta produz um vencimento anterior à própria
+// assinatura, e o documento afirma que uma parcela venceu semanas antes de
+// existir contrato. A data está certa em regime; o que está errado é insistir
+// numa data pra primeira parcela. Aí ela vence na assinatura, que é o que
+// acontece na prática.
+function primeiroVencimentoFrase(fields: ContractFields, paymentMode: "pre" | "pos"): string {
+  const vencimento = primeiroVencimentoIso(fields, paymentMode);
+  if (!vencimento) return "";
+  const assinatura = (fields.data_assinatura || "").trim();
+  if (assinatura && vencimento < assinatura) return "vence na assinatura deste contrato";
+  return `vence em ${dataPorExtenso(vencimento)}`;
 }
 
 // A qualificação da CONTRATANTE muda de forma conforme o que foi preenchido:
@@ -160,7 +176,8 @@ export function derivedFields(
     vigencia_fim_extenso: dataPorExtenso(fim),
     vigencia_fim: fim,
     data_assinatura_extenso: dataPorExtenso(fields.data_assinatura || ""),
-    primeiro_vencimento: primeiroVencimento(fields, paymentMode),
+    primeiro_vencimento: dataPorExtenso(primeiroVencimentoIso(fields, paymentMode)),
+    primeiro_vencimento_frase: primeiroVencimentoFrase(fields, paymentMode),
     vigencia_meses: meses ? String(meses) : "",
     qtd_total_conteudos: String(
       Math.trunc(numero(fields, "qtd_estaticos")) + Math.trunc(numero(fields, "qtd_carrosseis")) + Math.trunc(numero(fields, "qtd_videos")),
@@ -201,6 +218,7 @@ const DERIVED_LABELS: Record<string, string> = {
   vigencia_fim_extenso: "Fim da vigência",
   data_assinatura_extenso: "Data de assinatura",
   primeiro_vencimento: "Primeiro vencimento",
+  primeiro_vencimento_frase: "Primeiro vencimento",
   valor_mensal_formatado: "Valor mensal",
   valor_mensal_extenso: "Valor mensal",
   valor_total_formatado: "Valor total",
@@ -237,6 +255,7 @@ const DERIVED_SOURCES: Record<string, string[]> = {
   vigencia_fim: ["vigencia_inicio", "vigencia_meses"],
   data_assinatura_extenso: ["data_assinatura"],
   primeiro_vencimento: ["vigencia_inicio", "dia_vencimento"],
+  primeiro_vencimento_frase: ["vigencia_inicio", "dia_vencimento"],
   valor_mensal_formatado: ["valor_mensal"],
   valor_mensal_extenso: ["valor_mensal"],
   valor_total_formatado: ["valor_mensal"],

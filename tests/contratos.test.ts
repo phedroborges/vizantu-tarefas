@@ -301,3 +301,45 @@ describe("o formulário dá conta do contrato inteiro", () => {
     expect(texto).toBe("inscrita no CPF sob o nº 123.456.789-00, com endereço na Rua 1, 100");
   });
 });
+
+
+describe("primeiro vencimento e a data da assinatura", () => {
+  const body = buildContractBody("gestao_marca", "pre", "escalonado");
+  // O contrato da Target: vigência começa 10/09, assinado em 03/09. No
+  // pré-pago a conta dá 10 de AGOSTO, quase um mês antes de o contrato
+  // existir.
+  const TARGET_REAL = {
+    ...TARGET,
+    escalonamento: "3 x 2000\n3 x 2500\n6 x 3000",
+    vigencia_inicio: "2026-09-10",
+    dia_vencimento: "10",
+    data_assinatura: "2026-09-03",
+  };
+
+  it("34. vencimento anterior à assinatura vira 'na assinatura deste contrato'", () => {
+    const { text } = renderContract(body, TARGET_REAL, "pre", "escalonado");
+    expect(text).toContain("A primeira mensalidade **vence na assinatura deste contrato**");
+    expect(text).not.toContain("10 de agosto de 2026");
+  });
+
+  it("35. quando a conta fecha depois da assinatura, a data continua sendo a data", () => {
+    const emDia = { ...TARGET_REAL, vigencia_inicio: "2026-10-01" };
+    const { text } = renderContract(body, emDia, "pre", "escalonado");
+    expect(text).toContain("vence em 10 de setembro de 2026");
+  });
+
+  it("36. sem data de assinatura o comportamento é o de sempre", () => {
+    const semAssinatura = { ...TARGET_REAL, data_assinatura: "" };
+    expect(derivedFields(semAssinatura, "pre").primeiro_vencimento_frase).toBe("vence em 10 de agosto de 2026");
+  });
+
+  it("37. vale para o pós-pago e para o contrato de projeto também", () => {
+    for (const [structure, template] of [["mensal", "gestao_marca"], ["projeto", "criacao_marca"]] as const) {
+      for (const mode of ["pre", "pos"] as const) {
+        const corpo = buildContractBody(template, mode, structure);
+        expect(corpo, `${template}/${structure}/${mode}`).toContain("{{primeiro_vencimento_frase}}");
+        expect(corpo).not.toContain("{{primeiro_vencimento}}");
+      }
+    }
+  });
+});
