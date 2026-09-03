@@ -215,26 +215,51 @@ const DERIVED_LABELS: Record<string, string> = {
   local_data: "Cidade e data da assinatura",
 };
 
-// De qual CAMPO cada buraco derivado depende. É outra pergunta: no documento
-// interessa o nome do buraco ("Fim da vigência"), mas na lista de pendências
-// interessa o que a pessoa tem que digitar pra fechar aquilo (o início da
-// vigência, que é de onde o fim sai).
-const DERIVED_SOURCES: Record<string, string> = {
-  vigencia_inicio_extenso: "vigencia_inicio",
-  vigencia_fim_extenso: "vigencia_inicio",
-  data_assinatura_extenso: "data_assinatura",
-  primeiro_vencimento: "vigencia_inicio",
-  valor_mensal_formatado: "valor_mensal",
-  valor_mensal_extenso: "valor_mensal",
-  valor_total_formatado: "valor_mensal",
-  valor_total_extenso: "valor_mensal",
-  valor_parcela_formatado: "valor_mensal",
-  valor_parcela_extenso: "valor_mensal",
-  verba_minima_formatada: "verba_minima",
-  verba_minima_extenso: "verba_minima",
-  tabela_escalonamento: "escalonamento",
-  contratante_qualificacao: "contratante_documento",
+// De quais CAMPOS cada buraco derivado depende.
+//
+// Este mapa é o que liga o texto ao formulário, e ele já foi a origem de um
+// bug feio: o formulário só mostrava campo cujo nome aparecia LITERALMENTE no
+// contrato, e o endereço, o e-mail e o valor mensal nunca aparecem — o texto
+// pede {{contratante_qualificacao}} e {{valor_mensal_formatado}}, que são
+// derivados deles. Resultado: sete campos existiam no código e não tinham
+// caixa na tela, e um contrato de mensalidade fixa não tinha onde receber o
+// valor.
+//
+// Por isso a lista é de ARRAYS: um derivado costuma comer vários campos, e
+// esquecer um deles some com ele da tela outra vez.
+const DERIVED_SOURCES: Record<string, string[]> = {
+  contratante_qualificacao: [
+    "contratante_documento", "contratante_endereco", "contratante_email",
+    "contratante_representante", "contratante_representante_cpf",
+  ],
+  vigencia_inicio_extenso: ["vigencia_inicio"],
+  vigencia_fim_extenso: ["vigencia_inicio", "vigencia_meses"],
+  vigencia_fim: ["vigencia_inicio", "vigencia_meses"],
+  data_assinatura_extenso: ["data_assinatura"],
+  primeiro_vencimento: ["vigencia_inicio", "dia_vencimento"],
+  valor_mensal_formatado: ["valor_mensal"],
+  valor_mensal_extenso: ["valor_mensal"],
+  valor_total_formatado: ["valor_mensal"],
+  valor_total_extenso: ["valor_mensal"],
+  valor_parcela_formatado: ["valor_mensal", "parcelas"],
+  valor_parcela_extenso: ["valor_mensal", "parcelas"],
+  verba_minima_formatada: ["verba_minima"],
+  verba_minima_extenso: ["verba_minima"],
+  tabela_escalonamento: ["escalonamento"],
+  qtd_total_conteudos: ["qtd_estaticos", "qtd_carrosseis", "qtd_videos"],
 };
+
+// Quais campos ESTE contrato precisa que alguém digite. É o que decide as
+// caixas do formulário: cada {{coisa}} do texto, mais os campos de onde as
+// derivadas saem.
+export function contractInputKeys(body: string): Set<string> {
+  const keys = new Set<string>();
+  for (const [, placeholder] of body.matchAll(PLACEHOLDER)) {
+    if (CONTRACT_FIELD_BY_KEY.has(placeholder)) keys.add(placeholder);
+    for (const origem of DERIVED_SOURCES[placeholder] ?? []) keys.add(origem);
+  }
+  return keys;
+}
 
 // Marca o que falta com um texto que ninguém manda pro cliente por engano.
 export function pendingMarker(key: string): string {
@@ -244,8 +269,20 @@ export function pendingMarker(key: string): string {
 // Os campos que a pessoa precisa preencher pra fechar as pendências, sem
 // repetição: valor mensal aparece em quatro buracos do texto e é UMA coisa
 // pra digitar.
-export function missingInputLabels(missing: string[]): string[] {
-  const chaves = new Set(missing.map((key) => DERIVED_SOURCES[key] ?? key));
+//
+// Recebe os valores atuais porque um derivado pode depender de cinco campos e
+// faltar só um: cobrar os cinco mandaria a pessoa reconferir o que já está
+// preenchido.
+export function missingInputLabels(missing: string[], fields: ContractFields = {}): string[] {
+  const chaves = new Set<string>();
+  for (const key of missing) {
+    const origens = DERIVED_SOURCES[key];
+    if (!origens) { chaves.add(key); continue; }
+    const vazias = origens.filter((origem) => !(fields[origem] || "").trim());
+    // Todas preenchidas e mesmo assim faltou: o buraco é do derivado, então
+    // é ele que aparece (é o caso do fim da vigência sem os meses).
+    for (const origem of vazias.length ? vazias : [key]) chaves.add(origem);
+  }
   const labels = [...chaves].map((key) => CONTRACT_FIELD_BY_KEY.get(key)?.label || DERIVED_LABELS[key] || key);
   return [...new Set(labels)];
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildContractBody, buildPaymentClause, CONTRACT_FIELDS, replacePaymentClause } from "../src/lib/contract-templates";
-import { contractTotal, derivedFields, missingInputLabels, parseFaixas, pendingMarker, renderContract } from "../src/lib/contract-render";
+import { buildContractBody, buildPaymentClause, CONTRACT_FIELDS, CONTRACT_FIELD_BY_KEY, replacePaymentClause } from "../src/lib/contract-templates";
+import { contractInputKeys, contractTotal, derivedFields, missingInputLabels, parseFaixas, pendingMarker, renderContract } from "../src/lib/contract-render";
 
 // O cliente novo que o Phedro mandou junto com o pedido.
 const TARGET = {
@@ -218,5 +218,86 @@ describe("o que falta no contrato", () => {
 
   it("25. campo digitável mantém o rótulo do formulário", () => {
     expect(pendingMarker("contratante_nome")).toBe("«Nome / Razão social»");
+  });
+});
+
+
+// O teste que faltava. O formulário mostrava só campo cujo nome aparecia
+// LITERALMENTE no contrato, e endereço, e-mail, valor mensal, início de
+// vigência e data de assinatura nunca aparecem: o texto pede as versões
+// derivadas deles. Sete campos existiam no código sem ter caixa na tela.
+//
+// A pergunta certa não é "o formulário mostra o campo X". É: preenchendo
+// SÓ o que o formulário oferece, o contrato fica completo?
+describe("o formulário dá conta do contrato inteiro", () => {
+  const VALOR_DE_TESTE: Record<string, string> = {
+    contratante_endereco: "Rua 1, 100, Centro\nGoiânia-GO 74000-000",
+    contratante_email: "cliente@exemplo.com.br",
+    contratante_documento: "00.000.000/0001-00",
+    contratante_representante: "Fulano de Tal",
+    contratante_representante_cpf: "000.000.000-00",
+    vigencia_inicio: "2026-10-01",
+    data_assinatura: "2026-09-30",
+    escalonamento: "3 x 2000\n9 x 3000",
+  };
+
+  const casos = [
+    { templateId: "gestao_marca", structure: "mensal" },
+    { templateId: "gestao_marca", structure: "escalonado" },
+    { templateId: "gestao_marca", structure: "projeto" },
+    { templateId: "criacao_marca", structure: "projeto" },
+  ] as const;
+
+  for (const [i, caso] of casos.entries()) {
+    it(`${26 + i}. ${caso.templateId} / ${caso.structure} fecha só com o que a tela pede`, () => {
+      const body = buildContractBody(caso.templateId, "pre", caso.structure);
+      const oferecidos = contractInputKeys(body);
+
+      // Preenche exatamente as caixas que a tela mostraria, e nada além disso.
+      const fields: Record<string, string> = {};
+      for (const key of oferecidos) {
+        const campo = CONTRACT_FIELD_BY_KEY.get(key);
+        fields[key] = VALOR_DE_TESTE[key] ?? campo?.padrao ?? (campo?.type === "numero" ? "10" : "preenchido");
+      }
+
+      const { missing, text } = renderContract(body, fields, "pre", caso.structure);
+      expect(missing, `sem caixa na tela: ${missingInputLabels(missing, fields).join(", ")}`).toEqual([]);
+      expect(text).not.toContain("«");
+    });
+  }
+
+  it("30. os cinco campos que mudam em todo contrato estão na tela", () => {
+    const oferecidos = contractInputKeys(buildContractBody("gestao_marca", "pre", "mensal"));
+    for (const key of ["contratante_nome", "contratante_documento", "contratante_endereco", "contratante_email", "forma_pagamento"]) {
+      expect(oferecidos, key).toContain(key);
+    }
+  });
+
+  it("31. a tela não pede campo que este contrato não usa", () => {
+    const gestao = contractInputKeys(buildContractBody("gestao_marca", "pre", "mensal"));
+    expect(gestao).not.toContain("prazo_entrega_marca");
+    expect(gestao).not.toContain("parcelas");
+  });
+
+  it("32. bloco derivado vazio cobra os campos de digitar, não o nome do bloco", () => {
+    const body = buildContractBody("gestao_marca", "pre", "mensal");
+    const { missing } = renderContract(body, {}, "pre", "mensal");
+    const cobrados = missingInputLabels(missing, {});
+    // A qualificação da parte come cinco campos. A pendência lista os cinco,
+    // porque é neles que se digita.
+    for (const label of ["CPF / CNPJ", "Endereço completo com CEP", "E-mail"]) {
+      expect(cobrados, label).toContain(label);
+    }
+    expect(cobrados).not.toContain("Dados do cliente");
+  });
+
+  it("33. campo opcional em branco não quebra a frase da qualificação", () => {
+    // Pessoa física não tem representante legal. A frase precisa fechar sem
+    // vírgula solta e sem "representada por" pendurado.
+    const texto = derivedFields(
+      { contratante_documento: "123.456.789-00", contratante_endereco: "Rua 1, 100" },
+      "pre",
+    ).contratante_qualificacao;
+    expect(texto).toBe("inscrita no CPF sob o nº 123.456.789-00, com endereço na Rua 1, 100");
   });
 });

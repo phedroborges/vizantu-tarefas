@@ -7,20 +7,11 @@ import { ContractDocument } from "@/components/contract-document";
 import { useConfirm } from "@/components/confirm-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { CONTRACT_FIELDS, CONTRACT_TEMPLATES, PAYMENT_STRUCTURES, defaultStructure, type ContractTemplateId, type PaymentMode, type PaymentStructure } from "@/lib/contract-templates";
-import { contractTotal, missingInputLabels, parseFaixas, renderContract } from "@/lib/contract-render";
+import { contractInputKeys, contractTotal, missingInputLabels, parseFaixas, renderContract } from "@/lib/contract-render";
 import { networkError, responseError } from "@/lib/request-error";
 import { CONTRACT_STATUSES, type Contract, type Project } from "@/lib/types";
 
 const AUTOSAVE_MS = 700;
-
-// Só os campos que ESTE contrato realmente usa. O de criação de marca não
-// pergunta quantos vídeos por mês, e o modelo em branco não pergunta quase
-// nada — perguntar o que o texto não usa é fazer alguém preencher à toa.
-function usedFieldKeys(body: string): Set<string> {
-  const keys = new Set<string>();
-  for (const match of body.matchAll(/\{\{(\w+)\}\}/g)) keys.add(match[1]);
-  return keys;
-}
 
 function valoresIniciais(): Record<string, string> {
   const fields: Record<string, string> = {};
@@ -48,7 +39,10 @@ export function ContratosView({ initialContracts, projects }: { initialContracts
 
   const { missing, campos } = useMemo(() => {
     if (!selected) return { missing: [] as string[], campos: [] as typeof CONTRACT_FIELDS };
-    const usadas = usedFieldKeys(selected.body);
+    // Quais caixas mostrar sai do próprio motor de render (contractInputKeys):
+    // ele sabe que {{contratante_qualificacao}} come cinco campos e que o
+    // valor mensal só aparece no texto como valor formatado.
+    const usadas = contractInputKeys(selected.body);
     const escalonado = selected.paymentStructure === "escalonado";
     // Num contrato escalonado a vigência sai da soma das faixas, então o campo
     // de meses deixa de existir: mostrá-lo seria oferecer um número que o
@@ -239,7 +233,7 @@ export function ContratosView({ initialContracts, projects }: { initialContracts
                         {/* O que digitar, não quantos buracos existem: um valor
                             mensal em branco abre quatro lacunas no texto e
                             continua sendo UM campo pra preencher. */}
-                        Falta preencher: {missingInputLabels(missing).join(", ")}.
+                        Falta preencher: {missingInputLabels(missing, selected.fields).join(", ")}.
                       </p>
                     ) : (
                       <p className="contrato-pronto">Contrato completo, pronto para exportar.</p>
