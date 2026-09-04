@@ -24,7 +24,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             escuro quando o React hidrata. */}
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
       </head>
-      <body suppressHydrationWarning>
+      <body className="vz-root" suppressHydrationWarning>
         <TooltipProvider delay={200}>{children}</TooltipProvider>
       </body>
     </html>

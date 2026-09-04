@@ -287,6 +287,52 @@ export function Card({ className, tint, flat, interactive, ...props }: React.HTM
   return <div className={cx("vz-card", tint && "vz-card--tint", flat && "vz-card--flat", interactive && "vz-card--interactive", className)} {...props} />;
 }
 
+export function PageHeader({
+  eyebrow,
+  title,
+  description,
+  actions,
+  className,
+}: {
+  eyebrow?: React.ReactNode;
+  title: React.ReactNode;
+  description?: React.ReactNode;
+  actions?: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <header className={cx("vz-page-head", className)}>
+      <div className="vz-page-head__copy">
+        {eyebrow && <span className="vz-eyebrow">{eyebrow}</span>}
+        <h1 className="vz-h1">{title}</h1>
+        {description && <p className="vz-body">{description}</p>}
+      </div>
+      {actions && <div className="vz-page-head__actions">{actions}</div>}
+    </header>
+  );
+}
+
+export function EmptyState({ icon, title, description, actions, className }: {
+  icon?: React.ReactNode;
+  title: React.ReactNode;
+  description?: React.ReactNode;
+  actions?: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cx("vz-empty", className)}>
+      {icon && <span className="vz-empty__icon">{icon}</span>}
+      <h3>{title}</h3>
+      {description && <p>{description}</p>}
+      {actions}
+    </div>
+  );
+}
+
+export function Toolbar({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return <div className={cx("vz-toolbar", className)} {...props} />;
+}
+
 export function Callout({ tone = "info", icon, children }: { tone?: "info" | "success" | "warning" | "danger" | "brand"; icon?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className={cx("vz-callout", tone !== "info" && `vz-callout--${tone}`)}>

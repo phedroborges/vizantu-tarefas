@@ -30,6 +30,7 @@ import { Avatar, AvatarName } from "@/components/avatar";
 import { celebrateFrom } from "@/lib/celebrate";
 import { TaskToolbar } from "@/components/task-toolbar";
 import { useArrastoDeColuna } from "@/components/vz/use-resize";
+import { Button, Card, EmptyState, IconButton, Input, PageHeader } from "@/components/vz";
 
 const WEEKDAYS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 const NO_ASSIGNEE = "none";
@@ -529,20 +530,18 @@ export function TarefasView({
   return (
     <>
       <main className="admin-page dashboard">
-        <div className="dashboard-head calendar-heading">
-          <div>
-            <span className="eyebrow">Operação</span>
-            <h1>Tarefas</h1>
-            <p>Acompanhe todas as demandas do time em uma lista única ou pelo calendário de entregas.</p>
-          </div>
-          {canEdit ? (
-            <button className="primary-button" type="button" onClick={() => setSelectedTask("new")}>
+        <PageHeader
+          eyebrow="Operação"
+          title="Tarefas"
+          description="Acompanhe todas as demandas do time em uma lista única ou pelo calendário de entregas."
+          actions={canEdit ? (
+            <Button variant="primary" type="button" onClick={() => setSelectedTask("new")}>
               <Plus size={16} /> Nova tarefa
-            </button>
+            </Button>
           ) : null}
-        </div>
+        />
 
-        <section className="panel">
+        <Card className="task-workspace">
           <TaskToolbar
             filters={{ query, projectId: projectFilter, assigneeId: assigneeFilter, status: statusFilter, list: listFilter, showFinalized }}
             onFiltersChange={(next) => {
@@ -572,8 +571,8 @@ export function TarefasView({
           {view === "lista" ? (
             <>
               {visibleTasks.length ? (
-                <div className="project-table-wrap">
-                  <table className="task-table vz-table--fixed">
+                <div className="vz-table-wrap">
+                  <table className="vz-table task-table vz-table--fixed">
                     <thead>
                       <tr>
                         <th style={{ width: larguraDe("name") }}>
@@ -624,16 +623,17 @@ export function TarefasView({
                   </table>
                 </div>
               ) : (
-                <div className="empty-state">
-                  <CheckSquare size={35} />
-                  <h3>Nenhuma tarefa encontrada</h3>
-                  <p>Ajuste os filtros ou crie a primeira tarefa deste projeto.</p>
-                </div>
+                <EmptyState
+                  icon={<CheckSquare size={24} />}
+                  title="Nenhuma tarefa encontrada"
+                  description="Ajuste os filtros ou crie a primeira tarefa deste projeto."
+                />
               )}
               {canEdit ? (
                 <form className="task-quick-add" onSubmit={quickAdd}>
                   <Plus size={14} color="var(--muted-text)" />
-                  <input
+                  <Input
+                    size="sm"
                     value={quickAddTitle}
                     onChange={(e) => setQuickAddTitle(e.target.value)}
                     placeholder="Adicionar tarefa rápida e apertar Enter..."
@@ -647,9 +647,9 @@ export function TarefasView({
             <>
               <div className="calendar-summary">
                 <div className="calendar-filter">
-                  <button type="button" onClick={() => setSelectedMonth((current) => moveMonth(current, -1))} aria-label="Mês anterior"><ArrowLeft size={16} /></button>
-                  <input type="month" value={selectedMonth} onChange={(e) => e.target.value && setSelectedMonth(e.target.value)} />
-                  <button type="button" onClick={() => setSelectedMonth((current) => moveMonth(current, 1))} aria-label="Próximo mês"><ArrowRight size={16} /></button>
+                  <IconButton size="sm" type="button" onClick={() => setSelectedMonth((current) => moveMonth(current, -1))} aria-label="Mês anterior"><ArrowLeft size={16} /></IconButton>
+                  <Input size="sm" type="month" value={selectedMonth} onChange={(e) => e.target.value && setSelectedMonth(e.target.value)} />
+                  <IconButton size="sm" type="button" onClick={() => setSelectedMonth((current) => moveMonth(current, 1))} aria-label="Próximo mês"><ArrowRight size={16} /></IconButton>
                 </div>
                 <strong style={{ textTransform: "capitalize" }}>{monthLabel(selectedMonth)}</strong>
                 <span>{monthTasks.length} {monthTasks.length === 1 ? "tarefa" : "tarefas"}</span>
@@ -679,7 +679,7 @@ export function TarefasView({
                 </div>
               </div>
               {!monthTasks.length ? (
-                <div className="calendar-empty"><CalendarDays size={28} /><strong>Nenhuma tarefa neste mês</strong><p>Use as setas ou o filtro para consultar outro período.</p></div>
+                <EmptyState icon={<CalendarDays size={24} />} title="Nenhuma tarefa neste mês" description="Use as setas ou o filtro para consultar outro período." />
               ) : null}
               {noDueTasks.length ? (
                 <div style={{ padding: "16px 20px", borderTop: "1px solid var(--line)" }}>
@@ -696,7 +696,7 @@ export function TarefasView({
               ) : null}
             </>
           )}
-        </section>
+        </Card>
       </main>
       {/* Criar = modal enxuto (nome/descrição + pílulas). Abrir uma tarefa
           existente = modal completo, com comentários e tempo por status. */}

@@ -379,46 +379,24 @@ a.upcoming-item { color: inherit; text-decoration: none; }
 .status-color-actions { padding: 8px 6px 4px; border-top: 1px solid var(--line); }
 
 /* ---------- Filtros / Toolbar ---------- */
-.toolbar { padding: 18px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
-.toolbar-filters { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.task-workspace { padding: 0; overflow: hidden; }
+.task-toolbar { justify-content: space-between; padding: var(--vz-s-4) var(--vz-s-5); }
+.task-toolbar .toolbar-actions { margin-left: auto; }
 
 /* Barra consolidada: busca + Filtros (com contador) + engrenagem + visão.
    Antes eram 4 selects soltos e 4 botões concorrendo na mesma linha. */
 .toolbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.toolbar-button { display: inline-flex; align-items: center; gap: 7px; min-height: 38px; padding: 0 12px; border: 1px solid var(--line); background: var(--vz-panel); color: var(--vz-text-soft); font-size: 11px; font-weight: 650; cursor: pointer; }
-.toolbar-button:hover { border-color: var(--vz-line-contrast); color: var(--dark); }
-.toolbar-button.is-active { border-color: var(--brand-strong); background: var(--vz-brand-soft); color: var(--vz-brand-strong); }
-.toolbar-button.icon-only { padding: 0 10px; }
 .toolbar-count { display: inline-flex; align-items: center; justify-content: center; min-width: 17px; height: 17px; padding: 0 4px; background: var(--brand-strong); color: #fff; font-size: 9.5px; font-weight: 750; }
 .toolbar-menu { display: grid; gap: 12px; max-height: 70vh; overflow-y: auto; padding: 12px; }
 .toolbar-field { display: grid; gap: 5px; color: var(--muted-text); font-size: 9.5px; font-weight: 720; text-transform: uppercase; letter-spacing: .06em; }
-.toolbar-field select { width: 100%; min-height: 36px; padding: 0 9px; border: 1px solid var(--line); background: var(--vz-panel); color: var(--dark); font-size: 12px; font-weight: 500; text-transform: none; letter-spacing: normal; }
+.toolbar-field select { width: 100%; text-transform: none; letter-spacing: normal; }
 .toolbar-section { display: grid; gap: 3px; }
 .toolbar-section + .toolbar-section { padding-top: 11px; border-top: 1px solid var(--line); }
 .toolbar-section-label { padding-bottom: 3px; color: var(--muted-text); font-size: 9.5px; font-weight: 720; text-transform: uppercase; letter-spacing: .06em; }
 .toolbar-section-hint { display: block; padding-top: 5px; color: var(--muted-text); font-size: 10px; }
-.toolbar-radio, .toolbar-check { display: flex; align-items: center; gap: 8px; padding: 5px 4px; font-size: 12px; color: var(--dark); cursor: pointer; }
-.toolbar-radio:hover, .toolbar-check:hover { background: var(--vz-panel-hover); }
-.toolbar-radio small { margin-left: auto; color: var(--muted-text); font-size: 10.5px; }
-.toolbar-toggle { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 38px; border: 1px solid var(--line); background: var(--vz-panel); color: var(--vz-text-soft); font-size: 11px; font-weight: 650; cursor: pointer; }
-.toolbar-toggle[aria-pressed="true"] { border-color: var(--brand-strong); background: var(--vz-brand-soft); color: var(--vz-brand-strong); }
-.toolbar-clear { min-height: 34px; border: 0; background: none; color: var(--brand-strong); font-size: 11px; font-weight: 650; cursor: pointer; }
-.toolbar-clear:hover { text-decoration: underline; }
-.toolbar-filters select, .toolbar-filters input { height: 38px; padding: 0 10px; border: 1px solid var(--line); background: var(--vz-panel-hover); color: var(--dark); font-size: 11px; }
-.search { position: relative; flex: 1; max-width: 280px; }
-.search svg { position: absolute; left: 12px; top: 11px; color: var(--vz-text-faint); }
-.search input { width: 100%; height: 38px; padding: 0 12px 0 36px; border: 1px solid var(--line); background: var(--vz-panel-hover); }
-.view-toggle { display: flex; gap: 6px; }
-.view-toggle button { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 0 12px; border: 1px solid var(--line); background: var(--vz-panel); color: var(--vz-text-soft); cursor: pointer; font-size: 11px; font-weight: 650; }
-.view-toggle button:hover { border-color: var(--vz-line-contrast); color: var(--dark); }
-.view-toggle button.active { border-color: var(--brand-strong); background: var(--vz-brand-soft); color: var(--vz-brand-strong); }
 
 /* ---------- Tabela de tarefas ---------- */
-.task-table { width: 100%; border-collapse: collapse; text-align: left; }
-.task-table th { height: 40px; padding: 0 16px; background: var(--vz-panel-hover); color: var(--vz-text-faint); font-size: 9px; font-weight: 720; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
-.task-table td { padding: 12px 16px; border-top: 1px solid var(--vz-line); font-size: var(--vz-t-sm); color: var(--vz-text-soft); vertical-align: middle; }
 .task-table td:nth-child(n) .due-value, .task-table td .due-value { white-space: nowrap; }
-.task-table tbody tr:hover { background: var(--vz-panel-hover); }
 .task-name-cell { cursor: pointer; }
 .task-name { color: var(--dark); font-weight: 650; }
 /* O nome do cliente é apoio, não manchete: em roxo e caixa alta ele tinha o
