@@ -39,9 +39,15 @@
   --vz-brand: #9147ff;
   --vz-brand-strong: #6435e7;
   --vz-brand-deep: #4b23b8;
-  --vz-brand-soft: #f3ecff;
-  --vz-brand-softer: #faf7ff;
-  --vz-brand-line: #e2d4ff;
+  /* Os tintes da marca são DERIVADOS da cor base, e não hex escritos à mão.
+     Antes eram três hex fixos: trocar --vz-brand deixava o botão e o texto da
+     nova cor, mas a pílula do menu ativo, o painel do fluxo e a borda do card
+     continuavam roxos — a marca mudava pela metade. Misturando com o painel,
+     eles também acertam o tema escuro sozinhos (lá o painel é escuro, então o
+     tinte nasce escuro). */
+  --vz-brand-soft: color-mix(in srgb, var(--vz-brand) 13%, var(--vz-panel));
+  --vz-brand-softer: color-mix(in srgb, var(--vz-brand) 5%, var(--vz-panel));
+  --vz-brand-line: color-mix(in srgb, var(--vz-brand) 26%, var(--vz-panel));
 
   /* ---------- Superfícies ----------
      O fundo puxa levemente pro violeta (não é cinza neutro nem o verde-cinza
@@ -157,9 +163,8 @@
   --vz-brand: #a370ff;
   --vz-brand-strong: #8b57f5;
   --vz-brand-deep: #b48cff;
-  --vz-brand-soft: #251b3d;
-  --vz-brand-softer: #1c1730;
-  --vz-brand-line: #3d2f63;
+  /* soft/softer/line não aparecem aqui: a fórmula do :root já os deriva do
+     painel, que neste tema é escuro. */
 
   --vz-bg: #0e0e14;
   --vz-bg-sunken: #08080c;
