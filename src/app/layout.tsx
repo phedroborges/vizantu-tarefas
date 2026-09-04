@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist_Mono } from "next/font/google";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { THEME_BOOT_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
+// A Mona Sans (a fonte da casa) é servida do próprio domínio, declarada em
+// styles/vizantu.css. A mono continua vindo do Google porque só aparece em
+// número técnico e token, fora do caminho crítico.
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
@@ -15,7 +18,12 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="pt-BR" className={`${geistSans.variable} ${geistMono.variable}`}>
+    <html lang="pt-BR" className={geistMono.variable} suppressHydrationWarning>
+      <head>
+        {/* Antes da primeira pintura: sem isso a tela nasce clara e pisca pro
+            escuro quando o React hidrata. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
+      </head>
       <body suppressHydrationWarning>
         <TooltipProvider delay={200}>{children}</TooltipProvider>
       </body>

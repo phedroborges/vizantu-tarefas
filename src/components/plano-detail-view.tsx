@@ -1,28 +1,109 @@
 "use client";
 
-import { CalendarDays, Camera, CheckCircle2, ClipboardList, FileCheck2, MessageSquareText, Package, Palette, Plus, Send, Trash2 } from "lucide-react";
+import { CalendarDays, Camera, ClipboardList, Link as LinkIcon, MessageSquareText, Package, Palette, Plus, Send, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { PlanCalendar } from "@/components/plan-calendar";
 import { PlanRescheduleButton } from "@/components/plan-reschedule";
 import { TaskModal } from "@/components/task-modal";
+import { StatusTag, statusColorMap } from "@/components/status-tag";
 import { ClientLinkPanel } from "@/components/client-link-panel";
 import { useConfirm } from "@/components/confirm-dialog";
 import { formatDueDate } from "@/lib/dates";
 import { networkError, responseError } from "@/lib/request-error";
 import { summarizeApprovalRound } from "@/lib/approval-workflow";
 import { inheritsCaptureEditor } from "@/lib/assignee-inheritance";
-import { TASK_STATUSES } from "@/lib/types";
 import type { Member, Plan, PlanApprovalResponse, PlanCaptacao, PlanEvent, PlanItemApproval, Project, StatusColor, Tag, Task } from "@/lib/types";
 
 const NO_MEMBER = "none";
 const NO_FORMAT_KEY = "__sem_formato__";
 
-function statusGroup(status: Task["status"]): string {
-  return TASK_STATUSES.find((s) => s.value === status)?.group || "nao_iniciada";
-}
 
-function statusLabel(status: Task["status"]): string {
-  return TASK_STATUSES.find((s) => s.value === status)?.label || status;
+// ---------- A visão de aprovação ----------
+// É a MESMA lista de conteúdos, arrumada pela resposta do cliente em vez da
+// etapa interna. As outras abas respondem "como está o nosso trabalho"; esta
+// responde "o que o cliente já respondeu e o que está parado esperando ele" —
+// que antes só dava pra saber abrindo o link do cliente e conferindo item por
+// item.
+const GRUPOS_APROVACAO = [
+  { chave: "changes_requested", titulo: "Pediu ajuste", ajuda: "O cliente respondeu e quer mudança. É a fila que trava a rodada." },
+  { chave: "rejected", titulo: "Reprovado", ajuda: "Precisa ser refeito." },
+  { chave: "pending", titulo: "Aguardando o cliente", ajuda: "Enviado, sem resposta ainda." },
+  { chave: "approved", titulo: "Aprovado pelo cliente", ajuda: "Liberado para seguir na esteira." },
+] as const;
+
+function PlanApprovalBoard({
+  tasks,
+  approvalByTask,
+  responsesByTask,
+  memberById,
+  onOpenTask,
+}: {
+  tasks: Task[];
+  approvalByTask: Map<string, PlanItemApproval>;
+  responsesByTask: Map<string, PlanApprovalResponse[]>;
+  memberById: Map<string, Member>;
+  onOpenTask: (task: Task) => void;
+}) {
+  const porResposta = new Map<string, Task[]>();
+  for (const task of tasks) {
+    const status = approvalByTask.get(task.id)?.status || "pending";
+    porResposta.set(status, [...(porResposta.get(status) || []), task]);
+  }
+  const temAlgo = GRUPOS_APROVACAO.some((grupo) => (porResposta.get(grupo.chave) || []).length);
+  if (!temAlgo) {
+    return (
+      <div className="empty-state">
+        <ClipboardList size={35} />
+        <h3>Nada enviado ao cliente ainda</h3>
+        <p>Assim que a primeira rodada for enviada, a resposta de cada conteúdo aparece aqui.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="plan-approval">
+      {GRUPOS_APROVACAO.map((grupo) => {
+        const doGrupo = porResposta.get(grupo.chave) || [];
+        if (!doGrupo.length) return null;
+        return (
+          <div className="plan-approval__group" key={grupo.chave}>
+            <div className="plan-approval__head">
+              <span className={`approval-status approval-${grupo.chave}`}>{grupo.titulo}</span>
+              <em>{doGrupo.length}</em>
+              <small>{grupo.ajuda}</small>
+            </div>
+            {doGrupo.map((task) => {
+              const resposta = (responsesByTask.get(task.id) || [])[0];
+              const dono = task.assigneeId ? memberById.get(task.assigneeId)?.name : undefined;
+              return (
+                <article className="plan-approval__card" key={task.id}>
+                  <div className="plan-approval__card-top" onClick={() => onOpenTask(task)}>
+                    <strong>{task.name}</strong>
+                    {dono ? <span className="plan-item-assignee">{dono}</span> : null}
+                    {task.dueDate ? <span className="plan-item-due"><CalendarDays size={11} /> {formatDueDate(task.dueDate)}</span> : null}
+                  </div>
+                  {/* O recado do cliente vem como balão de conversa, e não como
+                      texto solto: quem lê reconhece na hora que aquilo foi
+                      alguém que escreveu. */}
+                  {resposta?.comment ? (
+                    <div className="plan-approval__quote">
+                      <strong>{resposta.reviewerName}</strong>
+                      <p>{resposta.comment}</p>
+                    </div>
+                  ) : null}
+                  <div className="plan-approval__card-actions">
+                    <button type="button" className="secondary-button" onClick={() => onOpenTask(task)}>
+                      {grupo.chave === "approved" ? "Abrir conteúdo" : "Abrir e ajustar"}
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 export function PlanoDetailView({
@@ -68,6 +149,13 @@ export function PlanoDetailView({
   const [captacaoLabelDraft, setCaptacaoLabelDraft] = useState("");
   const [editingField, setEditingField] = useState("");
   const [toast, setToast] = useState("");
+  // A tela deixou de empilhar cinco blocos numa coluna de 2.700px: conteúdo,
+  // calendário e aprovação são VISÕES da mesma lista, então viram abas — do
+  // mesmo jeito que a tela de tarefas já alterna lista e calendário.
+  const [aba, setAba] = useState<"conteudos" | "calendario" | "aprovacao">("conteudos");
+  // O link do cliente era um painel permanente de ~150px pra um endereço que
+  // se copia uma vez por mês. Virou um botão que abre o painel quando precisa.
+  const [linkAberto, setLinkAberto] = useState(false);
   const [workflowError, setWorkflowError] = useState("");
   const { confirm, ConfirmDialog } = useConfirm();
 
@@ -79,6 +167,7 @@ export function PlanoDetailView({
     return map;
   }, [approvalResponses]);
   const approvalLabels = { pending: "Pendente", approved: "Aprovado", changes_requested: "Ajuste solicitado", rejected: "Reprovado" } as const;
+  const coresPorEtapa = useMemo(() => statusColorMap(statusColors), [statusColors]);
 
   const copyApprovals = tasks.map((task) => {
     const approval = approvalByTask.get(task.id);
@@ -94,8 +183,6 @@ export function PlanoDetailView({
   });
   const activeStage = hasCreativeRound ? "creative" as const : "copy" as const;
   const activeSummary = summarizeApprovalRound(activeStage === "creative" ? creativeApprovals : copyApprovals, activeStage);
-  const copySummary = summarizeApprovalRound(copyApprovals, "copy");
-  const creativeSummary = hasCreativeRound ? summarizeApprovalRound(creativeApprovals, "creative") : null;
   const creativeBlockers = tasks.flatMap((task) => {
     const approval = approvalByTask.get(task.id);
     const blockers: string[] = [];
@@ -357,7 +444,7 @@ export function PlanoDetailView({
             </span>
           ) : null}
           <span className={`approval-status approval-${approvalStatus}`}>{approvalLabels[approvalStatus]}</span>
-          <span className={`status ${statusGroup(task.status)}`}>{statusLabel(task.status)}</span>
+          <StatusTag status={task.status} colorByStatus={coresPorEtapa} />
         </div>
       </li>
     );
@@ -374,76 +461,96 @@ export function PlanoDetailView({
     );
   }
 
+  // ---------- A visão de aprovação ----------
+  // É a MESMA lista de conteúdos, arrumada pela resposta do cliente em vez da
+  // etapa interna. As outras abas respondem "como está o nosso trabalho"; esta
+  // responde "o que o cliente já respondeu e o que está parado esperando ele"
+  // — que antes só dava pra saber abrindo o link do cliente e conferindo item
+  // por item.
+  const aguardandoCliente = activeSummary.total - activeSummary.reviewed;
+  const abas = [
+    { value: "conteudos" as const, label: "Conteúdos", count: tasks.length },
+    ...(isContent ? [{ value: "calendario" as const, label: "Calendário", count: undefined }] : []),
+    { value: "aprovacao" as const, label: "Aprovação", count: aguardandoCliente || undefined },
+  ];
+
   return (
     <>
-      <main className="admin-page dashboard">
-        <div className="dashboard-head">
-          <div>
+      <main className="admin-page dashboard plan-screen">
+        {/* Cabeçalho: o estado do plano cabe na primeira tela, sem rolar. */}
+        <div className="plan-head">
+          <div className="plan-head__text">
             <span className="eyebrow">{project.name}</span>
             <h1>{plan.title}</h1>
-            <p>{isContent ? "Conteúdos agrupados por formato. A captação é escolhida por item — qualquer formato pode entrar numa captação." : "Passos ordenados do processo."}</p>
+            <div className="plan-head__tags">
+              <span className="badge format">{tasks.length} {tasks.length === 1 ? "item" : "itens"}</span>
+              <span className="badge">{activeSummary.approved} aprovados</span>
+              {aguardandoCliente > 0 ? <span className="badge list">{aguardandoCliente} aguardando o cliente</span> : null}
+              {creativeBlockers.length ? <span className="badge is-danger">{creativeBlockers.length} pendências</span> : null}
+            </div>
           </div>
-          {/* Uma leitura só do andamento, e não quatro. O detalhe por etapa
-              está logo abaixo, no fluxo do cliente. */}
-          <div className="plan-headline-stats">
-            <span><strong>{tasks.length}</strong> itens</span>
-            <span><strong>{activeSummary.approved}</strong> aprovados</span>
-            <span><strong>{activeSummary.total - activeSummary.reviewed}</strong> aguardando o cliente</span>
+          <div className="plan-head__actions">
+            <button type="button" className="secondary-button" onClick={() => setLinkAberto((atual) => !atual)} aria-expanded={linkAberto}>
+              <LinkIcon size={14} /> Link do cliente
+            </button>
+            {isContent && canEdit ? (
+              <PlanRescheduleButton
+                planId={plan.id}
+                onApplied={(atualizadas) => { setTasks(atualizadas); setToast("Calendário reorganizado."); }}
+              />
+            ) : null}
           </div>
         </div>
 
         {tasks.length ? (
-          <div className="plan-progress-track" style={{ marginBottom: 22 }}>
-            <div className="plan-progress-fill" style={{ width: `${progressRate}%` }} />
-          </div>
+          <div className="plan-progress-track"><div className="plan-progress-fill" style={{ width: `${progressRate}%` }} /></div>
         ) : null}
 
-        <ClientLinkPanel projectId={project.id} projectName={project.client || project.name} canEdit={canEdit} onToast={showToast} />
+        {linkAberto ? (
+          <ClientLinkPanel projectId={project.id} projectName={project.client || project.name} canEdit={canEdit} onToast={showToast} />
+        ) : null}
 
-        {isContent ? <section className="plan-workflow-panel" aria-label="Fluxo de aprovação do plano">
-          <div className="plan-workflow-head">
-            <div><span className="eyebrow">Fluxo do cliente</span><h2>{activeStage === "copy" ? "Aprovação de texto" : "Aprovação de criativos"}</h2><p>Rodada {activeSummary.round} · {activeSummary.reviewed} de {activeSummary.total} conteúdos revisados · {activeSummary.approvalRate}% aprovados</p></div>
-            <span className={`plan-review-state ${activeSummary.fullyReviewed ? "is-complete" : ""}`}>{activeSummary.reviewedRate}% revisado</span>
-          </div>
-          <div className="plan-workflow-steps">
-            <div className={copySummary.fullyReviewed ? "is-complete" : "is-current"}><FileCheck2 size={18} /><span><strong>1. Textos</strong><small>{copySummary.reviewed}/{copySummary.total} revisados · {copySummary.approved} aprovados</small></span></div>
-            <div className={creativeSummary?.fullyReviewed ? "is-complete" : hasCreativeRound ? "is-current" : "is-locked"}><Palette size={18} /><span><strong>2. Criativos</strong><small>{creativeSummary ? `${creativeSummary.reviewed}/${creativeSummary.total} revisados · ${creativeSummary.approved} aprovados` : "Aguardando textos, criação e links"}</small></span></div>
-          </div>
-          <div className="plan-creative-readiness">
-            <strong>Requisitos para enviar os criativos</strong>
-            <span className={approvedTextCount === tasks.length ? "is-ready" : ""}><CheckCircle2 size={13} /> Textos aprovados: {approvedTextCount}/{tasks.length}</span>
-            <span className={linkedMaterialCount === tasks.length ? "is-ready" : ""}><CheckCircle2 size={13} /> Links adicionados: {linkedMaterialCount}/{tasks.length}</span>
-            {creativeBlockers.length ? (
-              <details className="plan-blockers">
-                <summary>
-                  {creativeBlockers.length} {creativeBlockers.length === 1 ? "pendência" : "pendências"} para abrir a aprovação de criativos
-                </summary>
-                <ul>{creativeBlockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul>
-              </details>
-            ) : <small>Plano pronto para ser enviado à aprovação de criativos.</small>}
-          </div>
-          {workflowError ? <div className="form-message" role="alert">{workflowError}</div> : null}
-          {canEdit ? <div className="plan-workflow-actions">
-            <button type="button" className="secondary-button" onClick={() => openApprovalRound("copy")}><Send size={14} /> Enviar textos pendentes</button>
-            <button type="button" className="primary-button" disabled={creativeBlockers.length > 0} title={creativeBlockers.length ? "Resolva os requisitos indicados acima." : undefined} onClick={() => openApprovalRound("creative")}><Palette size={14} /> Enviar criativos para aprovação</button>
-          </div> : null}
-          <p className="plan-workflow-hint">Após a aprovação do texto, conteúdos com captação ficam em <strong>Aguardando captação</strong>; os demais seguem para <strong>Pronto para criação</strong>. Para enviar os criativos, todos os conteúdos do plano precisam ter texto aprovado e link do material.</p>
-        </section> : null}
+        {/* Fluxo do cliente: era um painel roxo de ~200px com duas caixas de
+            etapa, uma lista de requisitos e um parágrafo de ajuda. Virou uma
+            faixa: em que rodada está, quanto falta, e o que fazer. */}
+        {isContent ? (
+          <section className="plan-flow" aria-label="Fluxo de aprovação do plano">
+            <div className="plan-flow__top">
+              <span className="eyebrow">Fluxo do cliente · rodada {activeSummary.round}</span>
+              <span className="badge format">{activeStage === "copy" ? "Aprovação de texto" : "Aprovação de criativos"}</span>
+              <span className="plan-flow__count">{activeSummary.reviewed} de {activeSummary.total} revisados</span>
+            </div>
+            <div className="plan-progress-track plan-progress-track--thin">
+              <div className="plan-progress-fill" style={{ width: `${activeSummary.reviewedRate}%` }} />
+            </div>
+            {workflowError ? <div className="form-message" role="alert">{workflowError}</div> : null}
+            {canEdit ? (
+              <div className="plan-flow__actions">
+                <button type="button" className="success-button" onClick={() => openApprovalRound("copy")}><Send size={14} /> Enviar textos pendentes</button>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  disabled={creativeBlockers.length > 0}
+                  title={creativeBlockers.length ? "Resolva os requisitos indicados." : undefined}
+                  onClick={() => openApprovalRound("creative")}
+                ><Palette size={14} /> Enviar criativos</button>
+                <span className="plan-flow__hint">
+                  Textos aprovados {approvedTextCount}/{tasks.length} · links {linkedMaterialCount}/{tasks.length}
+                  {creativeBlockers.length ? ` · faltam ${creativeBlockers.length} para abrir os criativos` : " · pronto para os criativos"}
+                </span>
+              </div>
+            ) : null}
+          </section>
+        ) : null}
 
         {isContent ? (
-          <section className="panel" style={{ marginBottom: 18 }}>
+          <section className="panel plan-packages">
             <div className="panel-head">
               <div>
-                <h2><ClipboardList size={15} style={{ verticalAlign: -2 }} /> Pacotes de produção</h2>
+                <h2>Pacotes de produção</h2>
                 <p>Agrupe as entregas e escolha se o pacote exige captação ou segue direto para criação.</p>
               </div>
             </div>
-            {/* O card tinha, sempre à vista, dois botões de tipo, um campo de
-                data e até dois seletores de responsável. Quatro controles
-                abertos por pacote, num plano com cinco pacotes, são vinte
-                caixas competindo com a informação. Agora cada valor é texto
-                até alguém clicar nele, que é como o modal da tarefa já
-                funciona. */}
             <div className="plan-captacao-row">
               {captacoes.map((c) => {
                 const count = tasks.filter((t) => t.captacaoId === c.id).length;
@@ -492,15 +599,12 @@ export function PlanoDetailView({
                           ) : <span className="quiet-value is-static">{captura ? "Exige captação" : "Criação"}</span>}
                         </dd>
                       </div>
-
                       <div>
                         <dt>{captura ? "Captação" : "Prazo"}</dt>
                         <dd>
                           {editando("prazo") ? (
                             <input
-                              type="date"
-                              autoFocus
-                              aria-label={`Data sugerida para ${c.label}`}
+                              type="date" autoFocus aria-label={`Data sugerida para ${c.label}`}
                               value={prazo}
                               onChange={(event) => setSuggestionDate(c.id, event.target.value)}
                               onBlur={() => setEditingField("")}
@@ -512,14 +616,12 @@ export function PlanoDetailView({
                           )}
                         </dd>
                       </div>
-
                       {captura ? (
                         <div>
                           <dt>Gravação</dt>
                           <dd>{renderMemberField(c, "recordingAssigneeId", editando("gravacao"), () => abrir("gravacao"))}</dd>
                         </div>
                       ) : null}
-
                       <div>
                         <dt>{captura ? "Edição" : "Criação"}</dt>
                         <dd>{renderMemberField(c, "editingAssigneeId", editando("edicao"), () => abrir("edicao"))}</dd>
@@ -532,7 +634,10 @@ export function PlanoDetailView({
               {canEdit ? (
                 <form onSubmit={addCaptacao} className="plan-captacao-form">
                   <input value={newCaptacaoLabel} onChange={(e) => setNewCaptacaoLabel(e.target.value)} placeholder="Ex.: Carrosséis — Pacote 1" />
-                  <select aria-label="Tipo do novo pacote" value={newPackageKind} onChange={(event) => setNewPackageKind(event.target.value as PlanCaptacao["packageKind"])}><option value="creation">Pacote de criação</option><option value="capture">Exige captação</option></select>
+                  <select aria-label="Tipo do novo pacote" value={newPackageKind} onChange={(event) => setNewPackageKind(event.target.value as PlanCaptacao["packageKind"])}>
+                    <option value="creation">Pacote de criação</option>
+                    <option value="capture">Exige captação</option>
+                  </select>
                   <button className="secondary-button" type="submit"><Plus size={13} /></button>
                 </form>
               ) : null}
@@ -540,68 +645,76 @@ export function PlanoDetailView({
           </section>
         ) : null}
 
-        {/* O calendário é largura cheia. Dentro da grade de duas colunas ele
-            virava um mês de 30 dias espremido em meia tela, e ainda expulsava
-            a lista de itens pra linha debaixo. */}
-        {isContent ? (
-          <PlanCalendar
-            tasks={tasks}
-            formatTags={formatTags}
-            canEdit={canEdit}
-            onMove={moveTaskDate}
-            onOpen={setEditingTask}
-          />
-        ) : null}
-
-          <section className="panel list-panel">
-            <div className="panel-head">
-              <h2>Itens ({tasks.length})</h2>
-              {canEdit ? (
-                <form className="plan-quick-add" onSubmit={addItem}>
-                  <input
-                    value={newItemName}
-                    onChange={(e) => setNewItemName(e.target.value)}
-                    placeholder={isContent ? "Adicionar conteúdo" : "Adicionar passo"}
-                    maxLength={140}
-                    required
-                    aria-label="Nome do novo item"
-                  />
-                  {isContent ? (
-                    <select value={newItemFormatId} onChange={(e) => setNewItemFormatId(e.target.value)} aria-label="Formato do novo item">
-                      <option value="">Formato</option>
-                      {formatTags.map((t) => <option value={t.id} key={t.id}>{t.label}</option>)}
-                    </select>
-                  ) : null}
-                  <button type="submit" className="icon-button" aria-label="Adicionar item"><Plus size={14} /></button>
-                </form>
-              ) : null}
-              {isContent && canEdit ? (
-                <PlanRescheduleButton
-                  planId={plan.id}
-                  onApplied={(atualizadas) => {
-                    setTasks(atualizadas);
-                    setToast("Calendário reorganizado.");
-                  }}
+        {/* Conteúdo, calendário e aprovação: mesma lista, três leituras. */}
+        <section className="panel list-panel">
+          <div className="plan-tabs" role="tablist">
+            {abas.map((item) => (
+              <button
+                key={item.value}
+                role="tab"
+                type="button"
+                aria-selected={aba === item.value}
+                onClick={() => setAba(item.value)}
+              >
+                {item.label}
+                {item.count !== undefined ? <em>{item.count}</em> : null}
+              </button>
+            ))}
+            {canEdit && aba === "conteudos" ? (
+              <form className="plan-quick-add" onSubmit={addItem}>
+                <input
+                  value={newItemName}
+                  onChange={(e) => setNewItemName(e.target.value)}
+                  placeholder={isContent ? "Adicionar conteúdo" : "Adicionar passo"}
+                  maxLength={140}
+                  required
+                  aria-label="Nome do novo item"
                 />
-              ) : null}
-            </div>
-            {isContent ? (
-              <>
-                {formatTags.map((t) => renderFormatGroup(t.id, t.label))}
-                {renderFormatGroup(NO_FORMAT_KEY, "Sem formato")}
-              </>
-            ) : (
-              <ul className="plan-item-list">{processItems.map(renderTaskRow)}</ul>
-            )}
-            {!tasks.length ? (
-              <div className="empty-state">
-                <ClipboardList size={35} />
-                <h3>Nenhum item ainda</h3>
-                <p>Use o campo acima para adicionar o primeiro.</p>
-              </div>
+                {isContent ? (
+                  <select value={newItemFormatId} onChange={(e) => setNewItemFormatId(e.target.value)} aria-label="Formato do novo item">
+                    <option value="">Formato</option>
+                    {formatTags.map((t) => <option value={t.id} key={t.id}>{t.label}</option>)}
+                  </select>
+                ) : null}
+                <button type="submit" className="icon-button" aria-label="Adicionar item"><Plus size={14} /></button>
+              </form>
             ) : null}
-          </section>
+          </div>
 
+          {aba === "conteudos" ? (
+            <>
+              {isContent ? (
+                <>
+                  {formatTags.map((t) => renderFormatGroup(t.id, t.label))}
+                  {renderFormatGroup(NO_FORMAT_KEY, "Sem formato")}
+                </>
+              ) : (
+                <ul className="plan-item-list">{processItems.map(renderTaskRow)}</ul>
+              )}
+              {!tasks.length ? (
+                <div className="empty-state">
+                  <ClipboardList size={35} />
+                  <h3>Nenhum item ainda</h3>
+                  <p>Use o campo acima para adicionar o primeiro.</p>
+                </div>
+              ) : null}
+            </>
+          ) : null}
+
+          {aba === "calendario" && isContent ? (
+            <PlanCalendar tasks={tasks} formatTags={formatTags} canEdit={canEdit} onMove={moveTaskDate} onOpen={setEditingTask} />
+          ) : null}
+
+          {aba === "aprovacao" ? (
+            <PlanApprovalBoard
+              tasks={tasks}
+              approvalByTask={approvalByTask}
+              responsesByTask={responsesByTask}
+              memberById={memberById}
+              onOpenTask={setEditingTask}
+            />
+          ) : null}
+        </section>
       </main>
 
       {editingTask !== undefined ? (

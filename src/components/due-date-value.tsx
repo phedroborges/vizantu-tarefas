@@ -19,7 +19,10 @@ export function DueDateValue({
 }) {
   const label = formatTaskDate(dueDate, dateFormat);
   const late = overdueDays(dueDate, status);
-  if (!late) return <>{label}</>;
+  // Sempre num <span> com classe, mesmo no prazo: sem elemento pra estilizar,
+  // "daqui 5 dias" quebrava em duas linhas na coluna estreita e esticava a
+  // altura da linha inteira da tabela.
+  if (!late) return <span className="due-value">{label}</span>;
 
   const dias = `${late} ${late === 1 ? "dia" : "dias"}`;
   return (

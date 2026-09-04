@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Moon, Sun } from "lucide-react";
-import { Button, Tag } from "@/components/vz";
+import { Tag } from "@/components/vz";
 import { Logo } from "@/components/vz/logo";
 import { SecaoCor, SecaoForma, SecaoTipografia } from "./section-fundamentos";
 import { SecaoAcoes, SecaoEntradas, SecaoSinalizacao, SecaoSuperficies } from "./section-componentes";
@@ -58,7 +58,7 @@ export default function DesignSystemPage() {
 
           <div className="ds-inner">
             <header className="ds-hero">
-              <span className="vz-eyebrow">Proposta para aprovação</span>
+              <span className="vz-eyebrow">Em produção · base do app</span>
               <h1 className="vz-display">O sistema de interface da Vizantu</h1>
               <p className="vz-body" style={{ maxWidth: 720, fontSize: 16 }}>
                 Um vocabulário único de cor, forma e componente para todo o produto. A partir daqui, nenhuma tela
@@ -101,20 +101,22 @@ export default function DesignSystemPage() {
             <SecaoPacote />
 
             <footer className="ds-section" style={{ paddingTop: 32, borderTop: "1px solid var(--vz-line)" }}>
-              <h2 className="vz-h2">Se estiver aprovado, o que vem depois</h2>
+              <h2 className="vz-h2">Onde o sistema já está, e o que falta</h2>
+              <p className="vz-body" style={{ maxWidth: 720 }}>
+                A migração foi feita pela raiz, não tela a tela: os tokens subiram para o{" "}<code>:root</code>{" "}e cada
+                nome de variável do CSS antigo passou a apontar para o token equivalente do sistema. Toda regra que já
+                dizia{" "}<code>var(--line)</code>{" "}continuou dizendo — e ganhou a cor nova de graça.
+              </p>
               <ol className="vz-body" style={{ margin: 0, paddingLeft: 20, display: "grid", gap: 9, maxWidth: 720 }}>
-                <li>Os tokens sobem de <code>.vz-root</code> para o <code>:root</code> do app, e o <code>body</code> passa a carregar a classe.</li>
-                <li>As primitivas de <code>components/vz</code> substituem as de <code>components/ui</code> tela a tela, começando pela do plano.</li>
-                <li>A tela do plano é reconstruída no formato da seção 14 — abas de visão sobre a mesma lista.</li>
-                <li>A tela de tarefas herda a mesma tabela e a mesma toolbar, e as duas passam a ser a mesma coisa.</li>
-                <li>Dashboard, contratos, marcas e o portal do cliente vêm na sequência.</li>
+                <li><b>Feito:</b>{" "}tokens no <code>:root</code>, Mona Sans, tema claro/escuro com troca na barra lateral.</li>
+                <li><b>Feito:</b>{" "}barra lateral e login acompanhando o tema, com a logo em SVG inline.</li>
+                <li><b>Feito:</b>{" "}etapa com anel de progresso e tinte suave, na tela de tarefas e na do plano.</li>
+                <li><b>Feito:</b>{" "}tela do plano reconstruída — cabeçalho com o estado, fluxo em faixa, abas de visão e a aprovação como uma delas.</li>
+                <li><b>Falta:</b>{" "}trocar as regras da ponte pelos tokens diretos, tela a tela, até o bloco de compatibilidade poder morrer.</li>
+                <li><b>Falta:</b>{" "}board no plano, colunas arrastáveis na tabela de tarefas e o miolo do pacote (seção 15) como tela de verdade.</li>
               </ol>
-              <div className="ds-row" style={{ marginTop: 8 }}>
-                <Button variant="primary">Está aprovado</Button>
-                <Button variant="secondary">Quero ajustar antes</Button>
-              </div>
               <p className="vz-caption" style={{ maxWidth: 720 }}>
-                Os botões acima são ilustrativos — me diga por aqui o que muda.
+                As seções 14 e 15 continuam sendo maquete: a 14 já virou tela de verdade, a 15 ainda não.
               </p>
             </footer>
           </div>

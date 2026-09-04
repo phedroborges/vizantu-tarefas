@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import "./vizantu.css";
+import "./vitrine.css";
 
-// A folha do sistema é importada AQUI, e não no layout raiz, porque o app
-// ainda roda no CSS antigo. Enquanto a migração não acontece, só esta rota
-// carrega os tokens novos — o resto do produto continua intacto.
+// Só a moldura da vitrine entra aqui. O design system em si (styles/vizantu.css)
+// já é carregado pelo globals.css do layout raiz — ele agora é a base do app
+// inteiro, e não mais uma folha exclusiva desta rota.
 
 export const metadata: Metadata = {
   title: "Design System — Vizantu",

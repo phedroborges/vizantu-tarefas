@@ -66,3 +66,20 @@ export function readableTextOn(hex: string): string {
     ? STATUS_TEXT_DARK
     : STATUS_TEXT_LIGHT;
 }
+
+
+// ---------- Quanto da esteira já foi andado ----------
+// A tag da etapa mostra um anel que vai fechando, porque ninguém tem obrigação
+// de saber que "Revisão" vem depois de "Em criação" e antes de "Ajuste". A
+// fração sai da POSIÇÃO na lista ordenada de TASK_STATUSES — mudar a ordem da
+// esteira reajusta todos os anéis sozinho, sem número escrito na mão.
+//
+// "problema" fica de fora da contagem e devolve null: não é ponto da esteira,
+// é alerta. Ele mostra o triângulo, não um anel.
+export function stageProgress(statuses: readonly { value: TaskStatus }[], status: TaskStatus): number | null {
+  if (status === "problema") return null;
+  const esteira = statuses.filter((item) => item.value !== "problema");
+  const indice = esteira.findIndex((item) => item.value === status);
+  if (indice < 0) return null;
+  return Math.round((indice / (esteira.length - 1)) * 100);
+}

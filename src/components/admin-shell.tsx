@@ -1,13 +1,15 @@
 "use client";
 
 import { BarChart3, BookOpen, CheckSquare, ClipboardList, FileText, Folders, LogOut, Menu, Palette, Sparkles, Users, X } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { AiAssistant } from "@/components/ai-assistant";
 import { AnnouncementComposer } from "@/components/announcement-composer";
 import { AnnouncementGate } from "@/components/announcement-gate";
+import { ThemeSwitch } from "@/components/theme-switch";
+import { Avatar } from "@/components/avatar";
+import { Logo } from "@/components/vz/logo";
 import type { CurrentUser } from "@/lib/current-user";
 import { PageContextProvider } from "@/lib/page-context";
 import { createClient } from "@/lib/supabase/browser-client";
@@ -55,7 +57,7 @@ export function AdminShell({
       />
       <aside className={`admin-sidebar ${menuOpen ? "open" : ""}`} aria-label="Navegação">
         <div className="admin-brand">
-          <Image src="/brand/vizantu-white.svg" width={1518} height={296} alt="Vizantu" priority />
+          <Logo height={21} />
           <button type="button" className="admin-menu-close" aria-label="Fechar menu" onClick={() => setMenuOpen(false)}><X size={19} /></button>
         </div>
         <div className="admin-product">
@@ -108,7 +110,9 @@ export function AdminShell({
             </Link>
           ) : null}
         </nav>
+        <ThemeSwitch />
         <div className="admin-user">
+          <Avatar name={user.name} size={28} />
           <div>
             <strong>{user.name}</strong>
             <small>{user.email}</small>
@@ -123,7 +127,7 @@ export function AdminShell({
         {user.role !== "visualizador" ? <AnnouncementComposer currentUserRole={user.role} /> : null}
         <header className="admin-mobile-bar">
           <button type="button" aria-label="Abrir menu" onClick={() => setMenuOpen(true)}><Menu size={21} /></button>
-          <Image className="admin-mobile-logo" src="/brand/vizantu-dark.svg" width={1518} height={296} alt="Vizantu" priority />
+          <Logo className="admin-mobile-logo" height={20} />
           <span style={{ width: 38 }} />
         </header>
         {children}
