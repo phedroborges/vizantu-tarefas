@@ -6,7 +6,12 @@ import { NextResponse, type NextRequest } from "next/server";
 // silenciosamente no build, e a proteção de rota simplesmente não entraria em
 // vigor, sem erro nenhum. Fica no mesmo nível de app/ (dentro de src/).
 
-const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password", "/auth/confirm"];
+const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password", "/auth/confirm", "/design-system"];
+
+// /design-system é a documentação viva da interface: só tokens e componentes
+// desenhados com dados de exemplo, sem uma linha de dado de cliente. Fica fora
+// do login porque quem precisa dela (designer, dev, quem for revisar um layout)
+// nem sempre tem conta no sistema.
 
 // O painel do cliente (/c/[token] e as rotas /api/c/*) é público por
 // natureza — quem entra é o cliente, com o link mágico, sem conta no

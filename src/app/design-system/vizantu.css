@@ -1,0 +1,1068 @@
+/* ==========================================================================
+   MONA SANS — a tipografia da Vizantu
+   ==========================================================================
+   Variável (200–900) e servida do próprio domínio, não do Google: uma fonte de
+   terceiro no caminho crítico atrasa a primeira pintura de toda tela do
+   produto. Dois arquivos porque latin-ext é o que carrega os acentos e o ç. */
+@font-face {
+  font-family: "Mona Sans";
+  font-style: normal;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url("/fonts/mona-sans-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Mona Sans";
+  font-style: normal;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url("/fonts/mona-sans-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* ==========================================================================
+   Design System Vizantu — camada de tokens
+   ==========================================================================
+   Tudo que se desenha na Vizantu sai daqui. Nenhuma tela escolhe cor, raio,
+   sombra ou tamanho de fonte na mão: escolhe um token.
+
+   Os tokens moram em .vz-root e não em :root de propósito. O app hoje ainda
+   roda no CSS antigo (globals.css, --radius: 0), e os dois precisam conviver
+   enquanto a migração não termina. Aprovado o sistema, basta pendurar a
+   classe vz-root no <body> e as telas vão trocando de casca uma a uma.
+   ========================================================================== */
+
+.vz-root {
+  /* ---------- Marca ---------- */
+  --vz-brand: #9147ff;
+  --vz-brand-strong: #6435e7;
+  --vz-brand-deep: #4b23b8;
+  --vz-brand-soft: #f3ecff;
+  --vz-brand-softer: #faf7ff;
+  --vz-brand-line: #e2d4ff;
+
+  /* ---------- Superfícies ----------
+     O fundo puxa levemente pro violeta (não é cinza neutro nem o verde-cinza
+     de antes): é o que faz o branco do painel parecer branco de verdade. */
+  --vz-bg: #f6f6fa;
+  --vz-bg-sunken: #eff0f5;
+  --vz-panel: #ffffff;
+  --vz-panel-hover: #fafafc;
+  --vz-panel-active: #f4f4f8;
+  --vz-overlay: rgba(18, 18, 28, 0.42);
+
+  /* ---------- Traços ---------- */
+  --vz-line: #ebecf2;
+  --vz-line-strong: #dedfe8;
+  --vz-line-contrast: #c8cad6;
+
+  /* ---------- Texto ---------- */
+  --vz-text: #14151c;
+  --vz-text-soft: #4c5060;
+  --vz-text-muted: #6d7183;
+  --vz-text-faint: #9599a8;
+  --vz-text-invert: #ffffff;
+
+  /* ---------- Semânticas ----------
+     Cada família tem 3 papéis: fundo (tint), traço e texto. Toda tag, todo
+     alerta e todo gráfico saem daqui, então "aprovado" é o mesmo verde na
+     tabela, no board, no calendário e no gráfico. */
+  --vz-violet-bg: #f2ecff;  --vz-violet-line: #ddd0fb;  --vz-violet-ink: #5b2fd0;  --vz-violet-solid: #7c3aed;
+  --vz-green-bg:  #e9f7ed;  --vz-green-line:  #c6e9d1;  --vz-green-ink:  #1c7a3f;  --vz-green-solid:  #21A65A;
+  --vz-amber-bg:  #fef3e0;  --vz-amber-line:  #f6dfb4;  --vz-amber-ink:  #92561a;  --vz-amber-solid:  #E08A16;
+  --vz-red-bg:    #fdecec;  --vz-red-line:    #f7cfcd;  --vz-red-ink:    #b2332b;  --vz-red-solid:    #DC4B41;
+  --vz-blue-bg:   #e9f2fe;  --vz-blue-line:   #c9defa;  --vz-blue-ink:   #2361a8;  --vz-blue-solid:   #3B82D9;
+  --vz-pink-bg:   #fdecf4;  --vz-pink-line:   #f8cfe2;  --vz-pink-ink:   #ad2a66;  --vz-pink-solid:   #D9459A;
+  --vz-teal-bg:   #e4f6f6;  --vz-teal-line:   #bfe8e7;  --vz-teal-ink:   #14706e;  --vz-teal-solid:   #17A2A0;
+  --vz-slate-bg:  #f1f2f6;  --vz-slate-line:  #e0e2ea;  --vz-slate-ink:  #575c6c;  --vz-slate-solid:  #6B7280;
+
+  /* Atalhos de intenção — a tela pede "sucesso", não "verde". */
+  --vz-success-bg: var(--vz-green-bg);  --vz-success-ink: var(--vz-green-ink);
+  --vz-warning-bg: var(--vz-amber-bg);  --vz-warning-ink: var(--vz-amber-ink);
+  --vz-danger-bg:  var(--vz-red-bg);    --vz-danger-ink:  var(--vz-red-ink);
+  --vz-info-bg:    var(--vz-blue-bg);   --vz-info-ink:    var(--vz-blue-ink);
+
+  /* ---------- Raio ----------
+     A mudança mais visível em relação ao sistema antigo (que era 0 em tudo).
+     A régua é curta de propósito: 4 degraus e a pílula. */
+  --vz-r-xs: 6px;
+  --vz-r-sm: 9px;
+  --vz-r-md: 12px;
+  --vz-r-lg: 16px;
+  --vz-r-xl: 22px;
+  --vz-r-pill: 999px;
+
+  /* ---------- Elevação ----------
+     Sombra na Vizantu é rasa e fria. Ela separa camadas, não simula altura:
+     card quase não levanta, popover levanta, modal levanta muito. */
+  --vz-shadow-xs: 0 1px 2px rgba(20, 21, 28, 0.05);
+  --vz-shadow-sm: 0 1px 3px rgba(20, 21, 28, 0.06), 0 1px 2px rgba(20, 21, 28, 0.04);
+  --vz-shadow-md: 0 4px 14px -4px rgba(20, 21, 28, 0.10), 0 1px 3px rgba(20, 21, 28, 0.05);
+  --vz-shadow-lg: 0 16px 40px -12px rgba(20, 21, 28, 0.18), 0 2px 6px rgba(20, 21, 28, 0.06);
+  --vz-shadow-brand: 0 6px 20px -6px rgba(145, 71, 255, 0.45);
+
+  /* ---------- Espaço ----------
+     Régua de 4. Padding de componente sai daqui; margem entre blocos também. */
+  --vz-s-1: 4px;  --vz-s-2: 8px;   --vz-s-3: 12px;  --vz-s-4: 16px;
+  --vz-s-5: 20px; --vz-s-6: 24px;  --vz-s-8: 32px;  --vz-s-10: 40px;
+  --vz-s-12: 48px; --vz-s-16: 64px;
+
+  /* ---------- Tipografia ---------- */
+  --vz-font: "Mona Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --vz-font-mono: "Geist Mono", ui-monospace, "SF Mono", monospace;
+  --vz-t-micro: 10px;
+  --vz-t-tiny: 11px;
+  --vz-t-xs: 12px;
+  --vz-t-sm: 13px;
+  --vz-t-base: 14px;
+  --vz-t-md: 16px;
+  --vz-t-lg: 20px;
+  --vz-t-xl: 26px;
+  --vz-t-2xl: 34px;
+  --vz-t-3xl: 44px;
+
+  /* ---------- Movimento ----------
+     Uma curva só, dois tempos. Interface de trabalho não faz coreografia. */
+  --vz-ease: cubic-bezier(0.2, 0, 0.13, 1);
+  --vz-fast: 120ms;
+  --vz-slow: 220ms;
+
+  /* ---------- Foco ----------
+     Um anel só no sistema inteiro, sempre da marca. */
+  --vz-ring: 0 0 0 3px rgba(145, 71, 255, 0.28);
+
+  /* ---------- Altura de controle ----------
+     Todo controle de linha (botão, input, select, tag alta) encosta numa
+     destas três alturas. É o que faz uma toolbar fechar alinhada. */
+  --vz-h-sm: 28px;
+  --vz-h-md: 34px;
+  --vz-h-lg: 40px;
+
+  color: var(--vz-text);
+  font-family: var(--vz-font);
+  font-size: var(--vz-t-base);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ==========================================================================
+   Tema escuro
+   ==========================================================================
+   Só os tokens mudam. Nenhum componente abaixo sabe que o tema existe — se um
+   componente precisar de regra própria no escuro, o token dele está errado. */
+.vz-root[data-vz-theme="dark"] {
+  --vz-brand: #a370ff;
+  --vz-brand-strong: #8b57f5;
+  --vz-brand-deep: #b48cff;
+  --vz-brand-soft: #251b3d;
+  --vz-brand-softer: #1c1730;
+  --vz-brand-line: #3d2f63;
+
+  --vz-bg: #0e0e14;
+  --vz-bg-sunken: #08080c;
+  --vz-panel: #16171f;
+  --vz-panel-hover: #1c1d27;
+  --vz-panel-active: #22232e;
+  --vz-overlay: rgba(0, 0, 0, 0.62);
+
+  --vz-line: #23242f;
+  --vz-line-strong: #2e3040;
+  --vz-line-contrast: #3e4154;
+
+  --vz-text: #f2f2f6;
+  --vz-text-soft: #c3c6d2;
+  --vz-text-muted: #9296a6;
+  --vz-text-faint: #6c7082;
+  --vz-text-invert: #0e0e14;
+
+  --vz-violet-bg: #271c42;  --vz-violet-line: #3d2c67;  --vz-violet-ink: #c0a3ff;  --vz-violet-solid: #8b5cf6;
+  --vz-green-bg:  #12291c;  --vz-green-line:  #1e4430;  --vz-green-ink:  #6ede9b;  --vz-green-solid:  #2FBE6C;
+  --vz-amber-bg:  #2e2210;  --vz-amber-line:  #4a3819;  --vz-amber-ink:  #f0bb63;  --vz-amber-solid:  #E9A02E;
+  --vz-red-bg:    #301618;  --vz-red-line:    #4d2326;  --vz-red-ink:    #f39a94;  --vz-red-solid:    #E4635A;
+  --vz-blue-bg:   #131f33;  --vz-blue-line:   #1f3352;  --vz-blue-ink:   #8ebbf5;  --vz-blue-solid:   #4E93E8;
+  --vz-pink-bg:   #2f1524;  --vz-pink-line:   #4c2239;  --vz-pink-ink:   #f193c1;  --vz-pink-solid:   #E15FA9;
+  --vz-teal-bg:   #10262a;  --vz-teal-line:   #1a3f45;  --vz-teal-ink:   #63d4d1;  --vz-teal-solid:   #22B8B5;
+  --vz-slate-bg:  #1c1e28;  --vz-slate-line:  #2b2e3b;  --vz-slate-ink:  #a3a8ba;  --vz-slate-solid:  #7C8296;
+
+  --vz-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --vz-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --vz-shadow-md: 0 4px 14px -4px rgba(0, 0, 0, 0.6), 0 1px 3px rgba(0, 0, 0, 0.4);
+  --vz-shadow-lg: 0 16px 40px -12px rgba(0, 0, 0, 0.75), 0 2px 6px rgba(0, 0, 0, 0.4);
+  --vz-ring: 0 0 0 3px rgba(163, 112, 255, 0.34);
+}
+
+.vz-root *,
+.vz-root *::before,
+.vz-root *::after { box-sizing: border-box; }
+
+/* ==========================================================================
+   TIPOGRAFIA
+   ==========================================================================
+   Quatro papéis, não oito tamanhos soltos: título de tela, título de bloco,
+   corpo, apoio. O olho-de-boi (eyebrow) é o quinto e existe só pra dizer de
+   qual cliente/contexto a tela é sem roubar a manchete. */
+.vz-display { margin: 0; font-size: var(--vz-t-2xl); font-weight: 680; line-height: 1.1; letter-spacing: -0.025em; }
+.vz-h1 { margin: 0; font-size: var(--vz-t-xl); font-weight: 660; line-height: 1.2; letter-spacing: -0.02em; }
+.vz-h2 { margin: 0; font-size: var(--vz-t-lg); font-weight: 640; line-height: 1.25; letter-spacing: -0.015em; }
+.vz-h3 { margin: 0; font-size: var(--vz-t-md); font-weight: 620; line-height: 1.35; letter-spacing: -0.01em; }
+.vz-body { margin: 0; font-size: var(--vz-t-base); line-height: 1.55; color: var(--vz-text-soft); }
+.vz-small { margin: 0; font-size: var(--vz-t-sm); line-height: 1.5; color: var(--vz-text-muted); }
+.vz-caption { margin: 0; font-size: var(--vz-t-xs); line-height: 1.45; color: var(--vz-text-muted); }
+.vz-eyebrow { display: block; font-size: var(--vz-t-tiny); font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--vz-brand-strong); }
+.vz-mono { font-family: var(--vz-font-mono); font-size: var(--vz-t-xs); letter-spacing: -0.01em; }
+.vz-strong { color: var(--vz-text); font-weight: 600; }
+.vz-numeric { font-variant-numeric: tabular-nums; }
+
+/* ==========================================================================
+   BOTÕES
+   ==========================================================================
+   Uma única base. Variante muda cor e peso, tamanho muda altura e padding —
+   nunca as duas coisas ao mesmo tempo. */
+.vz-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--vz-s-2);
+  height: var(--vz-h-md); padding: 0 14px;
+  border: 1px solid transparent; border-radius: var(--vz-r-sm);
+  font-family: inherit; font-size: var(--vz-t-sm); font-weight: 600; line-height: 1;
+  white-space: nowrap; text-decoration: none; cursor: pointer;
+  transition: background var(--vz-fast) var(--vz-ease), border-color var(--vz-fast) var(--vz-ease),
+              color var(--vz-fast) var(--vz-ease), box-shadow var(--vz-fast) var(--vz-ease), transform var(--vz-fast) var(--vz-ease);
+}
+.vz-btn:focus-visible { outline: none; box-shadow: var(--vz-ring); }
+.vz-btn:active:not(:disabled) { transform: translateY(1px); }
+.vz-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.vz-btn svg { flex: none; }
+
+.vz-btn--primary { background: var(--vz-brand); color: #fff; box-shadow: var(--vz-shadow-xs); }
+.vz-btn--primary:hover:not(:disabled) { background: var(--vz-brand-strong); box-shadow: var(--vz-shadow-brand); }
+
+.vz-btn--secondary { background: var(--vz-panel); color: var(--vz-text); border-color: var(--vz-line-strong); box-shadow: var(--vz-shadow-xs); }
+.vz-btn--secondary:hover:not(:disabled) { border-color: var(--vz-line-contrast); background: var(--vz-panel-hover); }
+
+.vz-btn--soft { background: var(--vz-brand-soft); color: var(--vz-brand-strong); }
+.vz-btn--soft:hover:not(:disabled) { background: var(--vz-brand-line); }
+
+.vz-btn--ghost { background: transparent; color: var(--vz-text-soft); }
+.vz-btn--ghost:hover:not(:disabled) { background: var(--vz-panel-active); color: var(--vz-text); }
+
+.vz-btn--danger { background: var(--vz-danger-bg); color: var(--vz-danger-ink); }
+.vz-btn--danger:hover:not(:disabled) { background: var(--vz-red-line); }
+
+/* Avançar na esteira é verde, não roxo. Roxo é a cor da MARCA (criar, salvar);
+   verde é a cor de APROVAR — o mesmo verde da etapa "aprovado" na tabela. Quem
+   olha a tela entende a ação antes de ler o rótulo. */
+.vz-btn--success { background: var(--vz-green-solid); color: #fff; box-shadow: var(--vz-shadow-xs); }
+.vz-btn--success:hover:not(:disabled) { background: var(--vz-green-ink); box-shadow: 0 6px 20px -6px rgba(33, 166, 90, 0.5); }
+.vz-btn--success-soft { background: var(--vz-green-bg); color: var(--vz-green-ink); }
+.vz-btn--success-soft:hover:not(:disabled) { background: var(--vz-green-line); }
+
+/* Contraste máximo pra UMA ação por tela (o "New template" das referências). */
+.vz-btn--contrast { background: var(--vz-text); color: var(--vz-panel); }
+.vz-btn--contrast:hover:not(:disabled) { background: var(--vz-brand-strong); color: #fff; }
+
+.vz-btn--sm { height: var(--vz-h-sm); padding: 0 10px; font-size: var(--vz-t-xs); border-radius: var(--vz-r-xs); gap: 6px; }
+.vz-btn--lg { height: var(--vz-h-lg); padding: 0 18px; font-size: var(--vz-t-base); border-radius: var(--vz-r-md); }
+.vz-btn--pill { border-radius: var(--vz-r-pill); }
+.vz-btn--block { width: 100%; }
+
+.vz-icon-btn {
+  display: inline-grid; place-items: center; flex: none;
+  width: var(--vz-h-md); height: var(--vz-h-md); padding: 0;
+  border: 1px solid var(--vz-line-strong); border-radius: var(--vz-r-sm);
+  background: var(--vz-panel); color: var(--vz-text-muted); cursor: pointer;
+  transition: all var(--vz-fast) var(--vz-ease);
+}
+.vz-icon-btn:hover { color: var(--vz-text); border-color: var(--vz-line-contrast); background: var(--vz-panel-hover); }
+.vz-icon-btn:focus-visible { outline: none; box-shadow: var(--vz-ring); }
+.vz-icon-btn--sm { width: var(--vz-h-sm); height: var(--vz-h-sm); border-radius: var(--vz-r-xs); }
+.vz-icon-btn--lg { width: var(--vz-h-lg); height: var(--vz-h-lg); border-radius: var(--vz-r-md); }
+.vz-icon-btn--bare { border-color: transparent; background: transparent; }
+.vz-icon-btn--bare:hover { background: var(--vz-panel-active); border-color: transparent; }
+.vz-icon-btn--round { border-radius: var(--vz-r-pill); }
+
+/* Botões colados numa moldura só (Filtrar | Ordenar | Visão). */
+.vz-btn-group { display: inline-flex; }
+.vz-btn-group > .vz-btn, .vz-btn-group > .vz-icon-btn { border-radius: 0; margin-left: -1px; }
+.vz-btn-group > :first-child { border-radius: var(--vz-r-sm) 0 0 var(--vz-r-sm); margin-left: 0; }
+.vz-btn-group > :last-child { border-radius: 0 var(--vz-r-sm) var(--vz-r-sm) 0; }
+.vz-btn-group > :hover { position: relative; z-index: 1; }
+
+/* ==========================================================================
+   CAMPOS
+   ========================================================================== */
+.vz-field { display: grid; gap: 6px; }
+.vz-label { font-size: var(--vz-t-xs); font-weight: 600; color: var(--vz-text-soft); }
+.vz-hint { font-size: var(--vz-t-tiny); color: var(--vz-text-faint); }
+.vz-hint--error { color: var(--vz-danger-ink); }
+
+.vz-input, .vz-textarea, .vz-select {
+  width: 100%; height: var(--vz-h-md); padding: 0 11px;
+  border: 1px solid var(--vz-line-strong); border-radius: var(--vz-r-sm);
+  background: var(--vz-panel); color: var(--vz-text);
+  font-family: inherit; font-size: var(--vz-t-sm); line-height: 1;
+  transition: border-color var(--vz-fast) var(--vz-ease), box-shadow var(--vz-fast) var(--vz-ease), background var(--vz-fast) var(--vz-ease);
+}
+.vz-input::placeholder, .vz-textarea::placeholder { color: var(--vz-text-faint); }
+.vz-input:hover, .vz-textarea:hover, .vz-select:hover { border-color: var(--vz-line-contrast); }
+.vz-input:focus, .vz-textarea:focus, .vz-select:focus { outline: none; border-color: var(--vz-brand); box-shadow: var(--vz-ring); }
+.vz-input:disabled, .vz-textarea:disabled, .vz-select:disabled { background: var(--vz-bg-sunken); color: var(--vz-text-faint); cursor: not-allowed; }
+.vz-input[aria-invalid="true"], .vz-textarea[aria-invalid="true"] { border-color: var(--vz-red-solid); }
+.vz-input[aria-invalid="true"]:focus { box-shadow: 0 0 0 3px rgba(220, 75, 65, 0.22); }
+/* Campo tem as MESMAS três alturas do botão. Sem isso uma busca de 34px ao
+   lado de um botão de 28px na mesma barra deixa a fila torta — foi o que
+   acontecia na toolbar da tabela. */
+.vz-input--sm, .vz-select--sm { height: var(--vz-h-sm); padding: 0 9px; font-size: var(--vz-t-xs); border-radius: var(--vz-r-xs); }
+.vz-input--lg, .vz-select--lg { height: var(--vz-h-lg); padding: 0 13px; border-radius: var(--vz-r-md); }
+.vz-input-group--sm > .vz-input { padding-left: 29px; }
+.vz-input-group--sm .vz-input-group__icon { left: 9px; }
+
+.vz-textarea { height: auto; min-height: 96px; padding: 10px 11px; line-height: 1.55; resize: vertical; }
+.vz-select { appearance: none; padding-right: 32px; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236d7183' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center; }
+
+/* Campo com adorno (ícone de busca, atalho ⌘K, prefixo). */
+.vz-input-group { position: relative; display: flex; align-items: center; }
+.vz-input-group > .vz-input { padding-left: 34px; }
+.vz-input-group__icon { position: absolute; left: 11px; display: grid; place-items: center; color: var(--vz-text-faint); pointer-events: none; }
+.vz-input-group__end { position: absolute; right: 8px; display: flex; align-items: center; gap: 4px; }
+.vz-kbd {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 5px;
+  border: 1px solid var(--vz-line-strong); border-radius: var(--vz-r-xs);
+  background: var(--vz-bg); color: var(--vz-text-faint);
+  font-family: var(--vz-font-mono); font-size: var(--vz-t-micro); line-height: 1;
+}
+
+/* Marca / rádio / interruptor */
+.vz-check { display: inline-flex; align-items: center; gap: var(--vz-s-2); font-size: var(--vz-t-sm); color: var(--vz-text-soft); cursor: pointer; user-select: none; }
+.vz-check input { appearance: none; flex: none; width: 17px; height: 17px; margin: 0; border: 1.5px solid var(--vz-line-contrast); border-radius: 5px; background: var(--vz-panel); cursor: pointer; transition: all var(--vz-fast) var(--vz-ease); }
+.vz-check input[type="radio"] { border-radius: var(--vz-r-pill); }
+.vz-check input:hover { border-color: var(--vz-brand); }
+.vz-check input:focus-visible { outline: none; box-shadow: var(--vz-ring); }
+.vz-check input:checked { background: var(--vz-brand); border-color: var(--vz-brand);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: center; }
+.vz-check input[type="radio"]:checked { background-image: none; box-shadow: inset 0 0 0 3.5px var(--vz-panel); }
+
+.vz-switch { position: relative; display: inline-flex; align-items: center; gap: var(--vz-s-2); cursor: pointer; font-size: var(--vz-t-sm); color: var(--vz-text-soft); }
+.vz-switch input { appearance: none; flex: none; width: 36px; height: 21px; margin: 0; border-radius: var(--vz-r-pill); background: var(--vz-line-contrast); cursor: pointer; transition: background var(--vz-slow) var(--vz-ease); }
+.vz-switch input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 15px; height: 15px; border-radius: var(--vz-r-pill); background: #fff; box-shadow: var(--vz-shadow-xs); transition: transform var(--vz-slow) var(--vz-ease); }
+.vz-switch input:checked { background: var(--vz-brand); }
+.vz-switch input:checked::after { transform: translateX(15px); }
+.vz-switch input:focus-visible { outline: none; box-shadow: var(--vz-ring); }
+
+/* Segmentado — troca de visão (Lista | Board | Calendário). */
+.vz-segmented { display: inline-flex; gap: 2px; padding: 3px; border-radius: var(--vz-r-sm); background: var(--vz-bg-sunken); }
+.vz-segmented button {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px;
+  border: 0; border-radius: var(--vz-r-xs); background: transparent; color: var(--vz-text-muted);
+  font-family: inherit; font-size: var(--vz-t-xs); font-weight: 600; cursor: pointer;
+  transition: all var(--vz-fast) var(--vz-ease);
+}
+.vz-segmented button:hover { color: var(--vz-text); }
+.vz-segmented button[aria-pressed="true"] { background: var(--vz-panel); color: var(--vz-text); box-shadow: var(--vz-shadow-xs); }
+/* O segmentado também fecha nas três alturas do sistema: 3px de moldura + 28
+   de botão dava 34, e ele saía mais alto que os botões da mesma fila. */
+.vz-segmented--sm { padding: 2px; border-radius: var(--vz-r-xs); }
+.vz-segmented--sm button { height: 24px; padding: 0 9px; font-size: var(--vz-t-tiny); }
+
+/* ==========================================================================
+   TAGS, BADGES E PÍLULAS
+   ==========================================================================
+   Regra do sistema: tag é FUNDO SUAVE + TEXTO NA COR. A versão sólida existe
+   só pra um caso — a etapa atual do status numa tela onde ela é a manchete.
+   Sólido em tudo (como estava) transforma a tabela num vitral. */
+.vz-tag {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 22px; padding: 0 9px; max-width: 100%;
+  border: 1px solid transparent; border-radius: var(--vz-r-pill);
+  background: var(--vz-slate-bg); color: var(--vz-slate-ink);
+  font-size: var(--vz-t-tiny); font-weight: 600; line-height: 1; white-space: nowrap;
+}
+.vz-tag > span { overflow: hidden; text-overflow: ellipsis; }
+.vz-tag svg { flex: none; }
+.vz-tag--violet { background: var(--vz-violet-bg); color: var(--vz-violet-ink); }
+.vz-tag--green  { background: var(--vz-green-bg);  color: var(--vz-green-ink); }
+.vz-tag--amber  { background: var(--vz-amber-bg);  color: var(--vz-amber-ink); }
+.vz-tag--red    { background: var(--vz-red-bg);    color: var(--vz-red-ink); }
+.vz-tag--blue   { background: var(--vz-blue-bg);   color: var(--vz-blue-ink); }
+.vz-tag--pink   { background: var(--vz-pink-bg);   color: var(--vz-pink-ink); }
+.vz-tag--teal   { background: var(--vz-teal-bg);   color: var(--vz-teal-ink); }
+.vz-tag--slate  { background: var(--vz-slate-bg);  color: var(--vz-slate-ink); }
+
+/* Contorno — pra tag que precisa aparecer sobre fundo já colorido. */
+.vz-tag--outline { background: var(--vz-panel); border-color: var(--vz-line-strong); color: var(--vz-text-soft); }
+
+/* Sólida — reservada. Ver comentário do bloco. */
+.vz-tag--solid { color: #fff; background: var(--vz-slate-solid); }
+.vz-tag--solid.vz-tag--violet { background: var(--vz-violet-solid); }
+.vz-tag--solid.vz-tag--green  { background: var(--vz-green-solid); }
+.vz-tag--solid.vz-tag--amber  { background: var(--vz-amber-solid); }
+.vz-tag--solid.vz-tag--red    { background: var(--vz-red-solid); }
+.vz-tag--solid.vz-tag--blue   { background: var(--vz-blue-solid); }
+
+.vz-tag--lg { height: 26px; padding: 0 11px; font-size: var(--vz-t-xs); gap: 6px; }
+.vz-tag--square { border-radius: var(--vz-r-xs); }
+
+/* Ponto de etapa — quando não cabe a tag inteira (célula estreita, card). */
+.vz-dot { flex: none; width: 7px; height: 7px; border-radius: var(--vz-r-pill); background: var(--vz-slate-solid); }
+.vz-dot--violet { background: var(--vz-violet-solid); }
+.vz-dot--green  { background: var(--vz-green-solid); }
+.vz-dot--amber  { background: var(--vz-amber-solid); }
+.vz-dot--red    { background: var(--vz-red-solid); }
+.vz-dot--blue   { background: var(--vz-blue-solid); }
+.vz-dot--pink   { background: var(--vz-pink-solid); }
+.vz-dot--teal   { background: var(--vz-teal-solid); }
+
+/* Contador. Sobre a marca no menu, sobre o painel na lista. */
+.vz-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 19px; height: 19px; padding: 0 6px;
+  border-radius: var(--vz-r-pill); background: var(--vz-bg-sunken); color: var(--vz-text-muted);
+  font-size: var(--vz-t-micro); font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.vz-count--brand { background: var(--vz-brand); color: #fff; }
+.vz-count--danger { background: var(--vz-red-solid); color: #fff; }
+
+/* Delta de métrica (↑12% / ↓10%), igual ao card do dashboard de referência. */
+.vz-delta { display: inline-flex; align-items: center; gap: 3px; height: 20px; padding: 0 7px; border-radius: var(--vz-r-pill); font-size: var(--vz-t-micro); font-weight: 700; background: var(--vz-green-bg); color: var(--vz-green-ink); }
+.vz-delta--down { background: var(--vz-red-bg); color: var(--vz-red-ink); }
+.vz-delta--flat { background: var(--vz-slate-bg); color: var(--vz-slate-ink); }
+
+/* ==========================================================================
+   AVATARES
+   ========================================================================== */
+/* O avatar é a FOTO do membro. A inicial só aparece enquanto ninguém subiu
+   foto — e mesmo aí ela é centralizada de verdade: as duas letras viviam
+   estourando a largura do círculo nos tamanhos pequenos e saindo tortas.
+   O que conserta é line-height 1 + largura travada + escala proporcional ao
+   diâmetro, não um font-size fixo pra todos os tamanhos. */
+.vz-avatar {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  flex: none; overflow: hidden;
+  width: 28px; height: 28px; border-radius: var(--vz-r-pill);
+  background: var(--vz-brand-soft); color: var(--vz-brand-strong);
+  font-size: calc(var(--vz-avatar-size, 28px) * 0.38);
+  font-weight: 650; line-height: 1; letter-spacing: -0.03em; text-transform: uppercase;
+  user-select: none;
+}
+.vz-avatar > span { display: block; width: 100%; text-align: center; transform: translateY(0.02em); }
+.vz-avatar img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.vz-avatar--xs { --vz-avatar-size: 20px; width: 20px; height: 20px; }
+.vz-avatar--sm { --vz-avatar-size: 24px; width: 24px; height: 24px; }
+.vz-avatar--lg { --vz-avatar-size: 40px; width: 40px; height: 40px; }
+.vz-avatar--xl { --vz-avatar-size: 56px; width: 56px; height: 56px; }
+.vz-avatar--square { border-radius: var(--vz-r-sm); }
+/* Uma cor por pessoa: o time reconhece quem é antes de ler a inicial. */
+.vz-avatar--c1 { background: var(--vz-violet-bg); color: var(--vz-violet-ink); }
+.vz-avatar--c2 { background: var(--vz-green-bg);  color: var(--vz-green-ink); }
+.vz-avatar--c3 { background: var(--vz-amber-bg);  color: var(--vz-amber-ink); }
+.vz-avatar--c4 { background: var(--vz-blue-bg);   color: var(--vz-blue-ink); }
+.vz-avatar--c5 { background: var(--vz-pink-bg);   color: var(--vz-pink-ink); }
+.vz-avatar--c6 { background: var(--vz-teal-bg);   color: var(--vz-teal-ink); }
+
+.vz-avatar-stack { display: inline-flex; align-items: center; }
+.vz-avatar-stack > .vz-avatar { margin-left: -6px; box-shadow: 0 0 0 2px var(--vz-panel); }
+.vz-avatar-stack > .vz-avatar:first-child { margin-left: 0; }
+.vz-avatar-stack .vz-avatar--more { background: var(--vz-bg-sunken); color: var(--vz-text-muted); }
+
+/* Presença — bolinha verde do chat. */
+.vz-avatar-wrap { position: relative; display: inline-flex; }
+.vz-presence { position: absolute; right: -1px; bottom: -1px; width: 9px; height: 9px; border-radius: var(--vz-r-pill); background: var(--vz-green-solid); box-shadow: 0 0 0 2px var(--vz-panel); }
+.vz-presence--away { background: var(--vz-amber-solid); }
+.vz-presence--off { background: var(--vz-line-contrast); }
+
+/* ==========================================================================
+   PROGRESSO
+   ==========================================================================
+   Barra fina e arredondada, com a fração à direita — o padrão "7/10" das
+   referências de board. */
+.vz-progress { display: grid; gap: 6px; }
+.vz-progress__head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--vz-s-3); font-size: var(--vz-t-tiny); color: var(--vz-text-muted); }
+.vz-progress__head b { color: var(--vz-text); font-weight: 700; font-variant-numeric: tabular-nums; }
+.vz-progress__track { height: 6px; border-radius: var(--vz-r-pill); background: var(--vz-bg-sunken); overflow: hidden; }
+.vz-progress__fill { height: 100%; border-radius: var(--vz-r-pill); background: var(--vz-brand); transition: width var(--vz-slow) var(--vz-ease); }
+.vz-progress--green .vz-progress__fill { background: var(--vz-green-solid); }
+.vz-progress--amber .vz-progress__fill { background: var(--vz-amber-solid); }
+.vz-progress--red .vz-progress__fill { background: var(--vz-red-solid); }
+.vz-progress--thin .vz-progress__track { height: 4px; }
+
+/* Anel de progresso (o donut do "My Project"). */
+.vz-ring { display: inline-grid; place-items: center; position: relative; }
+.vz-ring svg { transform: rotate(-90deg); }
+.vz-ring__label { position: absolute; display: grid; place-items: center; text-align: center; line-height: 1.1; }
+.vz-ring__label b { font-size: var(--vz-t-lg); font-weight: 680; letter-spacing: -0.02em; }
+.vz-ring__label span { font-size: var(--vz-t-micro); color: var(--vz-text-muted); }
+
+/* ==========================================================================
+   SUPERFÍCIES: CARD, PAINEL, MÉTRICA
+   ========================================================================== */
+.vz-card {
+  background: var(--vz-panel); border: 1px solid var(--vz-line); border-radius: var(--vz-r-lg);
+  box-shadow: var(--vz-shadow-sm);
+}
+.vz-card--flat { box-shadow: none; }
+.vz-card--pad { padding: var(--vz-s-5); }
+.vz-card--tint { background: var(--vz-brand-softer); border-color: var(--vz-brand-line); }
+.vz-card--interactive { cursor: pointer; transition: box-shadow var(--vz-fast) var(--vz-ease), border-color var(--vz-fast) var(--vz-ease), transform var(--vz-fast) var(--vz-ease); }
+.vz-card--interactive:hover { box-shadow: var(--vz-shadow-md); border-color: var(--vz-line-strong); transform: translateY(-1px); }
+
+.vz-card__head {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--vz-s-4);
+  padding: var(--vz-s-4) var(--vz-s-5); border-bottom: 1px solid var(--vz-line);
+}
+.vz-card__title { display: grid; gap: 2px; min-width: 0; }
+.vz-card__body { padding: var(--vz-s-5); }
+.vz-card__foot { padding: var(--vz-s-3) var(--vz-s-5); border-top: 1px solid var(--vz-line); display: flex; align-items: center; justify-content: space-between; gap: var(--vz-s-3); }
+
+/* Cartão de métrica — ícone em tint, número grande, variação no rodapé. */
+.vz-metric { display: grid; gap: var(--vz-s-3); padding: var(--vz-s-4) var(--vz-s-5); }
+.vz-metric__top { display: flex; align-items: center; gap: var(--vz-s-3); }
+.vz-metric__icon { display: grid; place-items: center; flex: none; width: 38px; height: 38px; border-radius: var(--vz-r-md); background: var(--vz-brand-soft); color: var(--vz-brand-strong); }
+.vz-metric__icon--green { background: var(--vz-green-bg); color: var(--vz-green-ink); }
+.vz-metric__icon--amber { background: var(--vz-amber-bg); color: var(--vz-amber-ink); }
+.vz-metric__icon--red   { background: var(--vz-red-bg);   color: var(--vz-red-ink); }
+.vz-metric__icon--blue  { background: var(--vz-blue-bg);  color: var(--vz-blue-ink); }
+.vz-metric__value { font-size: var(--vz-t-xl); font-weight: 680; line-height: 1; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.vz-metric__label { display: block; margin-top: 4px; font-size: var(--vz-t-xs); color: var(--vz-text-muted); }
+.vz-metric__foot { display: flex; align-items: center; justify-content: space-between; gap: var(--vz-s-3); padding-top: var(--vz-s-3); border-top: 1px solid var(--vz-line); font-size: var(--vz-t-tiny); color: var(--vz-text-faint); }
+
+/* Vazio — o estado que mais aparece e o que menos recebe atenção. */
+.vz-empty { display: grid; justify-items: center; gap: var(--vz-s-3); padding: var(--vz-s-12) var(--vz-s-6); text-align: center; }
+.vz-empty__icon { display: grid; place-items: center; width: 48px; height: 48px; border-radius: var(--vz-r-lg); background: var(--vz-bg-sunken); color: var(--vz-text-faint); }
+.vz-empty h3 { margin: 0; font-size: var(--vz-t-base); font-weight: 620; }
+.vz-empty p { margin: 0; max-width: 380px; font-size: var(--vz-t-sm); color: var(--vz-text-muted); }
+
+/* Aviso em faixa. */
+.vz-callout { display: flex; gap: var(--vz-s-3); padding: var(--vz-s-3) var(--vz-s-4); border-radius: var(--vz-r-md); background: var(--vz-info-bg); color: var(--vz-info-ink); font-size: var(--vz-t-sm); line-height: 1.5; }
+.vz-callout svg { flex: none; margin-top: 1px; }
+.vz-callout--success { background: var(--vz-success-bg); color: var(--vz-success-ink); }
+.vz-callout--warning { background: var(--vz-warning-bg); color: var(--vz-warning-ink); }
+.vz-callout--danger  { background: var(--vz-danger-bg);  color: var(--vz-danger-ink); }
+.vz-callout--brand   { background: var(--vz-brand-soft);  color: var(--vz-brand-strong); }
+.vz-callout b { font-weight: 680; }
+
+/* ==========================================================================
+   TABELA
+   ==========================================================================
+   Uma tabela só no produto inteiro. Sem borda vertical (a coluna se resolve
+   pelo alinhamento), linha separada por um traço só, cabeçalho miúdo em caixa
+   alta, e a linha inteira clicável. */
+.vz-table-wrap { overflow-x: auto; border-radius: var(--vz-r-lg); }
+.vz-table { width: 100%; border-collapse: collapse; text-align: left; }
+.vz-table thead th {
+  padding: 10px var(--vz-s-4); background: var(--vz-panel);
+  border-bottom: 1px solid var(--vz-line);
+  font-size: var(--vz-t-micro); font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--vz-text-faint); white-space: nowrap;
+}
+.vz-table tbody td { padding: 12px var(--vz-s-4); border-bottom: 1px solid var(--vz-line); font-size: var(--vz-t-sm); color: var(--vz-text-soft); vertical-align: middle; }
+.vz-table tbody tr:last-child td { border-bottom: 0; }
+.vz-table tbody tr { transition: background var(--vz-fast) var(--vz-ease); }
+.vz-table tbody tr:hover { background: var(--vz-panel-hover); }
+.vz-table tbody tr[data-selected="true"] { background: var(--vz-brand-softer); }
+.vz-table__primary { color: var(--vz-text); font-weight: 600; }
+.vz-table__sub { display: block; margin-top: 2px; font-size: var(--vz-t-tiny); color: var(--vz-text-faint); }
+.vz-table__num { text-align: right; font-variant-numeric: tabular-nums; }
+.vz-table__actions { width: 1%; white-space: nowrap; opacity: 0; transition: opacity var(--vz-fast) var(--vz-ease); }
+.vz-table tbody tr:hover .vz-table__actions { opacity: 1; }
+/* Cabeçalho de grupo dentro da tabela (CARROSSEL 5, REELS 12). */
+.vz-table__group td { padding: var(--vz-s-4) var(--vz-s-4) 8px; background: var(--vz-panel); border-bottom: 1px solid var(--vz-line); }
+.vz-table__group span { display: inline-flex; align-items: center; gap: var(--vz-s-2); font-size: var(--vz-t-micro); font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--vz-text-faint); }
+
+/* Barra de ferramentas da tabela. */
+.vz-toolbar { display: flex; align-items: center; gap: var(--vz-s-2); flex-wrap: wrap; padding: var(--vz-s-3) var(--vz-s-4); border-bottom: 1px solid var(--vz-line); }
+.vz-toolbar__search { flex: 1 1 240px; min-width: 180px; max-width: 380px; }
+.vz-toolbar__spacer { flex: 1 1 auto; }
+
+/* Paginação. */
+.vz-pagination { display: flex; align-items: center; justify-content: space-between; gap: var(--vz-s-3); padding: var(--vz-s-3) var(--vz-s-4); border-top: 1px solid var(--vz-line); font-size: var(--vz-t-xs); color: var(--vz-text-muted); }
+
+/* ==========================================================================
+   ABAS
+   ========================================================================== */
+.vz-tabs { display: flex; align-items: center; gap: var(--vz-s-5); border-bottom: 1px solid var(--vz-line); }
+.vz-tabs button {
+  position: relative; display: inline-flex; align-items: center; gap: 7px;
+  padding: 0 0 11px; border: 0; background: none; cursor: pointer;
+  font-family: inherit; font-size: var(--vz-t-sm); font-weight: 600; color: var(--vz-text-muted);
+  transition: color var(--vz-fast) var(--vz-ease);
+}
+.vz-tabs button:hover { color: var(--vz-text); }
+.vz-tabs button[aria-selected="true"] { color: var(--vz-text); }
+.vz-tabs button[aria-selected="true"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; border-radius: var(--vz-r-pill); background: var(--vz-brand); }
+
+/* ==========================================================================
+   POPOVER / MENU / MODAL
+   ========================================================================== */
+.vz-menu { min-width: 200px; padding: 5px; border: 1px solid var(--vz-line); border-radius: var(--vz-r-md); background: var(--vz-panel); box-shadow: var(--vz-shadow-lg); }
+.vz-menu__label { padding: 7px 9px 5px; font-size: var(--vz-t-micro); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--vz-text-faint); }
+.vz-menu__item {
+  display: flex; align-items: center; gap: var(--vz-s-2); width: 100%; height: 30px; padding: 0 9px;
+  border: 0; border-radius: var(--vz-r-xs); background: none; color: var(--vz-text-soft);
+  font-family: inherit; font-size: var(--vz-t-sm); text-align: left; cursor: pointer;
+  transition: background var(--vz-fast) var(--vz-ease), color var(--vz-fast) var(--vz-ease);
+}
+.vz-menu__item:hover { background: var(--vz-panel-active); color: var(--vz-text); }
+.vz-menu__item[aria-checked="true"] { color: var(--vz-brand-strong); font-weight: 600; }
+.vz-menu__item--danger { color: var(--vz-danger-ink); }
+.vz-menu__item--danger:hover { background: var(--vz-danger-bg); color: var(--vz-danger-ink); }
+.vz-menu__sep { height: 1px; margin: 5px 0; background: var(--vz-line); }
+.vz-menu__end { margin-left: auto; color: var(--vz-text-faint); }
+
+.vz-modal { width: min(560px, 100%); border: 1px solid var(--vz-line); border-radius: var(--vz-r-xl); background: var(--vz-panel); box-shadow: var(--vz-shadow-lg); overflow: hidden; }
+.vz-modal__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--vz-s-4); padding: var(--vz-s-5) var(--vz-s-5) var(--vz-s-4); }
+.vz-modal__body { padding: 0 var(--vz-s-5) var(--vz-s-5); }
+.vz-modal__foot { display: flex; align-items: center; justify-content: flex-end; gap: var(--vz-s-2); padding: var(--vz-s-4) var(--vz-s-5); border-top: 1px solid var(--vz-line); background: var(--vz-bg); }
+
+/* Aviso flutuante. */
+.vz-toast { display: flex; align-items: center; gap: var(--vz-s-3); padding: 11px var(--vz-s-4); border: 1px solid var(--vz-line); border-radius: var(--vz-r-md); background: var(--vz-panel); box-shadow: var(--vz-shadow-lg); font-size: var(--vz-t-sm); }
+.vz-toast__icon { display: grid; place-items: center; flex: none; width: 26px; height: 26px; border-radius: var(--vz-r-pill); background: var(--vz-success-bg); color: var(--vz-success-ink); }
+.vz-toast__icon--danger { background: var(--vz-danger-bg); color: var(--vz-danger-ink); }
+
+/* Dica. */
+.vz-tooltip { display: inline-block; padding: 6px 9px; border-radius: var(--vz-r-xs); background: var(--vz-text); color: var(--vz-panel); font-size: var(--vz-t-tiny); font-weight: 500; box-shadow: var(--vz-shadow-md); }
+
+/* ==========================================================================
+   BOARD (KANBAN)
+   ==========================================================================
+   A coluna é um trilho tracejado, não um painel: o painel é o cartão. Assim a
+   coluna vazia diz "arrasta aqui" sem precisar de texto. */
+.vz-board { display: flex; gap: var(--vz-s-4); align-items: flex-start; overflow-x: auto; padding-bottom: var(--vz-s-2); }
+.vz-board__col { flex: 0 0 296px; display: grid; gap: var(--vz-s-3); align-content: start; padding: var(--vz-s-3); border: 1px dashed var(--vz-line-strong); border-radius: var(--vz-r-lg); background: var(--vz-bg-sunken); min-height: 180px; }
+.vz-board__head { display: flex; align-items: center; gap: var(--vz-s-2); padding: 2px 4px; }
+.vz-board__head strong { font-size: var(--vz-t-sm); font-weight: 660; }
+.vz-board__head .vz-icon-btn { margin-left: auto; }
+.vz-board__drop { display: grid; place-items: center; min-height: 76px; border: 1px dashed var(--vz-line-contrast); border-radius: var(--vz-r-md); color: var(--vz-text-faint); font-size: var(--vz-t-xs); }
+
+.vz-board-card { display: grid; gap: var(--vz-s-3); padding: var(--vz-s-4); border: 1px solid var(--vz-line); border-radius: var(--vz-r-md); background: var(--vz-panel); box-shadow: var(--vz-shadow-xs); cursor: grab; transition: box-shadow var(--vz-fast) var(--vz-ease), transform var(--vz-fast) var(--vz-ease); }
+.vz-board-card:hover { box-shadow: var(--vz-shadow-md); transform: translateY(-1px); }
+.vz-board-card__top { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--vz-s-2); }
+.vz-board-card__title { display: grid; gap: 2px; min-width: 0; }
+.vz-board-card__title strong { font-size: var(--vz-t-sm); font-weight: 620; line-height: 1.35; }
+.vz-board-card__title span { font-size: var(--vz-t-tiny); color: var(--vz-text-faint); }
+.vz-board-card__foot { display: flex; align-items: center; justify-content: space-between; gap: var(--vz-s-2); }
+.vz-board-card__meta { display: flex; align-items: center; gap: var(--vz-s-3); font-size: var(--vz-t-tiny); color: var(--vz-text-faint); }
+.vz-board-card__meta span { display: inline-flex; align-items: center; gap: 4px; }
+
+/* ==========================================================================
+   CALENDÁRIO
+   ==========================================================================
+   Duas peças diferentes com o mesmo desenho: o SELETOR de data (miúdo, dentro
+   de popover) e a GRADE do mês (grande, com os conteúdos dentro do dia). */
+.vz-cal { border: 1px solid var(--vz-line); border-radius: var(--vz-r-lg); background: var(--vz-panel); overflow: hidden; }
+.vz-cal__head { display: flex; align-items: center; justify-content: space-between; gap: var(--vz-s-3); padding: var(--vz-s-3) var(--vz-s-4); border-bottom: 1px solid var(--vz-line); }
+.vz-cal__month { font-size: var(--vz-t-sm); font-weight: 660; }
+.vz-cal__nav { display: flex; align-items: center; gap: var(--vz-s-1); }
+.vz-cal__weekdays { display: grid; grid-template-columns: repeat(7, 1fr); border-bottom: 1px solid var(--vz-line); }
+.vz-cal__weekdays span { padding: 8px 10px; font-size: var(--vz-t-micro); font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--vz-text-faint); }
+.vz-cal__grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.vz-cal__day { min-height: 108px; padding: 7px 8px 9px; display: grid; gap: 4px; align-content: start; border-right: 1px solid var(--vz-line); border-bottom: 1px solid var(--vz-line); transition: background var(--vz-fast) var(--vz-ease); }
+.vz-cal__day:nth-child(7n) { border-right: 0; }
+.vz-cal__day:hover { background: var(--vz-panel-hover); }
+.vz-cal__day--out { background: var(--vz-bg-sunken); }
+.vz-cal__day--today .vz-cal__daynum { background: var(--vz-brand); color: #fff; }
+.vz-cal__daynum { display: inline-grid; place-items: center; justify-self: start; min-width: 21px; height: 21px; padding: 0 5px; border-radius: var(--vz-r-pill); font-size: var(--vz-t-tiny); font-weight: 650; color: var(--vz-text-muted); font-variant-numeric: tabular-nums; }
+.vz-cal__note { justify-self: start; font-size: var(--vz-t-micro); font-weight: 700; color: var(--vz-red-ink); }
+/* Item dentro do dia — pastilha com um filete da cor do formato à esquerda. */
+.vz-cal__item { display: block; padding: 5px 7px 5px 8px; border-radius: var(--vz-r-xs); border-left: 3px solid var(--vz-violet-solid); background: var(--vz-violet-bg); color: var(--vz-violet-ink); font-size: var(--vz-t-micro); font-weight: 600; line-height: 1.35; text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: filter var(--vz-fast) var(--vz-ease); }
+.vz-cal__item:hover { filter: brightness(0.97); }
+.vz-cal__item--green { border-left-color: var(--vz-green-solid); background: var(--vz-green-bg); color: var(--vz-green-ink); }
+.vz-cal__item--amber { border-left-color: var(--vz-amber-solid); background: var(--vz-amber-bg); color: var(--vz-amber-ink); }
+.vz-cal__item--blue  { border-left-color: var(--vz-blue-solid);  background: var(--vz-blue-bg);  color: var(--vz-blue-ink); }
+.vz-cal__item--pink  { border-left-color: var(--vz-pink-solid);  background: var(--vz-pink-bg);  color: var(--vz-pink-ink); }
+.vz-cal__legend { display: flex; align-items: center; gap: var(--vz-s-4); flex-wrap: wrap; padding: var(--vz-s-3) var(--vz-s-4); border-top: 1px solid var(--vz-line); font-size: var(--vz-t-tiny); color: var(--vz-text-muted); }
+.vz-cal__legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Seletor de data compacto. */
+.vz-datepicker { width: 252px; padding: var(--vz-s-3); border: 1px solid var(--vz-line); border-radius: var(--vz-r-md); background: var(--vz-panel); box-shadow: var(--vz-shadow-lg); }
+.vz-datepicker__grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.vz-datepicker__grid span { display: grid; place-items: center; height: 26px; font-size: var(--vz-t-micro); font-weight: 700; color: var(--vz-text-faint); }
+.vz-datepicker__grid button { display: grid; place-items: center; height: 30px; border: 0; border-radius: var(--vz-r-xs); background: none; color: var(--vz-text-soft); font-family: inherit; font-size: var(--vz-t-xs); font-variant-numeric: tabular-nums; cursor: pointer; transition: all var(--vz-fast) var(--vz-ease); }
+.vz-datepicker__grid button:hover { background: var(--vz-panel-active); color: var(--vz-text); }
+.vz-datepicker__grid button[data-out="true"] { color: var(--vz-text-faint); opacity: 0.5; }
+.vz-datepicker__grid button[aria-selected="true"] { background: var(--vz-brand); color: #fff; font-weight: 650; }
+.vz-datepicker__grid button[data-today="true"]:not([aria-selected="true"]) { box-shadow: inset 0 0 0 1px var(--vz-brand-line); color: var(--vz-brand-strong); font-weight: 650; }
+
+/* ==========================================================================
+   GRÁFICOS
+   ==========================================================================
+   O gráfico não inventa paleta: ele consome --vz-chart-N, que apontam pras
+   mesmas cores semânticas das tags. */
+/* A rampa dos gráficos. NÃO é a mesma lista das tags, e isso é deliberado:
+   a tag é fundo suave com texto escuro em cima (o texto carrega o contraste),
+   a marca do gráfico é cor sólida sozinha sobre o papel. Os cinco passos abaixo
+   saíram do validador da paleta (scripts/validate_palette.js do dataviz), com o
+   matiz preso na família da marca e L/C ajustados até PASSAR nos cinco testes:
+   faixa de luminosidade, piso de croma, separação sob daltonismo (todos os
+   pares, não só vizinhos), piso de visão normal e contraste contra o papel.
+   O escuro tem passos PRÓPRIOS — não é o claro clareado.
+
+   São CINCO, não seis: o turquesa não sobrevive ao lado do verde e do rosa sob
+   deuteranopia (ΔE 1.6, indistinguível). Ele continua sendo família de tag,
+   onde o rótulo escrito resolve — mas não é vaga de gráfico. Uma sexta série
+   vira "Outros", facetas ou uma tabela; nunca uma cor gerada na hora. */
+.vz-root {
+  --vz-chart-1: #9257e0; /* violeta — marca, Reels */
+  --vz-chart-2: #2ea55c; /* verde — aprovado, entregue */
+  --vz-chart-3: #b2690f; /* âmbar — em produção */
+  --vz-chart-4: #1587ba; /* azul — aguardando terceiros */
+  --vz-chart-5: #d13783; /* rosa — categoria extra */
+  --vz-chart-grid: var(--vz-line);
+}
+.vz-root[data-vz-theme="dark"] {
+  --vz-chart-1: #8c60eb;
+  --vz-chart-2: #32a96b;
+  --vz-chart-3: #b36c0d;
+  --vz-chart-4: #0486b7;
+  --vz-chart-5: #cb4190;
+}
+.vz-chart { display: grid; gap: var(--vz-s-4); }
+.vz-chart__plot { position: relative; }
+.vz-chart__grid line { stroke: var(--vz-chart-grid); stroke-width: 1; }
+.vz-chart__axis { fill: var(--vz-text-faint); font-size: 10px; font-family: var(--vz-font); }
+.vz-chart__legend { display: flex; align-items: center; gap: var(--vz-s-4); flex-wrap: wrap; font-size: var(--vz-t-tiny); color: var(--vz-text-muted); }
+.vz-chart__legend span { display: inline-flex; align-items: center; gap: 6px; }
+.vz-chart__swatch { width: 9px; height: 9px; border-radius: 3px; }
+.vz-chart__tip { position: absolute; padding: 9px 11px; border: 1px solid var(--vz-line); border-radius: var(--vz-r-sm); background: var(--vz-panel); box-shadow: var(--vz-shadow-lg); font-size: var(--vz-t-tiny); pointer-events: none; }
+.vz-chart__tip b { display: block; margin-bottom: 5px; font-size: var(--vz-t-xs); }
+.vz-chart__tip div { display: flex; align-items: center; justify-content: space-between; gap: var(--vz-s-4); color: var(--vz-text-muted); }
+.vz-chart__tip div b { display: inline; margin: 0; color: var(--vz-text); font-variant-numeric: tabular-nums; }
+/* Barras — a leitura mais honesta pra "quantos por formato / por pessoa". */
+.vz-bars { display: grid; gap: 10px; }
+.vz-bars__row { display: grid; grid-template-columns: 96px 1fr 34px; align-items: center; gap: var(--vz-s-3); font-size: var(--vz-t-xs); color: var(--vz-text-muted); }
+.vz-bars__track { height: 8px; border-radius: var(--vz-r-pill); background: var(--vz-bg-sunken); overflow: hidden; }
+.vz-bars__fill { height: 100%; border-radius: var(--vz-r-pill); }
+.vz-bars__row b { text-align: right; color: var(--vz-text); font-variant-numeric: tabular-nums; }
+
+/* ==========================================================================
+   CONVERSA (comentários e chat interno)
+   ========================================================================== */
+.vz-thread { display: grid; gap: var(--vz-s-4); }
+.vz-msg { display: flex; gap: var(--vz-s-3); align-items: flex-start; }
+.vz-msg__body { display: grid; gap: 5px; min-width: 0; max-width: 78%; }
+.vz-msg__meta { display: flex; align-items: baseline; gap: var(--vz-s-2); font-size: var(--vz-t-tiny); }
+.vz-msg__meta strong { font-size: var(--vz-t-xs); font-weight: 620; color: var(--vz-text); }
+.vz-msg__meta span { color: var(--vz-text-faint); }
+.vz-msg__bubble { padding: 10px 13px; border-radius: var(--vz-r-md); border-top-left-radius: var(--vz-r-xs); background: var(--vz-bg-sunken); color: var(--vz-text-soft); font-size: var(--vz-t-sm); line-height: 1.55; }
+.vz-msg--mine { flex-direction: row-reverse; }
+.vz-msg--mine .vz-msg__meta { flex-direction: row-reverse; }
+.vz-msg--mine .vz-msg__bubble { background: var(--vz-brand-soft); color: var(--vz-brand-deep); border-radius: var(--vz-r-md); border-top-right-radius: var(--vz-r-xs); }
+.vz-msg--mine .vz-msg__body { justify-items: end; }
+.vz-thread__day { display: grid; place-items: center; }
+.vz-thread__day span { padding: 4px 11px; border-radius: var(--vz-r-pill); background: var(--vz-bg-sunken); font-size: var(--vz-t-micro); font-weight: 650; color: var(--vz-text-muted); }
+.vz-composer { display: grid; gap: var(--vz-s-2); padding: var(--vz-s-3); border: 1px solid var(--vz-line-strong); border-radius: var(--vz-r-md); background: var(--vz-panel); transition: border-color var(--vz-fast) var(--vz-ease), box-shadow var(--vz-fast) var(--vz-ease); }
+.vz-composer:focus-within { border-color: var(--vz-brand); box-shadow: var(--vz-ring); }
+.vz-composer textarea { width: 100%; min-height: 44px; border: 0; background: none; resize: none; outline: none; font-family: inherit; font-size: var(--vz-t-sm); color: var(--vz-text); line-height: 1.55; }
+.vz-composer textarea::placeholder { color: var(--vz-text-faint); }
+.vz-composer__bar { display: flex; align-items: center; gap: var(--vz-s-1); }
+.vz-composer__bar .vz-btn { margin-left: auto; }
+
+/* ==========================================================================
+   NAVEGAÇÃO
+   ==========================================================================
+   Uma barra só, que ACOMPANHA O TEMA. No claro ela é painel branco sobre fundo
+   lilás; no escuro, painel escuro — e é a mesma classe nos dois casos, porque
+   quem troca é o token, não o componente. Não existe "barra preta no tema
+   claro": isso obrigaria a manter uma segunda paleta de menu à mão, e é
+   justamente o que o design system existe pra evitar. */
+.vz-sidebar {
+  display: flex; flex-direction: column; gap: var(--vz-s-5);
+  width: 236px; padding: var(--vz-s-5) var(--vz-s-3) var(--vz-s-4);
+  border-right: 1px solid var(--vz-line); background: var(--vz-panel);
+  --vz-nav-ink: var(--vz-text-muted);
+  --vz-nav-ink-on: var(--vz-brand-strong);
+  --vz-nav-hover: var(--vz-panel-active);
+  --vz-nav-on: var(--vz-brand-soft);
+}
+/* No escuro o roxo do estado ativo precisa de mais corpo pra sobreviver ao
+   fundo, e o texto ativo vai pro branco em vez do roxo forte. */
+.vz-root[data-vz-theme="dark"] .vz-sidebar {
+  --vz-nav-ink-on: #ffffff;
+  --vz-nav-on: color-mix(in srgb, var(--vz-brand) 26%, transparent);
+}
+
+/* A logo herda a cor do texto da barra (a palavra sai em currentColor), então
+   a mesma peça serve no tema claro e no escuro sem trocar de arquivo. */
+.vz-sidebar__brand { display: flex; align-items: center; gap: var(--vz-s-2); padding: 2px var(--vz-s-2) 0; color: var(--vz-text); }
+.vz-sidebar__group { padding: 0 var(--vz-s-2) 6px; font-size: var(--vz-t-micro); font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--vz-text-faint); }
+.vz-sidebar__nav { display: grid; gap: 2px; }
+.vz-nav-item {
+  display: flex; align-items: center; gap: 11px; height: 38px; padding: 0 11px;
+  border: 0; border-radius: var(--vz-r-sm); background: none; color: var(--vz-nav-ink);
+  font-family: inherit; font-size: var(--vz-t-sm); font-weight: 560; text-align: left; text-decoration: none; cursor: pointer;
+  transition: all var(--vz-fast) var(--vz-ease);
+}
+.vz-nav-item svg { flex: none; }
+.vz-nav-item:hover { background: var(--vz-nav-hover); color: var(--vz-nav-ink-on); }
+.vz-nav-item[aria-current="page"] { background: var(--vz-nav-on); color: var(--vz-nav-ink-on); font-weight: 650; }
+.vz-nav-item .vz-count { margin-left: auto; }
+.vz-sidebar__foot { margin-top: auto; padding-top: var(--vz-s-3); border-top: 1px solid var(--vz-line); }
+.vz-sidebar__user { display: flex; align-items: center; gap: var(--vz-s-2); padding: 6px var(--vz-s-2); border-radius: var(--vz-r-sm); }
+.vz-sidebar__user > div { min-width: 0; }
+.vz-sidebar__user strong { display: block; font-size: var(--vz-t-xs); font-weight: 620; }
+.vz-sidebar__user span { display: block; font-size: var(--vz-t-micro); color: var(--vz-text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Topo da página: migalha à esquerda, ações à direita. */
+.vz-topbar { display: flex; align-items: center; gap: var(--vz-s-3); padding: var(--vz-s-3) var(--vz-s-5); border-bottom: 1px solid var(--vz-line); background: var(--vz-panel); }
+.vz-crumb { display: flex; align-items: center; gap: 7px; font-size: var(--vz-t-sm); color: var(--vz-text-faint); }
+.vz-crumb a { color: inherit; text-decoration: none; transition: color var(--vz-fast) var(--vz-ease); }
+.vz-crumb a:hover { color: var(--vz-text); }
+.vz-crumb b { color: var(--vz-text); font-weight: 620; }
+.vz-topbar__actions { display: flex; align-items: center; gap: var(--vz-s-2); margin-left: auto; }
+
+/* Cabeçalho de tela — o par manchete + subtítulo + ações. */
+.vz-pagehead { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--vz-s-6); flex-wrap: wrap; }
+.vz-pagehead__text { display: grid; gap: 7px; min-width: 0; }
+.vz-pagehead__actions { display: flex; align-items: center; gap: var(--vz-s-2); }
+
+/* ==========================================================================
+   A PÁGINA DO SISTEMA
+   ==========================================================================
+   O que segue não é o design system: é a moldura da vitrine. Fica aqui pra não
+   poluir o app quando os tokens subirem pro :root. */
+.ds-shell { display: grid; grid-template-columns: 240px minmax(0, 1fr); min-height: 100vh; background: var(--vz-bg); }
+.ds-index { position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto; display: flex; flex-direction: column; gap: var(--vz-s-5); padding: var(--vz-s-5) var(--vz-s-3) var(--vz-s-6); border-right: 1px solid var(--vz-line); background: var(--vz-panel); }
+.ds-index__nav { display: grid; gap: 1px; }
+.ds-index a { display: flex; align-items: center; gap: 9px; height: 32px; padding: 0 10px; border-radius: var(--vz-r-xs); color: var(--vz-text-muted); font-size: var(--vz-t-xs); font-weight: 560; text-decoration: none; transition: all var(--vz-fast) var(--vz-ease); }
+.ds-index a:hover { background: var(--vz-panel-active); color: var(--vz-text); }
+.ds-index__num { font-family: var(--vz-font-mono); font-size: var(--vz-t-micro); color: var(--vz-text-faint); }
+.ds-main { min-width: 0; padding: var(--vz-s-8) var(--vz-s-10) var(--vz-s-16); }
+.ds-inner { width: min(1080px, 100%); margin: 0 auto; display: grid; gap: var(--vz-s-12); }
+
+.ds-hero { display: grid; gap: var(--vz-s-5); padding-bottom: var(--vz-s-8); border-bottom: 1px solid var(--vz-line); }
+.ds-hero__meta { display: flex; align-items: center; gap: var(--vz-s-2); flex-wrap: wrap; }
+
+.ds-section { display: grid; gap: var(--vz-s-5); scroll-margin-top: var(--vz-s-6); }
+.ds-section__head { display: grid; gap: 7px; padding-bottom: var(--vz-s-3); border-bottom: 1px solid var(--vz-line); }
+.ds-section__head .vz-eyebrow { font-family: var(--vz-font-mono); letter-spacing: 0.06em; }
+
+/* Bloco de exemplo: a peça em cima, a explicação embaixo. */
+.ds-demo { display: grid; gap: 0; border: 1px solid var(--vz-line); border-radius: var(--vz-r-lg); background: var(--vz-panel); overflow: hidden; }
+.ds-demo__stage { display: flex; flex-wrap: wrap; align-items: center; gap: var(--vz-s-3); padding: var(--vz-s-6); background: var(--vz-bg); border-bottom: 1px solid var(--vz-line); }
+.ds-demo__stage--block { display: block; }
+.ds-demo__stage--grid { display: grid; }
+.ds-demo__note { padding: var(--vz-s-3) var(--vz-s-4); font-size: var(--vz-t-xs); color: var(--vz-text-muted); line-height: 1.55; }
+.ds-demo__note b { color: var(--vz-text-soft); font-weight: 640; }
+.ds-demo__note code { padding: 1px 5px; border-radius: 4px; background: var(--vz-bg-sunken); font-family: var(--vz-font-mono); font-size: var(--vz-t-tiny); color: var(--vz-brand-strong); }
+
+.ds-grid { display: grid; gap: var(--vz-s-4); }
+.ds-grid--2 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.ds-grid--3 { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+.ds-grid--4 { grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); }
+.ds-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--vz-s-3); }
+.ds-col { display: grid; gap: var(--vz-s-3); }
+.ds-label { font-size: var(--vz-t-micro); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--vz-text-faint); }
+
+/* Amostra de cor. */
+.ds-swatch { display: grid; gap: 0; border: 1px solid var(--vz-line); border-radius: var(--vz-r-md); overflow: hidden; background: var(--vz-panel); }
+.ds-swatch__chip { height: 62px; }
+.ds-swatch__info { padding: 9px 11px; display: grid; gap: 2px; }
+.ds-swatch__info b { font-size: var(--vz-t-xs); font-weight: 620; }
+.ds-swatch__info code { font-family: var(--vz-font-mono); font-size: var(--vz-t-micro); color: var(--vz-text-faint); }
+
+/* Escada de raio / sombra / espaço. */
+.ds-ramp { display: flex; flex-wrap: wrap; gap: var(--vz-s-4); }
+.ds-ramp__item { display: grid; gap: 7px; justify-items: center; }
+.ds-ramp__box { width: 68px; height: 52px; background: var(--vz-panel); border: 1px solid var(--vz-line-strong); }
+.ds-ramp__box--shadow { border-color: transparent; }
+.ds-ramp__item code { font-family: var(--vz-font-mono); font-size: var(--vz-t-micro); color: var(--vz-text-faint); }
+
+.ds-typerow { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: var(--vz-s-4); align-items: baseline; padding: var(--vz-s-3) 0; border-bottom: 1px solid var(--vz-line); }
+.ds-typerow:last-child { border-bottom: 0; }
+.ds-typerow code { font-family: var(--vz-font-mono); font-size: var(--vz-t-micro); color: var(--vz-text-faint); }
+
+/* Antes/depois lado a lado. */
+.ds-compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--vz-s-4); }
+.ds-compare__side { display: grid; gap: var(--vz-s-3); padding: var(--vz-s-4); border: 1px solid var(--vz-line); border-radius: var(--vz-r-md); background: var(--vz-panel); }
+.ds-compare__side header { display: flex; align-items: center; gap: var(--vz-s-2); }
+
+/* Barra fixa de controle da vitrine. */
+.ds-controls { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: var(--vz-s-2); margin: calc(var(--vz-s-8) * -1) calc(var(--vz-s-10) * -1) var(--vz-s-6); padding: var(--vz-s-3) var(--vz-s-10); border-bottom: 1px solid var(--vz-line); background: color-mix(in srgb, var(--vz-bg) 88%, transparent); backdrop-filter: blur(10px); }
+
+/* Moldura de app — mostra o componente no contexto real. */
+.ds-frame { border: 1px solid var(--vz-line); border-radius: var(--vz-r-lg); background: var(--vz-panel); overflow: hidden; box-shadow: var(--vz-shadow-md); }
+.ds-frame__body { display: grid; grid-template-columns: 214px minmax(0, 1fr); min-height: 380px; }
+.ds-frame__canvas { padding: var(--vz-s-5); background: var(--vz-bg); display: grid; gap: var(--vz-s-4); align-content: start; }
+
+@media (max-width: 1080px) {
+  .ds-shell { grid-template-columns: minmax(0, 1fr); }
+  .ds-index { display: none; }
+  .ds-main { padding: var(--vz-s-5); }
+  .ds-controls { margin: calc(var(--vz-s-5) * -1) calc(var(--vz-s-5) * -1) var(--vz-s-5); padding: var(--vz-s-3) var(--vz-s-5); }
+  .ds-frame__body { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Rodinha de espera. Um giro só no sistema inteiro. */
+@keyframes vz-spin { to { transform: rotate(360deg); } }
+.vz-spin { animation: vz-spin 900ms linear infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .vz-root *, .vz-root *::before, .vz-root *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/* ==========================================================================
+   AJUSTES DA RODADA 2
+   ========================================================================== */
+
+/* ---------- Etapa com anel de progresso ----------
+   A etapa deixa de ser só um rótulo colorido: o anel à esquerda vai fechando
+   conforme a tarefa anda na esteira. Assim dá pra ver "quanto falta" sem
+   decorar em que posição da fila cada uma das 12 etapas está. Problema não
+   fecha anel nenhum — ele mostra o alerta, porque não é ponto da esteira. */
+.vz-stage { display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 10px 0 4px; border-radius: var(--vz-r-pill); font-size: var(--vz-t-tiny); font-weight: 620; line-height: 1; white-space: nowrap; background: var(--vz-slate-bg); color: var(--vz-slate-ink); }
+.vz-stage--violet { background: var(--vz-violet-bg); color: var(--vz-violet-ink); }
+.vz-stage--green  { background: var(--vz-green-bg);  color: var(--vz-green-ink); }
+.vz-stage--amber  { background: var(--vz-amber-bg);  color: var(--vz-amber-ink); }
+.vz-stage--red    { background: var(--vz-red-bg);    color: var(--vz-red-ink); }
+.vz-stage--blue   { background: var(--vz-blue-bg);   color: var(--vz-blue-ink); }
+.vz-stage__ring { flex: none; display: block; }
+.vz-stage__ring circle { transition: stroke-dashoffset var(--vz-slow) var(--vz-ease); }
+.vz-stage__track { stroke: currentColor; opacity: 0.22; }
+.vz-stage__fill { stroke: currentColor; }
+.vz-stage--lg { height: 28px; font-size: var(--vz-t-xs); padding: 0 12px 0 5px; gap: 8px; }
+
+/* ---------- Atraso ----------
+   NÃO é uma tag. Tag é pílula com fundo — a linguagem de "que coisa é essa".
+   Atraso é uma condição do PRAZO, então mora na coluna de entrega, em texto
+   vermelho com relógio. Antes ele saía como pílula vermelha idêntica à etapa
+   "Problema", e as duas se confundiam na mesma linha. */
+.vz-overdue { display: inline-flex; align-items: center; gap: 5px; color: var(--vz-red-ink); font-weight: 680; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.vz-overdue svg { flex: none; }
+.vz-overdue small { font-size: var(--vz-t-micro); font-weight: 700; opacity: 0.85; }
+.vz-due { display: inline-flex; align-items: center; gap: 5px; color: var(--vz-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.vz-due--soon { color: var(--vz-amber-ink); font-weight: 620; }
+
+/* ---------- Select com ícone por opção ----------
+   O <select> nativo não aceita ícone dentro da opção — e num sistema em que
+   pacote é "vídeo", "carrossel" ou "estático", o ícone é o que se lê antes do
+   texto. Por isso o seletor é um listbox próprio. */
+.vz-picker { position: relative; }
+.vz-picker__button {
+  display: flex; align-items: center; gap: var(--vz-s-2); width: 100%; height: var(--vz-h-md); padding: 0 10px;
+  border: 1px solid var(--vz-line-strong); border-radius: var(--vz-r-sm); background: var(--vz-panel);
+  color: var(--vz-text); font-family: inherit; font-size: var(--vz-t-sm); text-align: left; cursor: pointer;
+  transition: border-color var(--vz-fast) var(--vz-ease), box-shadow var(--vz-fast) var(--vz-ease);
+}
+.vz-picker__button:hover { border-color: var(--vz-line-contrast); }
+.vz-picker__button:focus-visible, .vz-picker__button[aria-expanded="true"] { outline: none; border-color: var(--vz-brand); box-shadow: var(--vz-ring); }
+.vz-picker__button > svg:last-child { margin-left: auto; color: var(--vz-text-faint); }
+.vz-picker__value { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.vz-picker__value > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vz-picker__list { position: absolute; z-index: 30; top: calc(100% + 5px); left: 0; right: 0; max-height: 264px; overflow-y: auto; padding: 5px; border: 1px solid var(--vz-line); border-radius: var(--vz-r-md); background: var(--vz-panel); box-shadow: var(--vz-shadow-lg); }
+.vz-picker__option {
+  display: flex; align-items: center; gap: var(--vz-s-2); width: 100%; min-height: 34px; padding: 6px 9px;
+  border: 0; border-radius: var(--vz-r-xs); background: none; color: var(--vz-text-soft);
+  font-family: inherit; font-size: var(--vz-t-sm); text-align: left; cursor: pointer;
+  transition: background var(--vz-fast) var(--vz-ease);
+}
+.vz-picker__option:hover, .vz-picker__option[data-active="true"] { background: var(--vz-panel-active); color: var(--vz-text); }
+.vz-picker__option[aria-selected="true"] { color: var(--vz-brand-strong); font-weight: 620; }
+.vz-picker__option > svg:last-child { margin-left: auto; }
+.vz-picker__glyph { display: grid; place-items: center; flex: none; width: 26px; height: 26px; border-radius: var(--vz-r-xs); background: var(--vz-slate-bg); color: var(--vz-slate-ink); }
+.vz-picker__glyph--violet { background: var(--vz-violet-bg); color: var(--vz-violet-ink); }
+.vz-picker__glyph--green  { background: var(--vz-green-bg);  color: var(--vz-green-ink); }
+.vz-picker__glyph--amber  { background: var(--vz-amber-bg);  color: var(--vz-amber-ink); }
+.vz-picker__glyph--blue   { background: var(--vz-blue-bg);   color: var(--vz-blue-ink); }
+.vz-picker__glyph--pink   { background: var(--vz-pink-bg);   color: var(--vz-pink-ink); }
+.vz-picker__sub { display: block; margin-top: 2px; font-size: var(--vz-t-micro); color: var(--vz-text-faint); font-weight: 400; }
+.vz-picker__group { padding: 8px 9px 4px; font-size: var(--vz-t-micro); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--vz-text-faint); }
+
+/* ---------- Barra de ferramentas com abas embutidas ----------
+   Antes as abas viviam num andar próprio, espremidas contra a busca. Agora
+   toolbar e abas são o MESMO bloco: abas em cima (o recorte dos dados),
+   controles embaixo (o que se faz com o recorte). */
+.vz-tablebar { display: grid; gap: 0; border-bottom: 1px solid var(--vz-line); }
+.vz-tablebar__tabs { display: flex; align-items: center; gap: var(--vz-s-5); padding: var(--vz-s-3) var(--vz-s-5) 0; overflow-x: auto; }
+.vz-tablebar__tabs .vz-tabs { border-bottom: 0; gap: var(--vz-s-5); }
+.vz-tablebar__tabs .vz-tabs button { padding-bottom: 10px; }
+.vz-tablebar__controls { display: flex; align-items: center; gap: var(--vz-s-2); flex-wrap: wrap; padding: var(--vz-s-3) var(--vz-s-5); border-top: 1px solid var(--vz-line); }
+
+/* ---------- Coluna redimensionável ----------
+   O título nunca quebra em duas linhas: ele trunca. Quem precisa de mais
+   espaço arrasta a divisória da coluna, e a largura fica salva. */
+.vz-table--fixed { table-layout: fixed; }
+.vz-table--fixed th, .vz-table--fixed td { overflow: hidden; }
+.vz-table th { position: relative; }
+.vz-table__resizer { position: absolute; top: 0; right: -4px; bottom: 0; width: 9px; cursor: col-resize; z-index: 2; background: none; border: 0; padding: 0; touch-action: none; }
+.vz-table__resizer::after { content: ""; position: absolute; top: 6px; bottom: 6px; left: 4px; width: 1px; border-radius: 1px; background: transparent; transition: background var(--vz-fast) var(--vz-ease); }
+.vz-table__resizer:hover::after, .vz-table__resizer[data-dragging="true"]::after { background: var(--vz-brand); }
+.vz-table__resizer[data-dragging="true"]::after { top: 0; bottom: 0; width: 2px; }
+/* Truncar em uma linha só. O título completo continua no title/tooltip. */
+.vz-truncate { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.vz-table--fixed .vz-table__primary { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vz-table--fixed .vz-table__sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.vz-resizing, body.vz-resizing * { cursor: col-resize !important; user-select: none !important; }
+
+/* ---------- Cartão dentro do dia do calendário ----------
+   O dia deixa de ser uma pastilha com o título cortado e passa a carregar o
+   mesmo cartão do board, na versão miúda: formato, título, quem é o dono e o
+   que mais o usuário escolher mostrar. */
+.vz-cal__day { min-height: 132px; }
+.vz-cal-card {
+  display: grid; gap: 5px; width: 100%; padding: 7px 8px;
+  border: 1px solid var(--vz-line); border-left: 3px solid var(--vz-slate-solid);
+  border-radius: var(--vz-r-xs); background: var(--vz-panel);
+  text-align: left; cursor: pointer; box-shadow: var(--vz-shadow-xs);
+  transition: box-shadow var(--vz-fast) var(--vz-ease), transform var(--vz-fast) var(--vz-ease);
+}
+.vz-cal-card:hover { box-shadow: var(--vz-shadow-md); transform: translateY(-1px); }
+.vz-cal-card--violet { border-left-color: var(--vz-violet-solid); }
+.vz-cal-card--green  { border-left-color: var(--vz-green-solid); }
+.vz-cal-card--amber  { border-left-color: var(--vz-amber-solid); }
+.vz-cal-card--blue   { border-left-color: var(--vz-blue-solid); }
+.vz-cal-card--pink   { border-left-color: var(--vz-pink-solid); }
+.vz-cal-card__top { display: flex; align-items: center; gap: 5px; }
+.vz-cal-card__title { font-size: var(--vz-t-micro); font-weight: 620; line-height: 1.35; color: var(--vz-text); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.vz-cal-card__foot { display: flex; align-items: center; gap: 5px; }
+.vz-cal-card__foot .vz-avatar { margin-left: auto; }
+/* Tag miúda, só pro cartão do calendário — a tag padrão de 22px não cabe. */
+.vz-minitag { display: inline-flex; align-items: center; gap: 3px; height: 16px; padding: 0 6px; border-radius: var(--vz-r-pill); background: var(--vz-slate-bg); color: var(--vz-slate-ink); font-size: 9.5px; font-weight: 700; line-height: 1; white-space: nowrap; }
+.vz-minitag--violet { background: var(--vz-violet-bg); color: var(--vz-violet-ink); }
+.vz-minitag--green  { background: var(--vz-green-bg);  color: var(--vz-green-ink); }
+.vz-minitag--amber  { background: var(--vz-amber-bg);  color: var(--vz-amber-ink); }
+.vz-minitag--blue   { background: var(--vz-blue-bg);   color: var(--vz-blue-ink); }
+.vz-minitag--pink   { background: var(--vz-pink-bg);   color: var(--vz-pink-ink); }
+.vz-minitag--red    { background: var(--vz-red-bg);    color: var(--vz-red-ink); }
+.vz-minitag--outline { background: transparent; border: 1px solid var(--vz-line-strong); color: var(--vz-text-muted); }
+/* O que cada cartão do calendário mostra é escolha do usuário. */
+.vz-cal__config { display: flex; align-items: center; gap: var(--vz-s-2); flex-wrap: wrap; }
+
+/* ---------- Gráficos: peças que faltavam ---------- */
+/* Número-manchete. Quando a história é UM número, ele não vira rosca de duas
+   fatias — vira número grande, que é o gráfico mais legível que existe. */
+.vz-stat { display: grid; gap: 5px; }
+.vz-stat__value { font-size: var(--vz-t-2xl); font-weight: 680; line-height: 1; letter-spacing: -0.035em; font-variant-numeric: tabular-nums; }
+.vz-stat__label { font-size: var(--vz-t-xs); color: var(--vz-text-muted); }
+.vz-stat__foot { display: flex; align-items: center; gap: 7px; font-size: var(--vz-t-tiny); color: var(--vz-text-faint); }
+.vz-stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--vz-s-5); }
+.vz-stat-row > * + * { padding-left: var(--vz-s-5); border-left: 1px solid var(--vz-line); }
+
+/* Barra empilhada horizontal, uma linha por pessoa. O vão de 2px entre os
+   segmentos é do PAPEL, não uma borda: borda desenhada engorda a marca. */
+.vz-stack { display: grid; gap: 12px; }
+.vz-stack__row { display: grid; grid-template-columns: 132px minmax(0, 1fr) 40px; align-items: center; gap: var(--vz-s-3); }
+.vz-stack__who { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: var(--vz-t-xs); color: var(--vz-text-soft); }
+.vz-stack__who span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vz-stack__bar { display: flex; gap: 2px; height: 18px; }
+.vz-stack__seg { position: relative; display: grid; place-items: center; min-width: 3px; border-radius: 2px; font-size: var(--vz-t-micro); font-weight: 700; color: #fff; cursor: default; transition: filter var(--vz-fast) var(--vz-ease); }
+.vz-stack__seg:first-child { border-radius: 4px 2px 2px 4px; }
+.vz-stack__seg:last-child { border-radius: 2px 4px 4px 2px; }
+.vz-stack__seg:hover { filter: brightness(1.08); }
+.vz-stack__total { text-align: right; font-size: var(--vz-t-xs); font-weight: 650; font-variant-numeric: tabular-nums; }
+
+/* Cruz de leitura do gráfico de linha. */
+.vz-chart__crosshair { stroke: var(--vz-line-contrast); stroke-width: 1; }
+.vz-chart__dot { stroke: var(--vz-panel); stroke-width: 2; }
+.vz-chart__hit { fill: transparent; cursor: crosshair; }
+.vz-chart__endlabel { font-size: 10px; font-weight: 700; font-family: var(--vz-font); }
+
+/* Cabeçalho do índice da vitrine. */
+.ds-index__brand { display: grid; gap: 7px; padding: 0 8px 4px; color: var(--vz-text); }
+.ds-index__brand > span { font-size: var(--vz-t-tiny); font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--vz-text-faint); }
+
+/* Amostra da marca. Fundo xadrez claro/escuro pra provar que a MESMA logo
+   funciona nos dois — a palavra sai em currentColor. */
+.ds-logo-demo { display: grid; gap: 0; border-radius: var(--vz-r-md); overflow: hidden; border: 1px solid var(--vz-line); }
+.ds-logo-demo > div { display: flex; align-items: center; gap: var(--vz-s-5); flex-wrap: wrap; padding: var(--vz-s-6); }
+.ds-logo-demo__claro { background: #ffffff; color: #14151c; }
+.ds-logo-demo__escuro { background: #16171f; color: #f2f2f6; }
