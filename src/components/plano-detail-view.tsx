@@ -413,7 +413,14 @@ export function PlanoDetailView({
             <strong>Requisitos para enviar os criativos</strong>
             <span className={approvedTextCount === tasks.length ? "is-ready" : ""}><CheckCircle2 size={13} /> Textos aprovados: {approvedTextCount}/{tasks.length}</span>
             <span className={linkedMaterialCount === tasks.length ? "is-ready" : ""}><CheckCircle2 size={13} /> Links adicionados: {linkedMaterialCount}/{tasks.length}</span>
-            {creativeBlockers.length ? <ul>{creativeBlockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul> : <small>Plano pronto para ser enviado à aprovação de criativos.</small>}
+            {creativeBlockers.length ? (
+              <details className="plan-blockers">
+                <summary>
+                  {creativeBlockers.length} {creativeBlockers.length === 1 ? "pendência" : "pendências"} para abrir a aprovação de criativos
+                </summary>
+                <ul>{creativeBlockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul>
+              </details>
+            ) : <small>Plano pronto para ser enviado à aprovação de criativos.</small>}
           </div>
           {workflowError ? <div className="form-message" role="alert">{workflowError}</div> : null}
           {canEdit ? <div className="plan-workflow-actions">
@@ -533,43 +540,41 @@ export function PlanoDetailView({
           </section>
         ) : null}
 
-        <div className="split-layout" style={!canEdit ? { gridTemplateColumns: "1fr" } : undefined}>
-          {canEdit ? (
-            <section className="panel">
-              <div className="panel-head"><h2>Novo item</h2></div>
-              <form className="modal-body" onSubmit={addItem} style={{ padding: "24px 25px 27px" }}>
-                <div className="field">
-                  <label htmlFor="item-name">Nome</label>
-                  <input id="item-name" value={newItemName} onChange={(e) => setNewItemName(e.target.value)} placeholder={isContent ? "Ex.: Pulando de paraquedas com meu cachorro" : "Ex.: E-mail de acesso enviado"} required maxLength={140} />
-                </div>
-                {isContent ? (
-                  <div className="field">
-                    <label htmlFor="item-format">Formato</label>
-                    <select id="item-format" value={newItemFormatId} onChange={(e) => setNewItemFormatId(e.target.value)}>
-                      <option value="">Sem formato</option>
-                      {formatTags.map((t) => <option value={t.id} key={t.id}>{t.label}</option>)}
-                    </select>
-                  </div>
-                ) : null}
-                <button className="primary-button" type="submit" style={{ width: "100%" }}>Adicionar item</button>
-                <p className="plan-form-hint">Clique no item pra escrever a descrição (direcionamento, roteiro, referência) e escolher a captação.</p>
-              </form>
-            </section>
-          ) : null}
-
-          {isContent ? (
-            <PlanCalendar
-              tasks={tasks}
-              formatTags={formatTags}
-              canEdit={canEdit}
-              onMove={moveTaskDate}
-              onOpen={setEditingTask}
-            />
-          ) : null}
+        {/* O calendário é largura cheia. Dentro da grade de duas colunas ele
+            virava um mês de 30 dias espremido em meia tela, e ainda expulsava
+            a lista de itens pra linha debaixo. */}
+        {isContent ? (
+          <PlanCalendar
+            tasks={tasks}
+            formatTags={formatTags}
+            canEdit={canEdit}
+            onMove={moveTaskDate}
+            onOpen={setEditingTask}
+          />
+        ) : null}
 
           <section className="panel list-panel">
             <div className="panel-head">
               <h2>Itens ({tasks.length})</h2>
+              {canEdit ? (
+                <form className="plan-quick-add" onSubmit={addItem}>
+                  <input
+                    value={newItemName}
+                    onChange={(e) => setNewItemName(e.target.value)}
+                    placeholder={isContent ? "Adicionar conteúdo" : "Adicionar passo"}
+                    maxLength={140}
+                    required
+                    aria-label="Nome do novo item"
+                  />
+                  {isContent ? (
+                    <select value={newItemFormatId} onChange={(e) => setNewItemFormatId(e.target.value)} aria-label="Formato do novo item">
+                      <option value="">Formato</option>
+                      {formatTags.map((t) => <option value={t.id} key={t.id}>{t.label}</option>)}
+                    </select>
+                  ) : null}
+                  <button type="submit" className="icon-button" aria-label="Adicionar item"><Plus size={14} /></button>
+                </form>
+              ) : null}
               {isContent && canEdit ? (
                 <PlanRescheduleButton
                   planId={plan.id}
@@ -592,11 +597,10 @@ export function PlanoDetailView({
               <div className="empty-state">
                 <ClipboardList size={35} />
                 <h3>Nenhum item ainda</h3>
-                <p>Use o formulário ao lado para adicionar o primeiro.</p>
+                <p>Use o campo acima para adicionar o primeiro.</p>
               </div>
             ) : null}
           </section>
-        </div>
 
       </main>
 
