@@ -1,6 +1,6 @@
 "use client";
 
-import { AlignLeft, CalendarDays, Check, Copy, ExternalLink, Folder, ImagePlus, Link2, Loader2, Lock, Plus, Send, Share2, Trash2, TriangleAlert, User, X } from "lucide-react";
+import { AlignLeft, CalendarDays, Check, Copy, ExternalLink, Folder, ImagePlus, Link2, Loader2, Lock, Package, Plus, Send, Share2, Trash2, TriangleAlert, User, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -15,7 +15,7 @@ import { formatDateTime, overdueDays, todayIso } from "@/lib/dates";
 import { networkError, responseError } from "@/lib/request-error";
 import { resizeImageFile } from "@/lib/resize-image";
 import { TASK_KINDS } from "@/lib/types";
-import type { Member, Project, StatusColor, Tag, TagKind, Task, TaskKind, TaskStatus } from "@/lib/types";
+import type { Member, PlanCaptacao, Project, StatusColor, Tag, TagKind, Task, TaskKind, TaskStatus } from "@/lib/types";
 import { celebrateFrom } from "@/lib/celebrate";
 
 type Draft = {
@@ -25,6 +25,7 @@ type Draft = {
   dueDate: string;
   assigneeId: string;
   assigneeSource: "manual" | "captacao";
+  captacaoId: string;
   description: string;
   seasonal: boolean;
   images: string[];
@@ -36,6 +37,7 @@ type Draft = {
 };
 
 const NO_ASSIGNEE = "none";
+const NO_CAPTACAO = "none";
 const NO_PROJECT = "none";
 const AUTOSAVE_DEBOUNCE_MS = 700;
 
@@ -55,6 +57,7 @@ function draftFromTask(task: Task | null, defaultProjectId: string, currentUserI
     dueDate: task ? task.dueDate || "" : todayIso(),
     assigneeId: task ? task.assigneeId || NO_ASSIGNEE : currentUserId || NO_ASSIGNEE,
     assigneeSource: task?.assigneeSource || "manual",
+    captacaoId: task?.captacaoId || NO_CAPTACAO,
     description: task?.description || "",
     seasonal: task?.seasonal || false,
     images: task?.images || [],
@@ -74,6 +77,7 @@ function buildPayload(draft: Draft) {
     dueDate: draft.dueDate || undefined,
     assigneeId: draft.assigneeId === NO_ASSIGNEE ? null : draft.assigneeId,
     assigneeSource: draft.assigneeSource,
+    captacaoId: draft.captacaoId === NO_CAPTACAO ? null : draft.captacaoId,
     description: draft.description,
     seasonal: draft.seasonal,
     images: draft.images,
@@ -93,6 +97,7 @@ export function TaskModal({
   channelTags,
   categoryTags = [],
   statusColors,
+  captacoes = [],
   defaultProjectId,
   canEdit = true,
   allowDeleteAndDuplicate = true,
@@ -110,6 +115,7 @@ export function TaskModal({
   channelTags: Tag[];
   categoryTags?: Tag[];
   statusColors: StatusColor[];
+  captacoes?: PlanCaptacao[];
   defaultProjectId: string;
   canEdit?: boolean;
   allowDeleteAndDuplicate?: boolean;
@@ -519,6 +525,24 @@ export function TaskModal({
                   </button>
                 )}
               </MetaRow>
+
+              {isPlanItem && captacoes.length ? (
+                <MetaRow icon={<Package size={13} />} label="Pacote">
+                  <Select
+                    items={{ [NO_CAPTACAO]: "Sem pacote", ...Object.fromEntries(captacoes.map((c) => [c.id, c.label])) }}
+                    value={draft.captacaoId}
+                    onValueChange={(value) => updateField("captacaoId", value ?? NO_CAPTACAO, { immediate: true })}
+                  >
+                    <SelectTrigger className="meta-trigger">
+                      <SelectValue placeholder="Sem pacote" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_CAPTACAO}>Sem pacote</SelectItem>
+                      {captacoes.map((c) => <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </MetaRow>
+              ) : null}
 
               {isPlanItem ? (
                 <TagPicker

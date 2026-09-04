@@ -1,13 +1,12 @@
 "use client";
 
-import { CalendarDays, Camera, CheckCircle2, ClipboardList, FileCheck2, MessageSquareText, Palette, Plus, Send, Trash2 } from "lucide-react";
+import { CalendarDays, Camera, CheckCircle2, ClipboardList, FileCheck2, MessageSquareText, Package, Palette, Plus, Send, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { PlanCalendar } from "@/components/plan-calendar";
 import { PlanRescheduleButton } from "@/components/plan-reschedule";
 import { TaskModal } from "@/components/task-modal";
 import { ClientLinkPanel } from "@/components/client-link-panel";
 import { useConfirm } from "@/components/confirm-dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatDueDate } from "@/lib/dates";
 import { networkError, responseError } from "@/lib/request-error";
 import { summarizeApprovalRound } from "@/lib/approval-workflow";
@@ -15,7 +14,6 @@ import { inheritsCaptureEditor } from "@/lib/assignee-inheritance";
 import { TASK_STATUSES } from "@/lib/types";
 import type { Member, Plan, PlanApprovalResponse, PlanCaptacao, PlanEvent, PlanItemApproval, Project, StatusColor, Tag, Task } from "@/lib/types";
 
-const NO_CAPTACAO = "none";
 const NO_MEMBER = "none";
 const NO_FORMAT_KEY = "__sem_formato__";
 
@@ -68,6 +66,7 @@ export function PlanoDetailView({
   const [editingTask, setEditingTask] = useState<Task | null | undefined>(undefined);
   const [renamingCaptacaoId, setRenamingCaptacaoId] = useState("");
   const [captacaoLabelDraft, setCaptacaoLabelDraft] = useState("");
+  const [editingField, setEditingField] = useState("");
   const [toast, setToast] = useState("");
   const [workflowError, setWorkflowError] = useState("");
   const { confirm, ConfirmDialog } = useConfirm();
@@ -243,16 +242,6 @@ export function PlanoDetailView({
 
   // Captação é atribuída por item (e é universal: vale pra vídeo, carrossel,
   // estático — qualquer formato pode precisar de uma sessão de captação).
-  async function setItemCaptacao(taskId: string, captacaoId: string) {
-    const value = captacaoId === NO_CAPTACAO ? null : captacaoId;
-    setTasks((current) => current.map((t) => (t.id === taskId ? { ...t, captacaoId: value || undefined } : t)));
-    const response = await fetch(`/api/tasks/${taskId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ captacaoId: value }),
-    });
-    if (!response.ok) showToast("Não foi possível mudar a captação.");
-  }
 
   // Arrastar no calendário é a mesma edição do campo de prazo, feita com a
   // mão. A tela muda na hora e o PATCH vai atrás: soltar um card e esperar o
@@ -306,11 +295,39 @@ export function PlanoDetailView({
 
   const progressRate = activeSummary.reviewedRate;
 
-  const captacaoLabels: Record<string, string> = {
-    [NO_CAPTACAO]: "Sem captação",
-    ...Object.fromEntries(captacoes.map((c) => [c.id, c.label])),
-  };
-  const memberLabels: Record<string, string> = { [NO_MEMBER]: "Sem responsável", ...Object.fromEntries(members.filter((member) => member.active).map((member) => [member.id, member.name])) };
+
+  // Responsável do pacote: texto até alguém clicar. O seletor só é montado
+  // enquanto está aberto, e some no blur.
+  function renderMemberField(
+    c: PlanCaptacao,
+    field: "recordingAssigneeId" | "editingAssigneeId",
+    aberto: boolean,
+    abrir: () => void,
+  ) {
+    const atual = c[field];
+    const nome = atual ? memberById.get(atual)?.name : "";
+    if (!aberto) {
+      return (
+        <button type="button" className={`quiet-value${nome ? "" : " is-empty"}`} onClick={abrir} disabled={!canEdit}>
+          {nome || "definir"}
+        </button>
+      );
+    }
+    return (
+      <select
+        autoFocus
+        aria-label={`Responsável do pacote ${c.label}`}
+        value={atual || NO_MEMBER}
+        onChange={(event) => { setCaptureAssignee(c.id, field, event.target.value); setEditingField(""); }}
+        onBlur={() => setEditingField("")}
+      >
+        <option value={NO_MEMBER}>Sem responsável</option>
+        {members.filter((member) => member.active).map((member) => (
+          <option key={member.id} value={member.id}>{member.name}</option>
+        ))}
+      </select>
+    );
+  }
 
   function renderTaskRow(task: Task) {
     const categories = task.categoryTagIds.map((id) => categoryTagById.get(id)?.label).filter(Boolean);
@@ -329,24 +346,18 @@ export function PlanoDetailView({
             {clientResponses[0]?.comment ? <span className="plan-client-comment" title={clientResponses[0].comment}><MessageSquareText size={11} /> {clientResponses[0].reviewerName}: {clientResponses[0].comment}</span> : null}
           </div>
         </div>
-        <div className="plan-item-row-side">
-          <span className={`approval-status approval-${approvalStatus}`}>{approvalLabels[approvalStatus]}</span>
-          {isContent ? (
-            canEdit ? (
-              <Select items={captacaoLabels} value={task.captacaoId || NO_CAPTACAO} onValueChange={(value) => setItemCaptacao(task.id, value ?? NO_CAPTACAO)}>
-                <SelectTrigger className="plan-captacao-select">
-                  <SelectValue placeholder="Sem captação" />
-                </SelectTrigger>
-                <SelectContent>
-              <SelectItem value={NO_CAPTACAO}>Sem pacote</SelectItem>
-                  {captacoes.map((c) => <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            ) : (
-              <span className="plan-item-assignee">{task.captacaoId ? captacaoById.get(task.captacaoId)?.label : "Sem pacote"}</span>
-            )
+        {/* Lado direito só de LEITURA. O pacote era um dropdown em cada linha,
+            e trocar pacote é edição de tarefa: agora acontece dentro do modal,
+            junto de responsável, prazo e formato, na mesma gramática do resto
+            do app. A lista voltou a ser uma lista. */}
+        <div className="plan-item-row-side" onClick={() => setEditingTask(task)}>
+          {isContent && task.captacaoId ? (
+            <span className="plan-item-package" title={captacaoById.get(task.captacaoId)?.label}>
+              <Package size={11} /> {captacaoById.get(task.captacaoId)?.label}
+            </span>
           ) : null}
-          <span className={`status ${statusGroup(task.status)}`} onClick={() => setEditingTask(task)}>{statusLabel(task.status)}</span>
+          <span className={`approval-status approval-${approvalStatus}`}>{approvalLabels[approvalStatus]}</span>
+          <span className={`status ${statusGroup(task.status)}`}>{statusLabel(task.status)}</span>
         </div>
       </li>
     );
@@ -372,9 +383,12 @@ export function PlanoDetailView({
             <h1>{plan.title}</h1>
             <p>{isContent ? "Conteúdos agrupados por formato. A captação é escolhida por item — qualquer formato pode entrar numa captação." : "Passos ordenados do processo."}</p>
           </div>
-          <div className="stats" style={{ display: "flex", gap: 1, background: "var(--line)", border: "1px solid var(--line)" }}>
-            <div className="stat" style={{ background: "white", minWidth: 110, padding: "15px 18px" }}><strong>{tasks.length}</strong><span>itens</span></div>
-            <div className="stat" style={{ background: "white", minWidth: 110, padding: "15px 18px" }}><strong>{progressRate}%</strong><span>revisado</span></div>
+          {/* Uma leitura só do andamento, e não quatro. O detalhe por etapa
+              está logo abaixo, no fluxo do cliente. */}
+          <div className="plan-headline-stats">
+            <span><strong>{tasks.length}</strong> itens</span>
+            <span><strong>{activeSummary.approved}</strong> aprovados</span>
+            <span><strong>{activeSummary.total - activeSummary.reviewed}</strong> aguardando o cliente</span>
           </div>
         </div>
 
@@ -409,13 +423,6 @@ export function PlanoDetailView({
           <p className="plan-workflow-hint">Após a aprovação do texto, conteúdos com captação ficam em <strong>Aguardando captação</strong>; os demais seguem para <strong>Pronto para criação</strong>. Para enviar os criativos, todos os conteúdos do plano precisam ter texto aprovado e link do material.</p>
         </section> : null}
 
-        <section className="approval-summary" aria-label="Resumo da aprovação do cliente">
-          <div><CheckCircle2 size={17} /><strong>{activeSummary.reviewed}</strong><span>revisados</span></div>
-          <div><strong>{activeSummary.approved}</strong><span>aprovados</span></div>
-          <div><strong>{activeSummary.reviewed - activeSummary.approved}</strong><span>com retorno</span></div>
-          <div><strong>{activeSummary.total - activeSummary.reviewed}</strong><span>pendentes</span></div>
-        </section>
-
         {isContent ? (
           <section className="panel" style={{ marginBottom: 18 }}>
             <div className="panel-head">
@@ -424,38 +431,93 @@ export function PlanoDetailView({
                 <p>Agrupe as entregas e escolha se o pacote exige captação ou segue direto para criação.</p>
               </div>
             </div>
+            {/* O card tinha, sempre à vista, dois botões de tipo, um campo de
+                data e até dois seletores de responsável. Quatro controles
+                abertos por pacote, num plano com cinco pacotes, são vinte
+                caixas competindo com a informação. Agora cada valor é texto
+                até alguém clicar nele, que é como o modal da tarefa já
+                funciona. */}
             <div className="plan-captacao-row">
               {captacoes.map((c) => {
                 const count = tasks.filter((t) => t.captacaoId === c.id).length;
+                const captura = c.packageKind === "capture";
+                const prazo = suggestions.find((event) => event.eventType.endsWith(`:${c.id}`))?.eventDate || "";
+                const editando = (campo: string) => editingField === `${c.id}:${campo}`;
+                const abrir = (campo: string) => canEdit && setEditingField(`${c.id}:${campo}`);
+
                 return (
                   <div key={c.id} className="plan-captacao-card">
-                    <div className="plan-captacao-card-head">{renamingCaptacaoId === c.id ? (
-                      <input
-                        className="plan-captacao-label-input"
-                        autoFocus
-                        maxLength={140}
-                        value={captacaoLabelDraft}
-                        aria-label={`Nome do pacote ${c.label}`}
-                        onChange={(event) => setCaptacaoLabelDraft(event.target.value)}
-                        onBlur={() => commitRenameCaptacao(c)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); }
-                          if (event.key === "Escape") { setRenamingCaptacaoId(""); }
-                        }}
-                      />
-                    ) : (
-                      <strong
-                        className={canEdit ? "plan-captacao-label is-editable" : "plan-captacao-label"}
-                        onClick={() => startRenameCaptacao(c)}
-                        title={canEdit ? "Clique para renomear" : undefined}
-                      >{c.label}</strong>
-                    )}<span className={`plan-package-kind ${c.packageKind}`}>{c.packageKind === "capture" ? <><Camera size={12} /> Com captação</> : <><Palette size={12} /> Criação</>}</span><em>{count} conteúdos</em>{canEdit ? <button type="button" onClick={() => removeCaptacao(c)} aria-label={`Remover ${c.label}`}><Trash2 size={13} /></button> : null}</div>
-                    {canEdit ? <div className="plan-package-kind-switch"><button type="button" className={c.packageKind === "creation" ? "is-active" : ""} onClick={() => setPackageKind(c.id, "creation")}><Palette size={13} /> Pacote de criação</button><button type="button" className={c.packageKind === "capture" ? "is-active" : ""} onClick={() => setPackageKind(c.id, "capture")}><Camera size={13} /> Exige captação</button></div> : null}
-                    <div className={`plan-captacao-fields ${c.packageKind === "creation" ? "is-creation" : ""}`}>
-                      <label><span>{c.packageKind === "capture" ? "Data sugerida" : "Prazo sugerido"}</span>{canEdit ? <input type="date" aria-label={`Data sugerida para ${c.label}`} value={suggestions.find((event) => event.eventType.endsWith(`:${c.id}`))?.eventDate || ""} onChange={(event) => setSuggestionDate(c.id, event.target.value)} /> : <small>{suggestions.find((event) => event.eventType.endsWith(`:${c.id}`))?.eventDate || "—"}</small>}</label>
-                      {c.packageKind === "capture" ? <label><span>Gravação</span>{canEdit ? <Select items={memberLabels} value={c.recordingAssigneeId || NO_MEMBER} onValueChange={(value) => setCaptureAssignee(c.id, "recordingAssigneeId", value ?? NO_MEMBER)}><SelectTrigger className="plan-captacao-member-select"><SelectValue /></SelectTrigger><SelectContent><SelectItem value={NO_MEMBER}>Sem responsável</SelectItem>{members.filter((member) => member.active).map((member) => <SelectItem key={member.id} value={member.id}>{member.name}</SelectItem>)}</SelectContent></Select> : <small>{memberLabels[c.recordingAssigneeId || NO_MEMBER]}</small>}</label> : null}
-                      <label><span>{c.packageKind === "capture" ? "Edição" : "Criação"}</span>{canEdit ? <Select items={memberLabels} value={c.editingAssigneeId || NO_MEMBER} onValueChange={(value) => setCaptureAssignee(c.id, "editingAssigneeId", value ?? NO_MEMBER)}><SelectTrigger className="plan-captacao-member-select"><SelectValue /></SelectTrigger><SelectContent><SelectItem value={NO_MEMBER}>Sem responsável</SelectItem>{members.filter((member) => member.active).map((member) => <SelectItem key={member.id} value={member.id}>{member.name}</SelectItem>)}</SelectContent></Select> : <small>{memberLabels[c.editingAssigneeId || NO_MEMBER]}</small>}</label>
+                    <div className="plan-captacao-card-head">
+                      <span className={`plan-package-icon ${c.packageKind}`}>{captura ? <Camera size={13} /> : <Palette size={13} />}</span>
+                      {renamingCaptacaoId === c.id ? (
+                        <input
+                          className="plan-captacao-label-input"
+                          autoFocus
+                          maxLength={140}
+                          value={captacaoLabelDraft}
+                          aria-label={`Nome do pacote ${c.label}`}
+                          onChange={(event) => setCaptacaoLabelDraft(event.target.value)}
+                          onBlur={() => commitRenameCaptacao(c)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); }
+                            if (event.key === "Escape") { setRenamingCaptacaoId(""); }
+                          }}
+                        />
+                      ) : (
+                        <strong
+                          className={canEdit ? "plan-captacao-label is-editable" : "plan-captacao-label"}
+                          onClick={() => startRenameCaptacao(c)}
+                          title={canEdit ? "Clique para renomear" : undefined}
+                        >{c.label}</strong>
+                      )}
+                      <em>{count}</em>
+                      {canEdit ? <button type="button" onClick={() => removeCaptacao(c)} aria-label={`Remover ${c.label}`}><Trash2 size={12} /></button> : null}
                     </div>
+
+                    <dl className="plan-captacao-meta">
+                      <div>
+                        <dt>Tipo</dt>
+                        <dd>
+                          {canEdit ? (
+                            <button type="button" className="quiet-value" onClick={() => setPackageKind(c.id, captura ? "creation" : "capture")}>
+                              {captura ? "Exige captação" : "Criação"}
+                            </button>
+                          ) : <span className="quiet-value is-static">{captura ? "Exige captação" : "Criação"}</span>}
+                        </dd>
+                      </div>
+
+                      <div>
+                        <dt>{captura ? "Captação" : "Prazo"}</dt>
+                        <dd>
+                          {editando("prazo") ? (
+                            <input
+                              type="date"
+                              autoFocus
+                              aria-label={`Data sugerida para ${c.label}`}
+                              value={prazo}
+                              onChange={(event) => setSuggestionDate(c.id, event.target.value)}
+                              onBlur={() => setEditingField("")}
+                            />
+                          ) : (
+                            <button type="button" className={`quiet-value${prazo ? "" : " is-empty"}`} onClick={() => abrir("prazo")} disabled={!canEdit}>
+                              {prazo ? formatDueDate(prazo) : "definir"}
+                            </button>
+                          )}
+                        </dd>
+                      </div>
+
+                      {captura ? (
+                        <div>
+                          <dt>Gravação</dt>
+                          <dd>{renderMemberField(c, "recordingAssigneeId", editando("gravacao"), () => abrir("gravacao"))}</dd>
+                        </div>
+                      ) : null}
+
+                      <div>
+                        <dt>{captura ? "Edição" : "Criação"}</dt>
+                        <dd>{renderMemberField(c, "editingAssigneeId", editando("edicao"), () => abrir("edicao"))}</dd>
+                      </div>
+                    </dl>
                   </div>
                 );
               })}
@@ -547,6 +609,7 @@ export function PlanoDetailView({
           channelTags={channelTags}
           categoryTags={categoryTags}
           statusColors={statusColors}
+          captacoes={captacoes}
           defaultProjectId={plan.projectId}
           canEdit={canEdit}
           currentUserId={currentUserId}

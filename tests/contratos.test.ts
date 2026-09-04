@@ -343,3 +343,35 @@ describe("primeiro vencimento e a data da assinatura", () => {
     }
   });
 });
+
+
+describe("escopo de canais do contrato de gestão", () => {
+  const body = buildContractBody("gestao_marca", "pre", "mensal");
+
+  it("38. o tráfego pago cobre Meta Ads e Google Ads", () => {
+    expect(body).toContain("Meta Ads e Google Ads");
+  });
+
+  it("39. o Google Meu Negócio tem cláusula própria", () => {
+    expect(body).toContain("Gestão do Google Meu Negócio");
+    expect(body).toContain("avaliações");
+  });
+
+  it("40. o posicionamento inicial vale para todos os canais, a produção é do Instagram", () => {
+    expect(body).toContain("posicionamento inicial da marca em todos os canais digitais");
+    expect(body).toContain("A produção mensal de conteúdo é focada no Instagram");
+  });
+
+  it("41. os itens do escopo continuam numerados em sequência", () => {
+    const itens = [...body.matchAll(/\*\*1\.1\.(\d)\./g)].map((m) => Number(m[1]));
+    expect(itens).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
+  it("42. a verba mínima passa a somar as plataformas", () => {
+    expect(body).toContain("somados os valores aplicados nas plataformas");
+  });
+
+  it("43. os acessos a pedir incluem os canais novos", () => {
+    expect(body).toContain("Google Ads, Google Meu Negócio");
+  });
+});

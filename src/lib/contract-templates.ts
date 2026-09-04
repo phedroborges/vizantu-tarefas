@@ -81,7 +81,7 @@ export const PAYMENT_STRUCTURES: { id: PaymentStructure; label: string; descrica
 ];
 
 export const CONTRACT_TEMPLATES: { id: ContractTemplateId; label: string; descricao: string; temPagamentoMensal: boolean }[] = [
-  { id: "gestao_marca", label: "Gestão de marca", descricao: "Estratégia, Instagram, tráfego pago, criação de peças e edição de vídeo. Mensal.", temPagamentoMensal: true },
+  { id: "gestao_marca", label: "Gestão de marca", descricao: "Estratégia, Instagram, Google Meu Negócio, Meta e Google Ads, criação de peças e edição de vídeo. Mensal.", temPagamentoMensal: true },
   { id: "criacao_marca", label: "Criação de marca", descricao: "Diagnóstico, posicionamento, identidade visual e manual de marca. Projeto fechado.", temPagamentoMensal: false },
   { id: "branco", label: "Do zero", descricao: "Um documento em branco, com o cabeçalho das partes e nada mais.", temPagamentoMensal: false },
 ];
@@ -141,7 +141,7 @@ const CLAUSULAS_COMUNS = `## CLÁUSULA {{n_fluxo}} – FLUXO DE TRABALHO, APROVA
 
 ## CLÁUSULA {{n_contas}} – CONTAS, ACESSOS E DADOS
 
-{{n_contas}}.1. Sempre que tecnicamente possível, contas de Instagram, Meta Business, anúncios, pixels e demais ativos digitais serão mantidos em nome ou sob titularidade da CONTRATANTE, que concederá à CONTRATADA apenas os acessos necessários.
+{{n_contas}}.1. Sempre que tecnicamente possível, contas de Instagram, Meta Business, Google Ads, Google Meu Negócio, anúncios, pixels e demais ativos digitais serão mantidos em nome ou sob titularidade da CONTRATANTE, que concederá à CONTRATADA apenas os acessos necessários.
 
 {{n_contas}}.2. As partes cumprirão a Lei Geral de Proteção de Dados Pessoais. Quando tratar dados pessoais segundo instruções da CONTRATANTE, a CONTRATADA atuará como operadora, utilizando-os somente para a execução deste contrato e adotando medidas razoáveis de segurança.
 
@@ -269,6 +269,7 @@ const ESCOPO_GESTAO = `## CLÁUSULA 1 – OBJETO E ESCOPO
 
 - diagnóstico de posicionamento, público, concorrência, comunicação e presença digital;
 - definição de posicionamento, narrativa, tom de voz, pilares de conteúdo e direcionamento criativo;
+- posicionamento inicial da marca em todos os canais digitais em que ela estiver presente, para que a identidade, a descrição, a apresentação e os elementos visuais fiquem padronizados desde o começo;
 - elaboração e atualização do plano estratégico da marca e da presença digital, com cronograma de ações e campanhas durante a vigência;
 - reuniões de acompanhamento e recomendações de otimização.
 
@@ -281,26 +282,36 @@ const ESCOPO_GESTAO = `## CLÁUSULA 1 – OBJETO E ESCOPO
 - avaliação e publicação de conteúdos rápidos, registros do momento ou ideias próprias enviados espontaneamente pela CONTRATANTE, como materiais complementares ao calendário, desde que estejam alinhados à estratégia, demandem apenas tratamento simples e haja viabilidade operacional. Esses conteúdos não substituem automaticamente as entregas planejadas nem caracterizam obrigação ilimitada de produção;
 - acompanhamento dos principais indicadores do perfil e apresentação de relatório mensal.
 
-**1.1.3. Gestão de tráfego pago:**
+A produção mensal de conteúdo é focada no Instagram. Os demais canais recebem o posicionamento inicial descrito no item 1.1.1 e permanecem alinhados à mesma identidade, sem calendário próprio de produção, salvo se contratado à parte.
 
-- planejamento, configuração, acompanhamento e otimização de campanhas na plataforma Meta Ads;
-- configuração de públicos, eventos e rastreamento tecnicamente disponíveis;
+**1.1.3. Gestão do Google Meu Negócio:**
+
+- configuração ou revisão do perfil da empresa, com nome, categorias, descrição, endereço, área de atendimento, horários, contatos e links;
+- padronização dos elementos visuais do perfil de acordo com a identidade da marca;
+- publicação periódica de novidades e atualização das informações sempre que a operação mudar;
+- orientação sobre respostas às avaliações recebidas e acompanhamento dos principais indicadores do perfil.
+
+**1.1.4. Gestão de tráfego pago:**
+
+- planejamento, configuração, acompanhamento e otimização de campanhas nas plataformas Meta Ads e Google Ads;
+- configuração de públicos, palavras-chave, eventos e rastreamento tecnicamente disponíveis em cada plataforma;
+- distribuição do investimento entre as plataformas conforme o objetivo de cada campanha, definida no planejamento e alinhada previamente com a CONTRATANTE;
 - análise de resultados e relatório mensal de desempenho;
-- a gestão de investimento mensal é de no mínimo R$ {{verba_minima_formatada}} ({{verba_minima_extenso}}) por mês. A verba será paga diretamente pela CONTRATANTE à plataforma e não integra a remuneração da CONTRATADA.
+- a gestão de investimento mensal é de no mínimo R$ {{verba_minima_formatada}} ({{verba_minima_extenso}}) por mês, somados os valores aplicados nas plataformas. A verba será paga diretamente pela CONTRATANTE às plataformas e não integra a remuneração da CONTRATADA.
 
-**1.1.4. Criação de peças e criativos:**
+**1.1.5. Criação de peças e criativos:**
 
 - direção criativa e criação das peças gráficas necessárias aos conteúdos e anúncios previstos no planejamento mensal;
-- adaptação das peças aos formatos definidos para Instagram e Meta Ads;
+- adaptação das peças aos formatos definidos para Instagram, Meta Ads e Google Ads;
 - observância da identidade visual e das diretrizes estratégicas aprovadas.
 
-**1.1.5. Edição de vídeo:**
+**1.1.6. Edição de vídeo:**
 
 - edição de {{qtd_videos}} vídeos mensais e dos criativos de vídeo previstos nas campanhas aprovadas;
 - cortes, montagem, legendas simples, trilha licenciada ou disponibilizada pelas plataformas, identidade visual e exportação em formato adequado ao canal;
 - o material bruto deverá ser entregue pela CONTRATANTE organizado, com qualidade técnica suficiente e dentro dos prazos do calendário.
 
-1.2. Não estão incluídos: captação presencial de foto ou vídeo, produção audiovisual externa, contratação de influenciadores, atendimento individual a seguidores, desenvolvimento de sites ou páginas, hospedagem, aquisição de ferramentas, verba de anúncios ou serviços não descritos nesta cláusula.
+1.2. Não estão incluídos: captação presencial de foto ou vídeo, produção audiovisual externa, contratação de influenciadores, atendimento individual a seguidores, resposta em nome da CONTRATANTE às avaliações recebidas, desenvolvimento de sites ou páginas, hospedagem, aquisição de ferramentas, verificação ou disputa de titularidade de perfis, verba de anúncios ou serviços não descritos nesta cláusula. A produção de calendário de conteúdo para canais além do Instagram também não está incluída.
 
 1.3. Cada entrega inclui até 2 (duas) rodadas de ajustes, desde que solicitadas de forma consolidada e sem alteração do briefing aprovado. Mudanças de estratégia, refações decorrentes de novo direcionamento, captações realizadas pela CONTRATADA e demandas complexas excedentes serão objeto de orçamento e aprovação prévia.
 
