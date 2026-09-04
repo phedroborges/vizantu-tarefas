@@ -1,18 +1,21 @@
 "use client";
 
-import { CalendarDays, Camera, ClipboardList, Link as LinkIcon, MessageSquareText, Package, Palette, Plus, Send, Trash2 } from "lucide-react";
+import { CalendarDays, Camera, ChevronRight, ClipboardList, Link as LinkIcon, MessageSquareText, Package, Palette, Plus, Send, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { PlanCalendar } from "@/components/plan-calendar";
 import { PlanRescheduleButton } from "@/components/plan-reschedule";
 import { TaskModal } from "@/components/task-modal";
 import { StatusTag, statusColorMap } from "@/components/status-tag";
+import { Avatar } from "@/components/avatar";
 import { ClientLinkPanel } from "@/components/client-link-panel";
 import { useConfirm } from "@/components/confirm-dialog";
 import { formatDueDate } from "@/lib/dates";
 import { networkError, responseError } from "@/lib/request-error";
 import { summarizeApprovalRound } from "@/lib/approval-workflow";
 import { inheritsCaptureEditor } from "@/lib/assignee-inheritance";
-import type { Member, Plan, PlanApprovalResponse, PlanCaptacao, PlanEvent, PlanItemApproval, Project, StatusColor, Tag, Task } from "@/lib/types";
+import { TASK_STATUSES } from "@/lib/types";
+import type { Member, Plan, PlanApprovalResponse, PlanCaptacao, PlanEvent, PlanItemApproval, Project, StatusColor, StatusGroup, Tag, Task } from "@/lib/types";
 
 const NO_MEMBER = "none";
 const NO_FORMAT_KEY = "__sem_formato__";
@@ -106,6 +109,99 @@ function PlanApprovalBoard({
   );
 }
 
+
+// ---------- O board do plano ----------
+// Mesmos conteúdos, arrumados pela etapa em vez do formato. A coluna é um
+// trilho tracejado e o cartão é o painel, então a coluna vazia já diz "arrasta
+// aqui" sem texto explicando. Arrastar entre colunas MUDA a etapa da tarefa —
+// é a mesma edição que o modal faz, pelo gesto em vez do formulário.
+const COLUNAS_BOARD: { grupo: StatusGroup; titulo: string }[] = [
+  { grupo: "nao_iniciada", titulo: "Não iniciada" },
+  { grupo: "em_andamento", titulo: "Em andamento" },
+  { grupo: "feita", titulo: "Feita" },
+];
+
+function PlanBoard({
+  tasks,
+  statusColors,
+  memberById,
+  onOpenTask,
+  onMoveStatus,
+  canEdit,
+}: {
+  tasks: Task[];
+  statusColors: StatusColor[];
+  memberById: Map<string, Member>;
+  onOpenTask: (task: Task) => void;
+  onMoveStatus: (task: Task, status: Task["status"]) => void;
+  canEdit: boolean;
+}) {
+  const cores = statusColorMap(statusColors);
+  const [sobre, setSobre] = useState<StatusGroup | null>(null);
+
+  function grupoDe(status: Task["status"]): StatusGroup {
+    return TASK_STATUSES.find((item) => item.value === status)?.group ?? "nao_iniciada";
+  }
+
+  // Ao soltar numa coluna, a tarefa vai para a PRIMEIRA etapa daquele grupo.
+  // Escolher qual das quatro etapas do grupo seria adivinhação; a primeira é a
+  // entrada natural, e a pessoa afina no modal se quiser outra.
+  function primeiraEtapaDe(grupo: StatusGroup): Task["status"] {
+    return TASK_STATUSES.find((item) => item.group === grupo)!.value;
+  }
+
+  return (
+    <div className="plan-board">
+      {COLUNAS_BOARD.map((coluna) => {
+        const doGrupo = tasks.filter((task) => grupoDe(task.status) === coluna.grupo);
+        return (
+          <div
+            key={coluna.grupo}
+            className={`plan-board__col${sobre === coluna.grupo ? " is-over" : ""}`}
+            onDragOver={(evento) => { if (canEdit) { evento.preventDefault(); setSobre(coluna.grupo); } }}
+            onDragLeave={() => setSobre((atual) => (atual === coluna.grupo ? null : atual))}
+            onDrop={(evento) => {
+              evento.preventDefault();
+              setSobre(null);
+              const id = evento.dataTransfer.getData("text/plain");
+              const task = tasks.find((item) => item.id === id);
+              if (!task || grupoDe(task.status) === coluna.grupo) return;
+              onMoveStatus(task, primeiraEtapaDe(coluna.grupo));
+            }}
+          >
+            <div className="plan-board__head">
+              <strong>{coluna.titulo}</strong>
+              <em>{doGrupo.length}</em>
+            </div>
+            {doGrupo.map((task) => {
+              const dono = task.assigneeId ? memberById.get(task.assigneeId) : undefined;
+              return (
+                <article
+                  key={task.id}
+                  className="plan-board__card"
+                  draggable={canEdit}
+                  onDragStart={(evento) => evento.dataTransfer.setData("text/plain", task.id)}
+                  onClick={() => onOpenTask(task)}
+                >
+                  <strong>{task.name}</strong>
+                  <div className="plan-board__meta">
+                    <StatusTag status={task.status} colorByStatus={cores} />
+                    {dono ? <Avatar name={dono.name} imageUrl={dono.avatarUrl} size={20} /> : null}
+                  </div>
+                  {task.dueDate ? (
+                    <span className="plan-item-due"><CalendarDays size={11} /> {formatDueDate(task.dueDate)}</span>
+                  ) : null}
+                </article>
+              );
+            })}
+            {!doGrupo.length ? <div className="plan-board__drop">Solte um conteúdo aqui</div> : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function PlanoDetailView({
   plan,
   project,
@@ -152,7 +248,7 @@ export function PlanoDetailView({
   // A tela deixou de empilhar cinco blocos numa coluna de 2.700px: conteúdo,
   // calendário e aprovação são VISÕES da mesma lista, então viram abas — do
   // mesmo jeito que a tela de tarefas já alterna lista e calendário.
-  const [aba, setAba] = useState<"conteudos" | "calendario" | "aprovacao">("conteudos");
+  const [aba, setAba] = useState<"conteudos" | "calendario" | "board" | "aprovacao">("conteudos");
   // O link do cliente era um painel permanente de ~150px pra um endereço que
   // se copia uma vez por mês. Virou um botão que abre o painel quando precisa.
   const [linkAberto, setLinkAberto] = useState(false);
@@ -354,6 +450,31 @@ export function PlanoDetailView({
     }
   }
 
+  // Arrastar entre colunas do board é a mesma edição que o modal faz, pelo
+  // gesto. Mesmo desenho de moveTaskDate: pinta na hora, desfaz se o servidor
+  // recusar — sem isso o cartão volta pra coluna antiga só depois do
+  // round-trip, e parece que o arrasto não pegou.
+  async function moveTaskStatus(task: Task, status: Task["status"]) {
+    const anterior = task.status;
+    setTasks((current) => current.map((t) => (t.id === task.id ? { ...t, status } : t)));
+    try {
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!response.ok) {
+        setTasks((current) => current.map((t) => (t.id === task.id ? { ...t, status: anterior } : t)));
+        return setToast(await responseError(response, "mudar a etapa"));
+      }
+      const { task: salva } = await response.json();
+      setTasks((current) => current.map((t) => (t.id === task.id ? salva : t)));
+    } catch {
+      setTasks((current) => current.map((t) => (t.id === task.id ? { ...t, status: anterior } : t)));
+      setToast(networkError("mudar a etapa"));
+    }
+  }
+
   function onTaskSaved(task: Task) {
     setTasks((current) => (current.some((t) => t.id === task.id) ? current.map((t) => (t.id === task.id ? task : t)) : [...current, task]));
   }
@@ -470,7 +591,10 @@ export function PlanoDetailView({
   const aguardandoCliente = activeSummary.total - activeSummary.reviewed;
   const abas = [
     { value: "conteudos" as const, label: "Conteúdos", count: tasks.length },
-    ...(isContent ? [{ value: "calendario" as const, label: "Calendário", count: undefined }] : []),
+    ...(isContent ? [
+      { value: "calendario" as const, label: "Calendário", count: undefined },
+      { value: "board" as const, label: "Board", count: undefined },
+    ] : []),
     { value: "aprovacao" as const, label: "Aprovação", count: aguardandoCliente || undefined },
   ];
 
@@ -585,6 +709,11 @@ export function PlanoDetailView({
                         >{c.label}</strong>
                       )}
                       <em>{count}</em>
+                      {/* O pacote finalmente abre: é onde quem vai gravar
+                          confere se está tudo pronto pra captação. */}
+                      <Link className="plan-captacao-open" href={`/planos/${plan.id}/pacote/${c.id}`} aria-label={`Abrir ${c.label}`}>
+                        <ChevronRight size={14} />
+                      </Link>
                       {canEdit ? <button type="button" onClick={() => removeCaptacao(c)} aria-label={`Remover ${c.label}`}><Trash2 size={12} /></button> : null}
                     </div>
 
@@ -703,6 +832,17 @@ export function PlanoDetailView({
 
           {aba === "calendario" && isContent ? (
             <PlanCalendar tasks={tasks} formatTags={formatTags} canEdit={canEdit} onMove={moveTaskDate} onOpen={setEditingTask} />
+          ) : null}
+
+          {aba === "board" && isContent ? (
+            <PlanBoard
+              tasks={tasks}
+              statusColors={statusColors}
+              memberById={memberById}
+              onOpenTask={setEditingTask}
+              onMoveStatus={moveTaskStatus}
+              canEdit={canEdit}
+            />
           ) : null}
 
           {aba === "aprovacao" ? (

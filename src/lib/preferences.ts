@@ -19,6 +19,11 @@ export type TaskView = "lista" | "calendario";
 export type MemberPreferences = {
   taskView: TaskView;
   taskColumns: TaskColumnKey[];
+  /** Largura em px de cada coluna que a pessoa arrastou. O que não está aqui
+      usa a largura padrão da coluna. Mora junto das outras preferências, e não
+      no navegador, pelo mesmo motivo delas: trocar de máquina não pode zerar
+      o jeito de trabalhar de ninguém. */
+  taskColumnWidths: Partial<Record<TaskColumnKey | "name", number>>;
   dateFormat: DateFormatKey;
   showFinalized: boolean;
 };
@@ -30,6 +35,7 @@ export function defaultPreferences(): MemberPreferences {
   return {
     taskView: "lista",
     taskColumns: [...DEFAULT_COLUMNS],
+    taskColumnWidths: {},
     dateFormat: DEFAULT_DATE_FORMAT,
     showFinalized: false,
   };
@@ -43,6 +49,22 @@ function normalizeColumns(value: unknown): TaskColumnKey[] {
   return Array.from(new Set(filtered));
 }
 
+// Largura salva é número solto vindo do banco: uma coluna com -4000px ou com
+// "muito" gravado quebraria a tabela inteira. Fica presa entre 72 e 720.
+const LARGURA_MIN = 72;
+const LARGURA_MAX = 720;
+
+function normalizeWidths(value: unknown): MemberPreferences["taskColumnWidths"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const saida: MemberPreferences["taskColumnWidths"] = {};
+  for (const [chave, largura] of Object.entries(value as Record<string, unknown>)) {
+    if (chave !== "name" && !KNOWN_COLUMNS.has(chave as TaskColumnKey)) continue;
+    if (typeof largura !== "number" || !Number.isFinite(largura)) continue;
+    saida[chave as TaskColumnKey | "name"] = Math.min(LARGURA_MAX, Math.max(LARGURA_MIN, Math.round(largura)));
+  }
+  return saida;
+}
+
 // Toda leitura passa por aqui: o jsonb do banco é dado solto, e uma coluna
 // removida numa versão futura não pode quebrar a tela de quem tinha ela salva.
 export function normalizePreferences(raw: unknown): MemberPreferences {
@@ -53,6 +75,7 @@ export function normalizePreferences(raw: unknown): MemberPreferences {
   return {
     taskView: value.taskView === "calendario" || value.taskView === "lista" ? value.taskView : base.taskView,
     taskColumns: value.taskColumns === undefined ? base.taskColumns : normalizeColumns(value.taskColumns),
+    taskColumnWidths: normalizeWidths(value.taskColumnWidths),
     dateFormat: isDateFormatKey(value.dateFormat) ? value.dateFormat : base.dateFormat,
     showFinalized: typeof value.showFinalized === "boolean" ? value.showFinalized : base.showFinalized,
   };
@@ -63,9 +86,14 @@ export function normalizePreferences(raw: unknown): MemberPreferences {
 export function mergePreferences(current: MemberPreferences, patch: unknown): MemberPreferences {
   if (!patch || typeof patch !== "object") return current;
   const value = patch as Record<string, unknown>;
+  // Cada chave é listada de propósito, e não um spread: um patch vindo da rede
+  // não pode injetar campo que o tipo não conhece. Quem adicionar preferência
+  // nova precisa lembrar de listá-la AQUI também — foi o que faltou para a
+  // largura de coluna, que era descartada em silêncio.
   return normalizePreferences({
     taskView: value.taskView ?? current.taskView,
     taskColumns: value.taskColumns ?? current.taskColumns,
+    taskColumnWidths: value.taskColumnWidths ?? current.taskColumnWidths,
     dateFormat: value.dateFormat ?? current.dateFormat,
     showFinalized: value.showFinalized ?? current.showFinalized,
   });

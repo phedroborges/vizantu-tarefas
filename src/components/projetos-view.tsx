@@ -148,7 +148,7 @@ export function ProjetosView({
             <p>Cadastre os projetos e clientes do time e acompanhe o andamento das tarefas de cada um.</p>
           </div>
           <div className="stats" style={{ display: "flex", gap: 1, background: "var(--line)", border: "1px solid var(--line)" }}>
-            <div className="stat" style={{ background: "white", minWidth: 132, padding: "15px 18px" }}><strong>{projects.length}</strong><span>projetos</span></div>
+            <div className="stat"><strong>{projects.length}</strong><span>projetos</span></div>
           </div>
         </div>
         <div className="split-layout" style={!canEdit ? { gridTemplateColumns: "1fr" } : undefined}>

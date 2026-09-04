@@ -83,7 +83,7 @@ export function PlanosView({
             <p>Conjuntos de conteúdos ou passos de processo por projeto — roteiro, direcionamento, referência e legenda de cada item ficam aqui, prontos pro dashboard do cliente.</p>
           </div>
           <div className="stats" style={{ display: "flex", gap: 1, background: "var(--line)", border: "1px solid var(--line)" }}>
-            <div className="stat" style={{ background: "white", minWidth: 132, padding: "15px 18px" }}><strong>{plans.length}</strong><span>planos</span></div>
+            <div className="stat"><strong>{plans.length}</strong><span>planos</span></div>
           </div>
         </div>
         <div className="split-layout" style={!canEdit ? { gridTemplateColumns: "1fr" } : undefined}>

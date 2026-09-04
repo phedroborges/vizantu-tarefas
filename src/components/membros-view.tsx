@@ -109,7 +109,7 @@ export function MembrosView({
             <p>Gerencie quem tem acesso ao app, o papel de cada um, se pode usar a IA, e quais projetos consegue ver.</p>
           </div>
           <div className="stats" style={{ display: "flex", gap: 1, background: "var(--line)", border: "1px solid var(--line)" }}>
-            <div className="stat" style={{ background: "white", minWidth: 132, padding: "15px 18px" }}><strong>{members.length}</strong><span>usuários</span></div>
+            <div className="stat"><strong>{members.length}</strong><span>usuários</span></div>
           </div>
         </div>
         <div className="split-layout">

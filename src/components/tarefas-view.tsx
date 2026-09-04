@@ -29,6 +29,7 @@ import { DueDateValue } from "@/components/due-date-value";
 import { Avatar, AvatarName } from "@/components/avatar";
 import { celebrateFrom } from "@/lib/celebrate";
 import { TaskToolbar } from "@/components/task-toolbar";
+import { useArrastoDeColuna } from "@/components/vz/use-resize";
 
 const WEEKDAYS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 const NO_ASSIGNEE = "none";
@@ -144,6 +145,28 @@ function InlineDueDateCell({ task, locked, dateFormat, onChange, onLockedClick }
   );
 }
 
+// Largura de partida de cada coluna. Só entra em jogo enquanto a pessoa não
+// arrastou nada — a partir daí vale o que ela escolheu.
+const LARGURA_PADRAO: Record<string, number> = {
+  name: 330,
+  formatTags: 150,
+  channelTags: 140,
+  categoryTags: 140,
+  assignee: 190,
+  dueDate: 130,
+  status: 200,
+  lists: 150,
+  driveLink: 150,
+};
+
+// Duplo clique na divisória devolve a largura padrão daquela coluna — o mesmo
+// gesto de planilha, que é onde as pessoas aprenderam isto.
+function semColuna(larguras: Record<string, number>, chave: string): Record<string, number> {
+  const copia = { ...larguras };
+  delete copia[chave];
+  return copia;
+}
+
 export function TarefasView({
   initialTasks,
   initialProjects,
@@ -205,7 +228,24 @@ export function TarefasView({
     });
     return () => { active = false; };
   }, [hasSavedPreferences, replacePreferences]);
-  const { taskView: view, taskColumns: visibleColumns, dateFormat, showFinalized } = preferences;
+  const { taskView: view, taskColumns: visibleColumns, taskColumnWidths, dateFormat, showFinalized } = preferences;
+
+  // Largura de coluna: o título da tarefa NUNCA quebra em duas linhas — ele
+  // trunca — e quem precisa de mais espaço arrasta a divisória do cabeçalho.
+  // A largura fica salva nas preferências da pessoa, não no navegador.
+  const [larguraEmCurso, setLarguraEmCurso] = useState<Record<string, number> | null>(null);
+  const larguras = larguraEmCurso ?? (taskColumnWidths as Record<string, number>);
+  const { arrastando, iniciar: iniciarArrasto } = useArrastoDeColuna({
+    larguras,
+    onLargura: (chave, largura) => setLarguraEmCurso((atual) => ({ ...(atual ?? taskColumnWidths as Record<string, number>), [chave]: largura })),
+    onFim: (finais) => {
+      setLarguraEmCurso(null);
+      updatePreferences({ taskColumnWidths: finais });
+    },
+  });
+  function larguraDe(chave: string) {
+    return larguras[chave] ?? LARGURA_PADRAO[chave] ?? 140;
+  }
   const setView = (next: MemberPreferences["taskView"]) => updatePreferences({ taskView: next });
   const setShowFinalized = (next: boolean) => updatePreferences({ showFinalized: next });
   const setDateFormat = (next: MemberPreferences["dateFormat"]) => updatePreferences({ dateFormat: next });
@@ -533,12 +573,32 @@ export function TarefasView({
             <>
               {visibleTasks.length ? (
                 <div className="project-table-wrap">
-                  <table className="task-table">
+                  <table className="task-table vz-table--fixed">
                     <thead>
                       <tr>
-                        <th>Tarefa</th>
+                        <th style={{ width: larguraDe("name") }}>
+                          Tarefa
+                          <button
+                            type="button"
+                            className="vz-table__resizer"
+                            data-dragging={arrastando === "name"}
+                            aria-label="Redimensionar a coluna Tarefa"
+                            onPointerDown={(evento) => iniciarArrasto(evento, "name", larguraDe("name"), 200)}
+                            onDoubleClick={() => updatePreferences({ taskColumnWidths: semColuna(taskColumnWidths, "name") })}
+                          />
+                        </th>
                         {TASK_COLUMNS.filter((column) => visibleColumns.includes(column.key)).map((column) => (
-                          <th key={column.key}>{column.label}</th>
+                          <th key={column.key} style={{ width: larguraDe(column.key) }}>
+                            {column.label}
+                            <button
+                              type="button"
+                              className="vz-table__resizer"
+                              data-dragging={arrastando === column.key}
+                              aria-label={`Redimensionar a coluna ${column.label}`}
+                              onPointerDown={(evento) => iniciarArrasto(evento, column.key, larguraDe(column.key))}
+                              onDoubleClick={() => updatePreferences({ taskColumnWidths: semColuna(taskColumnWidths, column.key) })}
+                            />
+                          </th>
                         ))}
                       </tr>
                     </thead>

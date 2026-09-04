@@ -40,7 +40,28 @@ describe("preferências de exibição por pessoa", () => {
   it("chave desconhecida no corpo do PATCH não entra", () => {
     const next = mergePreferences(defaultPreferences(), { statusColors: { finalizado: "#000000" }, admin: true });
     expect(next).toEqual(defaultPreferences());
-    expect(Object.keys(next).sort()).toEqual(["dateFormat", "showFinalized", "taskColumns", "taskView"]);
+    expect(Object.keys(next).sort()).toEqual(["dateFormat", "showFinalized", "taskColumnWidths", "taskColumns", "taskView"]);
+  });
+
+  // A largura de coluna já foi perdida em silêncio uma vez: mergePreferences
+  // lista cada chave à mão, e quem esqueceu de listar a nova viu o arrasto
+  // funcionar na tela e sumir ao soltar. Estes três travam isso.
+  it("largura de coluna atravessa o merge", () => {
+    const next = mergePreferences(defaultPreferences(), { taskColumnWidths: { name: 420, status: 210 } });
+    expect(next.taskColumnWidths).toEqual({ name: 420, status: 210 });
+  });
+
+  it("largura de coluna sobrevive a um PATCH de outra preferência", () => {
+    const current = normalizePreferences({ taskColumnWidths: { name: 420 } });
+    expect(mergePreferences(current, { dateFormat: "relativo" }).taskColumnWidths).toEqual({ name: 420 });
+  });
+
+  it("largura absurda ou de coluna inexistente não passa", () => {
+    const next = normalizePreferences({
+      taskColumnWidths: { name: -4000, status: 99999, dueDate: "muito", inventada: 200, assignee: 180 },
+    });
+    // Presa entre 72 e 720; texto e coluna desconhecida somem.
+    expect(next.taskColumnWidths).toEqual({ name: 72, status: 720, assignee: 180 });
   });
 
   it("liga e desliga coluna sem duplicar", () => {

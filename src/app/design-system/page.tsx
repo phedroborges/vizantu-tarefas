@@ -113,10 +113,11 @@ export default function DesignSystemPage() {
                 <li><b>Feito:</b>{" "}etapa com anel de progresso e tinte suave, na tela de tarefas e na do plano.</li>
                 <li><b>Feito:</b>{" "}tela do plano reconstruída — cabeçalho com o estado, fluxo em faixa, abas de visão e a aprovação como uma delas.</li>
                 <li><b>Falta:</b>{" "}trocar as regras da ponte pelos tokens diretos, tela a tela, até o bloco de compatibilidade poder morrer.</li>
-                <li><b>Falta:</b>{" "}board no plano, colunas arrastáveis na tabela de tarefas e o miolo do pacote (seção 15) como tela de verdade.</li>
+                <li><b>Feito:</b>{" "}board no plano (arrastar entre colunas muda a etapa), colunas arrastáveis na tabela de tarefas com a largura salva na conta, e o miolo do pacote como tela de verdade em{" "}<code>/planos/[id]/pacote/[pacoteId]</code>.</li>
+                <li><b>Falta:</b>{" "}tabela de tarefas em board, e o portal do cliente ganhar o mesmo tratamento estrutural que o plano ganhou.</li>
               </ol>
               <p className="vz-caption" style={{ maxWidth: 720 }}>
-                As seções 14 e 15 continuam sendo maquete: a 14 já virou tela de verdade, a 15 ainda não.
+                As seções 14 e 15 deixaram de ser maquete: as duas viraram tela de verdade no app.
               </p>
             </footer>
           </div>

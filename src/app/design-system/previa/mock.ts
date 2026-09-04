@@ -6,7 +6,7 @@
 // as props aqui e a tela renderiza igualzinho à de produção.
 
 import type {
-  Member, Plan, PlanCaptacao, PlanItemApproval, Project, StatusColor, Tag, Task,
+  Contract, KnowledgeDoc, Member, Plan, PlanCaptacao, PlanItemApproval, Project, StatusColor, Tag, Task,
 } from "@/lib/types";
 import { DEFAULT_STATUS_COLORS, TASK_STATUSES } from "@/lib/types";
 
@@ -120,4 +120,65 @@ export const USUARIO = {
   id: "m4", name: "Phedro Borges", email: "phedro@vizantu.com.br",
   role: "dono" as const, aiEnabled: false, active: true,
   accessibleProjectIds: "all" as const, accessibleListKinds: "all" as const,
+};
+
+
+// ---------- Telas que também entram na prévia ----------
+
+export const MARCAS: Plan[] = [
+  { id: "marca-1", projectId: "proj-2", title: "Identidade Casa Nova", kind: "brand", status: "active", source: "native", createdAt: AGORA, updatedAt: AGORA },
+  { id: "marca-2", projectId: "proj-3", title: "Reposicionamento Vitta", kind: "brand", status: "draft", source: "native", createdAt: AGORA, updatedAt: AGORA },
+];
+
+export const CONTAGEM_MARCAS: Record<string, { completed: number; total: number }> = {
+  "marca-1": { completed: 5, total: 8 },
+  "marca-2": { completed: 1, total: 8 },
+};
+
+export const CONTRATOS: Contract[] = [
+  {
+    id: "ct-1", projectId: "proj-1", title: "TerraNet — Gestão de marca", templateId: "gestao-marca",
+    paymentMode: "pre", paymentStructure: "mensal", status: "assinado",
+    fields: { contratante_nome: "TerraNet Telecom LTDA", valor_mensal: "4800", vigencia_meses: "12" },
+    body: "", createdAt: AGORA, updatedAt: AGORA,
+  },
+  {
+    id: "ct-2", projectId: "proj-2", title: "Casa Nova — Tráfego pago", templateId: "trafego",
+    paymentMode: "pos", paymentStructure: "escalonado", status: "enviado",
+    fields: { contratante_nome: "Casa Nova Móveis ME", valor_mensal: "2600", vigencia_meses: "6" },
+    body: "", createdAt: AGORA, updatedAt: AGORA,
+  },
+  {
+    id: "ct-3", projectId: "proj-3", title: "Clínica Vitta — Social media", templateId: "social",
+    paymentMode: "pre", paymentStructure: "mensal", status: "rascunho",
+    fields: { contratante_nome: "" }, body: "", createdAt: AGORA, updatedAt: AGORA,
+  },
+];
+
+export const DOCUMENTOS: KnowledgeDoc[] = [
+  { id: "d1", title: "Como escrever um roteiro de Reels", content: "## Estrutura\n\nGancho nos 2 primeiros segundos, desenvolvimento, chamada.", createdAt: AGORA, updatedAt: AGORA },
+  { id: "d2", title: "Padrão de nomenclatura de arquivos", content: "cliente_formato_data_versao", createdAt: AGORA, updatedAt: AGORA },
+  { id: "d3", title: "Checklist de captação", content: "Equipamento, locação, figurino, roteiro impresso.", createdAt: AGORA, updatedAt: AGORA },
+];
+
+export const ACESSO_PROJETOS: Record<string, string[]> = { m1: ["proj-1"], m2: ["proj-1", "proj-2"] };
+export const ACESSO_LISTAS: Record<string, ("estrategica" | "criativa")[]> = { m1: ["criativa"], m2: ["criativa", "estrategica"] };
+
+// Números já calculados do dashboard — a página real calcula isto a partir do
+// banco; aqui eles vêm prontos porque quem estamos olhando é o desenho.
+export const DASHBOARD = {
+  total: TAREFAS.length,
+  done: TAREFAS.filter((t) => t.status === "finalizado").length,
+  inProgress: 4,
+  overdue: 1,
+  projectOverview: PROJETOS.map((project, i) => {
+    const total = [6, 3, 1][i] ?? 1;
+    const done = [4, 1, 0][i] ?? 0;
+    return { project, total, done, rate: Math.round((done / total) * 100) };
+  }),
+  ranking: [
+    { name: "Cynthia Almeida", count: 4 },
+    { name: "Erika Iorrana", count: 4 },
+    { name: "Luis Fontes", count: 2 },
+  ],
 };
