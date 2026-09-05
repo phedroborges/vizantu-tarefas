@@ -490,7 +490,7 @@ function ApprovalModal({
 
   return (
     <div className="cd-overlay" onClick={onClose}>
-      <div className="cd-approval-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="cd-approval-modal cd-content-review-modal" onClick={(e) => e.stopPropagation()}>
         <button className="cd-close" type="button" onClick={onClose} aria-label="Fechar"><X size={16} /></button>
         <h3>{item.name}</h3>
         <div className="cd-modal-context"><Tag tone="violet" icon={<ContentIcon format={item.formatLabel} size={10} />}>{item.formatLabel || "Formato não informado"}</Tag><Tag tone="blue">{item.channelLabel || "Canal não informado"}</Tag>{item.dueDate ? <Tag outline>{new Date(`${item.dueDate}T12:00:00`).toLocaleDateString("pt-BR")}</Tag> : null}</div>
