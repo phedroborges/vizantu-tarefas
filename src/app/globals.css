@@ -1673,6 +1673,51 @@ a.upcoming-item { color: inherit; text-decoration: none; }
 
 .plan-screen { padding-bottom: 72px; }
 
+/* Plano e pacote usam literalmente a composição do Design System. Estas
+   regras só organizam os componentes vz-*; aparência, tipografia, bordas e
+   estados continuam pertencendo às primitivas compartilhadas. */
+.vz-plan-page,
+.vz-package-page { display: grid; gap: 18px; }
+.vz-plan-page .vz-pagehead,
+.vz-package-page .vz-pagehead { margin-bottom: 0; }
+.vz-plan-tags,
+.vz-package-tags { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.vz-plan-flow { overflow: hidden; }
+.vz-plan-flow__inner { display: grid; gap: 14px; padding: 18px; }
+.vz-plan-flow__top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.vz-plan-flow__top .vz-eyebrow { margin: 0; }
+.vz-plan-flow__count { margin-left: auto; }
+.vz-plan-flow__actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.vz-plan-packages { overflow: hidden; }
+.vz-plan-package-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(214px, 1fr)); }
+.vz-plan-package { display: grid; gap: 10px; padding: 14px; min-width: 0; }
+.vz-plan-package .plan-captacao-card-head { margin: 0; }
+.vz-plan-package .plan-captacao-meta { margin: 0; justify-content: space-between; }
+.vz-plan-package-form { align-content: center; min-height: 126px; padding: 14px; border: 1px dashed var(--vz-line-strong); border-radius: var(--vz-r-lg); }
+.vz-plan-content-card { padding: 0; overflow: hidden; }
+.vz-plan-search { display: flex; align-items: center; gap: 8px; height: var(--vz-h-sm); padding: 0 10px; border: 1px solid var(--vz-line-strong); border-radius: var(--vz-r-sm); background: var(--vz-panel); color: var(--vz-text-faint); }
+.vz-plan-search input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--vz-text); font: inherit; font-size: var(--vz-t-xs); }
+.vz-plan-content-card .plan-group-label { padding-left: var(--vz-s-4); padding-right: var(--vz-s-4); }
+.vz-plan-content-card.is-grid-view .plan-item-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; padding: 10px 16px 16px; }
+.vz-plan-content-card.is-grid-view .plan-item-row { min-height: 96px; align-items: flex-start; padding: 14px; border: 1px solid var(--vz-line); border-radius: var(--vz-r-md); background: var(--vz-panel); box-shadow: var(--vz-shadow-xs); }
+.vz-plan-content-card.is-grid-view .plan-item-row-side { align-items: flex-end; flex-direction: column; }
+
+.vz-package-page .vz-crumb { margin-bottom: -14px; }
+.vz-package-facts { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.vz-package-fact { display: grid; gap: 9px; padding: 14px; }
+.vz-package-check-card,
+.vz-package-content-card { overflow: hidden; }
+.vz-package-check-body { display: grid; gap: 12px; }
+.vz-package-content-card .project-table-wrap { overflow-x: auto; }
+
+@media (max-width: 700px) {
+  .vz-plan-flow__count { width: 100%; margin-left: 0; }
+  .vz-plan-package-grid,
+  .vz-package-facts { grid-template-columns: 1fr; }
+  .vz-plan-page .vz-pagehead__actions,
+  .vz-package-page .vz-pagehead__actions { width: 100%; }
+}
+
 .plan-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--vz-s-6); flex-wrap: wrap; margin-bottom: 14px; }
 .plan-head__text { min-width: 0; }
 .plan-head__text h1 { margin-bottom: 10px; }

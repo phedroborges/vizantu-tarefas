@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDays, Camera, ChevronRight, ClipboardList, Link as LinkIcon, MessageSquareText, Package, Palette, Plus, Send, Trash2 } from "lucide-react";
+import { CalendarDays, Camera, ChevronRight, ClipboardList, Filter, LayoutGrid, Link as LinkIcon, List, MessageSquareText, Package, Palette, Plus, Search, Send, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { PlanCalendar } from "@/components/plan-calendar";
@@ -10,13 +10,14 @@ import { StatusTag, statusColorMap } from "@/components/status-tag";
 import { Avatar } from "@/components/avatar";
 import { ClientLinkPanel } from "@/components/client-link-panel";
 import { DatePicker } from "@/components/vz/date-picker";
+import { AvatarStack, Button, Card, Count, Progress, Segmented, Tag, Tabs } from "@/components/vz";
 import { useConfirm } from "@/components/confirm-dialog";
 import { formatDueDate } from "@/lib/dates";
 import { networkError, responseError } from "@/lib/request-error";
 import { summarizeApprovalRound } from "@/lib/approval-workflow";
 import { inheritsCaptureEditor } from "@/lib/assignee-inheritance";
 import { TASK_STATUSES } from "@/lib/types";
-import type { Member, Plan, PlanApprovalResponse, PlanCaptacao, PlanEvent, PlanItemApproval, Project, StatusColor, StatusGroup, Tag, Task } from "@/lib/types";
+import type { Member, Plan, PlanApprovalResponse, PlanCaptacao, PlanEvent, PlanItemApproval, Project, StatusColor, StatusGroup, Tag as TagModel, Task } from "@/lib/types";
 
 const NO_MEMBER = "none";
 const NO_FORMAT_KEY = "__sem_formato__";
@@ -227,9 +228,9 @@ export function PlanoDetailView({
   approvalResponses: PlanApprovalResponse[];
   captureSuggestions: PlanEvent[];
   members: Member[];
-  formatTags: Tag[];
-  channelTags: Tag[];
-  categoryTags: Tag[];
+  formatTags: TagModel[];
+  channelTags: TagModel[];
+  categoryTags: TagModel[];
   statusColors: StatusColor[];
   currentUserId: string;
   canEdit?: boolean;
@@ -254,6 +255,8 @@ export function PlanoDetailView({
   // se copia uma vez por mês. Virou um botão que abre o painel quando precisa.
   const [linkAberto, setLinkAberto] = useState(false);
   const [workflowError, setWorkflowError] = useState("");
+  const [contentView, setContentView] = useState<"lista" | "grade">("lista");
+  const [query, setQuery] = useState("");
   const { confirm, ConfirmDialog } = useConfirm();
 
   const isContent = plan.kind === "content";
@@ -502,7 +505,6 @@ export function PlanoDetailView({
 
   const processItems = useMemo(() => [...tasks].sort((a, b) => (a.sequenceOrder ?? 0) - (b.sequenceOrder ?? 0)), [tasks]);
 
-  const progressRate = activeSummary.reviewedRate;
 
 
   // Responsável do pacote: texto até alguém clicar. O seletor só é montado
@@ -539,6 +541,7 @@ export function PlanoDetailView({
   }
 
   function renderTaskRow(task: Task) {
+    if (query.trim() && !visibleTasks.includes(task)) return null;
     const categories = task.categoryTagIds.map((id) => categoryTagById.get(id)?.label).filter(Boolean);
     const assignee = task.assigneeId ? memberById.get(task.assigneeId)?.name : undefined;
     const approval = approvalByTask.get(task.id);
@@ -598,26 +601,32 @@ export function PlanoDetailView({
     ] : []),
     { value: "aprovacao" as const, label: "Aprovação", count: aguardandoCliente || undefined },
   ];
+  const visibleTasks = query.trim()
+    ? tasks.filter((task) => task.name.toLocaleLowerCase("pt-BR").includes(query.trim().toLocaleLowerCase("pt-BR")))
+    : tasks;
+  const planPeople = members
+    .filter((member) => member.active && tasks.some((task) => task.assigneeId === member.id))
+    .map((member) => ({ name: member.name, src: member.avatarUrl }));
 
   return (
     <>
-      <main className="admin-page dashboard plan-screen">
+      <main className="admin-page dashboard plan-screen vz-plan-page">
         {/* Cabeçalho: o estado do plano cabe na primeira tela, sem rolar. */}
-        <div className="plan-head">
-          <div className="plan-head__text">
-            <span className="eyebrow">{project.name}</span>
-            <h1>{plan.title}</h1>
-            <div className="plan-head__tags">
-              <span className="badge format">{tasks.length} {tasks.length === 1 ? "item" : "itens"}</span>
-              <span className="badge">{activeSummary.approved} aprovados</span>
-              {aguardandoCliente > 0 ? <span className="badge list">{aguardandoCliente} aguardando o cliente</span> : null}
-              {creativeBlockers.length ? <span className="badge is-danger">{creativeBlockers.length} pendências</span> : null}
+        <div className="vz-pagehead">
+          <div className="vz-pagehead__text">
+            <span className="vz-eyebrow">{project.name} · {plan.kind === "content" ? "Plano mensal" : "Plano"}</span>
+            <h1 className="vz-h1">{plan.title}</h1>
+            <div className="vz-plan-tags">
+              <Tag tone="amber">Em produção</Tag>
+              <Tag outline>{tasks.length} {tasks.length === 1 ? "conteúdo" : "conteúdos"}</Tag>
+              <Tag outline>{activeSummary.approved} aprovados</Tag>
+              {planPeople.length ? <AvatarStack people={planPeople} max={3} size="sm" /> : null}
             </div>
           </div>
-          <div className="plan-head__actions">
-            <button type="button" className="secondary-button" onClick={() => setLinkAberto((atual) => !atual)} aria-expanded={linkAberto}>
+          <div className="vz-pagehead__actions">
+            <Button type="button" variant="secondary" size="sm" onClick={() => setLinkAberto((atual) => !atual)} aria-expanded={linkAberto}>
               <LinkIcon size={14} /> Link do cliente
-            </button>
+            </Button>
             {isContent && canEdit ? (
               <PlanRescheduleButton
                 planId={plan.id}
@@ -627,10 +636,6 @@ export function PlanoDetailView({
           </div>
         </div>
 
-        {tasks.length ? (
-          <div className="plan-progress-track"><div className="plan-progress-fill" style={{ width: `${progressRate}%` }} /></div>
-        ) : null}
-
         {linkAberto ? (
           <ClientLinkPanel projectId={project.id} projectName={project.client || project.name} canEdit={canEdit} onToast={showToast} />
         ) : null}
@@ -639,44 +644,46 @@ export function PlanoDetailView({
             etapa, uma lista de requisitos e um parágrafo de ajuda. Virou uma
             faixa: em que rodada está, quanto falta, e o que fazer. */}
         {isContent ? (
-          <section className="plan-flow" aria-label="Fluxo de aprovação do plano">
-            <div className="plan-flow__top">
-              <span className="eyebrow">Fluxo do cliente · rodada {activeSummary.round}</span>
-              <span className="badge format">{activeStage === "copy" ? "Aprovação de texto" : "Aprovação de criativos"}</span>
-              <span className="plan-flow__count">{activeSummary.reviewed} de {activeSummary.total} revisados</span>
+          <Card tint className="vz-plan-flow" aria-label="Fluxo de aprovação do plano">
+            <div className="vz-plan-flow__inner">
+            <div className="vz-plan-flow__top">
+              <span className="vz-eyebrow">Fluxo do cliente · rodada {activeSummary.round}</span>
+              <Tag tone="violet">{activeStage === "copy" ? "Aprovação de texto" : "Aprovação de criativos"}</Tag>
+              <span className="vz-caption vz-plan-flow__count">{activeSummary.reviewed} de {activeSummary.total} revisados</span>
             </div>
-            <div className="plan-progress-track plan-progress-track--thin">
-              <div className="plan-progress-fill" style={{ width: `${activeSummary.reviewedRate}%` }} />
-            </div>
+            <Progress value={activeSummary.reviewed} total={activeSummary.total} label="Textos aprovados pelo cliente" />
             {workflowError ? <div className="form-message" role="alert">{workflowError}</div> : null}
             {canEdit ? (
-              <div className="plan-flow__actions">
-                <button type="button" className="success-button" onClick={() => openApprovalRound("copy")}><Send size={14} /> Enviar textos pendentes</button>
-                <button
+              <div className="vz-plan-flow__actions">
+                <Button type="button" variant="success" size="sm" onClick={() => openApprovalRound("copy")}><Send size={14} /> Enviar textos pendentes</Button>
+                <Button
                   type="button"
-                  className="secondary-button"
+                  variant="secondary"
+                  size="sm"
                   disabled={creativeBlockers.length > 0}
                   title={creativeBlockers.length ? "Resolva os requisitos indicados." : undefined}
                   onClick={() => openApprovalRound("creative")}
-                ><Palette size={14} /> Enviar criativos</button>
-                <span className="plan-flow__hint">
+                ><Palette size={14} /> Enviar criativos</Button>
+                <span className="vz-caption">
                   Textos aprovados {approvedTextCount}/{tasks.length} · links {linkedMaterialCount}/{tasks.length}
                   {creativeBlockers.length ? ` · faltam ${creativeBlockers.length} para abrir os criativos` : " · pronto para os criativos"}
                 </span>
               </div>
             ) : null}
-          </section>
+            </div>
+          </Card>
         ) : null}
 
         {isContent ? (
-          <section className="panel plan-packages">
-            <div className="panel-head">
-              <div>
-                <h2>Pacotes de produção</h2>
-                <p>Agrupe as entregas e escolha se o pacote exige captação ou segue direto para criação.</p>
+          <Card className="vz-plan-packages">
+            <div className="vz-card__head">
+              <div className="vz-card__title">
+                <h3 className="vz-h3">Pacotes de produção</h3>
+                <span className="vz-caption">Como as entregas se agrupam para gravar e editar</span>
               </div>
+              {canEdit ? <Button variant="ghost" size="sm" type="button" onClick={() => document.getElementById("novo-pacote")?.focus()}><Plus size={14} />Novo pacote</Button> : null}
             </div>
-            <div className="plan-captacao-row">
+            <div className="vz-card__body vz-plan-package-grid">
               {captacoes.map((c) => {
                 const count = tasks.filter((t) => t.captacaoId === c.id).length;
                 const captura = c.packageKind === "capture";
@@ -685,7 +692,7 @@ export function PlanoDetailView({
                 const abrir = (campo: string) => canEdit && setEditingField(`${c.id}:${campo}`);
 
                 return (
-                  <div key={c.id} className="plan-captacao-card">
+                  <article key={c.id} className="vz-card vz-card--interactive vz-plan-package">
                     <div className="plan-captacao-card-head">
                       <span className={`plan-package-icon ${c.packageKind}`}>{captura ? <Camera size={13} /> : <Palette size={13} />}</span>
                       {renamingCaptacaoId === c.id ? (
@@ -709,7 +716,7 @@ export function PlanoDetailView({
                           title={canEdit ? "Clique para renomear" : undefined}
                         >{c.label}</strong>
                       )}
-                      <em>{count}</em>
+                      <Count>{count}</Count>
                       {/* O pacote finalmente abre: é onde quem vai gravar
                           confere se está tudo pronto pra captação. */}
                       <Link className="plan-captacao-open" href={`/planos/${plan.id}/pacote/${c.id}`} aria-label={`Abrir ${c.label}`}>
@@ -717,6 +724,8 @@ export function PlanoDetailView({
                       </Link>
                       {canEdit ? <button type="button" onClick={() => removeCaptacao(c)} aria-label={`Remover ${c.label}`}><Trash2 size={12} /></button> : null}
                     </div>
+
+                    <Progress value={tasks.filter((task) => task.captacaoId === c.id && TASK_STATUSES.find((status) => status.value === task.status)?.group === "feita").length} total={count || 1} thin />
 
                     <dl className="plan-captacao-meta">
                       <div>
@@ -752,13 +761,13 @@ export function PlanoDetailView({
                         <dd>{renderMemberField(c, "editingAssigneeId", editando("edicao"), () => abrir("edicao"))}</dd>
                       </div>
                     </dl>
-                  </div>
+                  </article>
                 );
               })}
               {!captacoes.length ? <span className="plan-item-empty">Nenhum pacote ainda.</span> : null}
               {canEdit ? (
-                <form onSubmit={addCaptacao} className="plan-captacao-form">
-                  <input value={newCaptacaoLabel} onChange={(e) => setNewCaptacaoLabel(e.target.value)} placeholder="Ex.: Carrosséis — Pacote 1" />
+                <form onSubmit={addCaptacao} className="plan-captacao-form vz-plan-package-form">
+                  <input id="novo-pacote" value={newCaptacaoLabel} onChange={(e) => setNewCaptacaoLabel(e.target.value)} placeholder="Ex.: Carrosséis — Pacote 1" />
                   <select aria-label="Tipo do novo pacote" value={newPackageKind} onChange={(event) => setNewPackageKind(event.target.value as PlanCaptacao["packageKind"])}>
                     <option value="creation">Pacote de criação</option>
                     <option value="capture">Exige captação</option>
@@ -767,24 +776,20 @@ export function PlanoDetailView({
                 </form>
               ) : null}
             </div>
-          </section>
+          </Card>
         ) : null}
 
         {/* Conteúdo, calendário e aprovação: mesma lista, três leituras. */}
-        <section className="panel list-panel">
-          <div className="plan-tabs" role="tablist">
-            {abas.map((item) => (
-              <button
-                key={item.value}
-                role="tab"
-                type="button"
-                aria-selected={aba === item.value}
-                onClick={() => setAba(item.value)}
-              >
-                {item.label}
-                {item.count !== undefined ? <em>{item.count}</em> : null}
-              </button>
-            ))}
+        <Card className={`vz-plan-content-card${contentView === "grade" ? " is-grid-view" : ""}`}>
+          <div className="vz-tablebar">
+          <div className="vz-tablebar__tabs">
+            <Tabs value={aba} onChange={setAba} tabs={abas} />
+          </div>
+          {aba === "conteudos" ? <div className="vz-tablebar__controls">
+            <div className="vz-toolbar__search vz-plan-search"><Search size={14} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar no plano…" /></div>
+            <Button variant="secondary" size="sm"><Filter size={14} />Filtros</Button>
+            <div className="vz-toolbar__spacer" />
+            <Segmented size="sm" value={contentView} onChange={setContentView} options={[{ value: "lista", label: "Lista", icon: <List size={13} /> }, { value: "grade", label: "Grade", icon: <LayoutGrid size={13} /> }]} />
             {canEdit && aba === "conteudos" ? (
               <form className="plan-quick-add" onSubmit={addItem}>
                 <input
@@ -804,13 +809,18 @@ export function PlanoDetailView({
                 <button type="submit" className="icon-button" aria-label="Adicionar item"><Plus size={14} /></button>
               </form>
             ) : null}
+          </div> : null}
           </div>
 
           {aba === "conteudos" ? (
             <>
               {isContent ? (
                 <>
-                  {formatTags.map((t) => renderFormatGroup(t.id, t.label))}
+                  {formatTags.map((t) => {
+                    const original = itemsByFormat.get(t.id) || [];
+                    if (query && !original.some((task) => visibleTasks.includes(task))) return null;
+                    return renderFormatGroup(t.id, t.label);
+                  })}
                   {renderFormatGroup(NO_FORMAT_KEY, "Sem formato")}
                 </>
               ) : (
@@ -850,7 +860,7 @@ export function PlanoDetailView({
               onOpenTask={setEditingTask}
             />
           ) : null}
-        </section>
+        </Card>
       </main>
 
       {editingTask !== undefined ? (

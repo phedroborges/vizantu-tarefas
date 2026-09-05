@@ -13,14 +13,14 @@
 // tela que não existia sem desenhar uma peça nova.
 
 import Link from "next/link";
-import { Camera, ChevronRight, CircleAlert, Check, Clapperboard, Paperclip, UserRound } from "lucide-react";
+import { Calendar, Camera, ChevronRight, CircleAlert, Check, Clapperboard, MapPin, Paperclip, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Avatar } from "@/components/avatar";
 import { StatusTag, statusColorMap } from "@/components/status-tag";
 import { TaskModal } from "@/components/task-modal";
-import { formatDueDate } from "@/lib/dates";
+import { Button, Card, Progress, Tag } from "@/components/vz";
 import { DONE_STATUSES } from "@/lib/types";
-import type { Member, Plan, PlanCaptacao, Project, StatusColor, Tag, Task } from "@/lib/types";
+import type { Member, Plan, PlanCaptacao, Project, StatusColor, Tag as TagModel, Task } from "@/lib/types";
 
 export function PacoteDetailView({
   plan,
@@ -42,9 +42,9 @@ export function PacoteDetailView({
   captacoes: PlanCaptacao[];
   initialTasks: Task[];
   members: Member[];
-  formatTags: Tag[];
-  channelTags: Tag[];
-  categoryTags: Tag[];
+  formatTags: TagModel[];
+  channelTags: TagModel[];
+  categoryTags: TagModel[];
   statusColors: StatusColor[];
   currentUserId: string;
   canEdit?: boolean;
@@ -58,6 +58,7 @@ export function PacoteDetailView({
   const prontos = tasks.filter((task) => DONE_STATUSES.includes(task.status)).length;
   const comRoteiro = tasks.filter((task) => (task.description || "").trim().length > 40).length;
   const comLink = tasks.filter((task) => Boolean(task.driveLink)).length;
+  const firstMaterialLink = tasks.find((task) => task.driveLink)?.driveLink;
 
   // A checklist não é uma lista digitada: cada linha é derivada do estado real
   // das tarefas do pacote. Uma checklist que alguém marca à mão vira decoração
@@ -76,8 +77,8 @@ export function PacoteDetailView({
 
   return (
     <>
-      <main className="admin-page dashboard plan-screen">
-        <div className="vz-crumb" style={{ marginBottom: 10 }}>
+      <main className="admin-page dashboard plan-screen vz-package-page">
+        <div className="vz-crumb">
           <Link href="/planos">Planos</Link>
           <ChevronRight size={13} />
           <Link href={`/planos/${plan.id}`}>{project.name}</Link>
@@ -87,42 +88,38 @@ export function PacoteDetailView({
           <b>{captacao.label}</b>
         </div>
 
-        <div className="plan-head">
-          <div className="plan-head__text">
-            <h1>{captacao.label}</h1>
-            <div className="plan-head__tags">
-              <span className={`badge ${captura ? "list" : "format"}`}>
-                {captura ? <Camera size={11} /> : <Clapperboard size={11} />}
-                {captura ? "Exige captação" : "Direto pra criação"}
-              </span>
-              <span className="badge">{tasks.length} {tasks.length === 1 ? "conteúdo" : "conteúdos"}</span>
-              <span className="badge">{prontos} prontos</span>
-              {pendencias ? <span className="badge is-danger">{pendencias} {pendencias === 1 ? "pendência" : "pendências"}</span> : null}
+        <div className="vz-pagehead">
+          <div className="vz-pagehead__text">
+            <h1 className="vz-h1">{captacao.label}</h1>
+            <div className="vz-package-tags">
+              <Tag tone="violet" size="lg" icon={<Clapperboard size={12} />}>{tasks[0]?.formatTagIds?.length ? formatTags.find((tag) => tag.id === tasks[0].formatTagIds[0])?.label || "Conteúdo" : "Conteúdo"}</Tag>
+              <Tag tone="amber" size="lg" icon={<Camera size={12} />}>{captura ? "Exige captação" : "Direto pra criação"}</Tag>
+              <Tag outline size="lg">{tasks.length} {tasks.length === 1 ? "conteúdo" : "conteúdos"}</Tag>
             </div>
+          </div>
+          <div className="vz-pagehead__actions">
+            <Button variant="secondary" size="sm" disabled={!firstMaterialLink} onClick={() => firstMaterialLink && window.open(firstMaterialLink, "_blank", "noopener,noreferrer")}><Paperclip size={14} />Material bruto</Button>
+            {canEdit ? <Button variant="primary" size="sm" onClick={() => setEditingTask(null)}><Plus size={14} />Adicionar ao pacote</Button> : null}
           </div>
         </div>
 
-        <div className="pacote-fichas">
-          <Ficha icone={<Camera size={16} />} tom="violet" rotulo={captura ? "Quem grava" : "Quem cria"} membro={captura ? captacao.recordingAssigneeId : captacao.editingAssigneeId} memberById={memberById} />
-          <Ficha icone={<Clapperboard size={16} />} tom="green" rotulo={captura ? "Quem edita" : "Revisão"} membro={captacao.editingAssigneeId} memberById={memberById} />
-          <Ficha icone={<UserRound size={16} />} tom="blue" rotulo="Cliente" texto={project.client || project.name} apoio={project.clientCity} />
-          <Ficha icone={<Paperclip size={16} />} tom="amber" rotulo="Material" texto={`${comLink} de ${tasks.length} com link`} apoio={comLink === tasks.length ? "tudo anexado" : "faltando"} />
+        <div className="vz-package-facts">
+          <Ficha icone={<Calendar size={16} />} tom="violet" rotulo={captura ? "Data da captação" : "Prazo de criação"} texto="A definir" apoio="data do pacote" />
+          <Ficha icone={<MapPin size={16} />} tom="blue" rotulo="Local" texto={project.clientCity || "A definir"} apoio={project.client || project.name} />
+          <Ficha icone={<Camera size={16} />} tom="amber" rotulo={captura ? "Quem grava" : "Quem cria"} membro={captura ? captacao.recordingAssigneeId : captacao.editingAssigneeId} memberById={memberById} apoio={captura ? "captação" : "criação"} />
+          <Ficha icone={<Clapperboard size={16} />} tom="green" rotulo={captura ? "Quem edita" : "Revisão"} membro={captacao.editingAssigneeId} memberById={memberById} apoio={`${prontos} de ${tasks.length} prontos`} />
         </div>
 
-        <section className="panel" style={{ marginBottom: 18 }}>
-          <div className="panel-head">
-            <div>
-              <h2>{captura ? "Pronto para gravar?" : "Pronto para criar?"}</h2>
-              <p>Cada linha é lida do estado real dos conteúdos — nada aqui se marca à mão.</p>
+        <Card className="vz-package-check-card">
+          <div className="vz-card__head">
+            <div className="vz-card__title">
+              <h3 className="vz-h3">{captura ? "Pronto para gravar?" : "Pronto para criar?"}</h3>
+              <span className="vz-caption">Checklist atualizado com o estado real dos conteúdos</span>
             </div>
-            <span className={`badge ${pendencias ? "is-danger" : "is-ok"}`}>
-              {pendencias ? `${pendencias} ${pendencias === 1 ? "pendência" : "pendências"}` : "tudo pronto"}
-            </span>
+            <Tag tone={pendencias ? "amber" : "green"} size="lg">{pendencias ? `${pendencias} ${pendencias === 1 ? "pendência" : "pendências"}` : "Tudo pronto"}</Tag>
           </div>
-          <div style={{ padding: "16px 20px 20px", display: "grid", gap: 12 }}>
-            <div className="plan-progress-track plan-progress-track--thin">
-              <div className="plan-progress-fill" style={{ width: `${Math.round(((checklist.length - pendencias) / checklist.length) * 100)}%` }} />
-            </div>
+          <div className="vz-card__body vz-package-check-body">
+            <Progress value={checklist.length - pendencias} total={checklist.length} label="Itens da checklist" tone={pendencias ? "amber" : "green"} />
             <ul className="pacote-checklist">
               {checklist.map((linha) => (
                 <li key={linha.texto} className={linha.ok ? "is-ok" : "is-pendente"}>
@@ -133,24 +130,24 @@ export function PacoteDetailView({
               ))}
             </ul>
           </div>
-        </section>
+        </Card>
 
-        <section className="panel list-panel">
-          <div className="panel-head">
-            <div>
-              <h2>Conteúdos deste pacote</h2>
-              <p>Na ordem de {captura ? "gravação" : "criação"}.</p>
+        <Card className="vz-package-content-card">
+          <div className="vz-card__head">
+            <div className="vz-card__title">
+              <h3 className="vz-h3">Conteúdos deste pacote</h3>
+              <span className="vz-caption">Na ordem de {captura ? "gravação" : "criação"}</span>
             </div>
+            <Button variant="ghost" size="sm">Ver roteiros</Button>
           </div>
           {tasks.length ? (
             <div className="project-table-wrap">
-              <table className="task-table">
+              <table className="vz-table vz-table--fixed" style={{ minWidth: 720 }}>
                 <thead>
                   <tr>
                     <th style={{ width: 52 }}>#</th>
                     <th>Conteúdo</th>
                     <th style={{ width: 170 }}>Responsável</th>
-                    <th style={{ width: 130 }}>Entrega</th>
                     <th style={{ width: 200 }}>Etapa</th>
                     <th style={{ width: 130 }}>Roteiro</th>
                   </tr>
@@ -162,11 +159,10 @@ export function PacoteDetailView({
                     return (
                       <tr key={task.id} onClick={() => setEditingTask(task)} style={{ cursor: "pointer" }}>
                         <td style={{ color: "var(--vz-text-faint)", fontFamily: "var(--vz-font-mono)", fontSize: 11 }}>{String(indice + 1).padStart(2, "0")}</td>
-                        <td><span className="task-name">{task.name}</span></td>
+                        <td><span className="vz-table__primary" title={task.name}>{task.name}</span></td>
                         <td>{dono ? <span className="avatar-name"><Avatar name={dono.name} imageUrl={dono.avatarUrl} size={20} /><span>{dono.name}</span></span> : <span className="meta-empty">—</span>}</td>
-                        <td><span className="due-value">{task.dueDate ? formatDueDate(task.dueDate) : "—"}</span></td>
                         <td><StatusTag status={task.status} colorByStatus={cores} /></td>
-                        <td><span className={`badge ${temRoteiro ? "is-ok" : "list"}`}>{temRoteiro ? "Pronto" : "Falta escrever"}</span></td>
+                        <td><Tag tone={temRoteiro ? "green" : "amber"}>{temRoteiro ? "Pronto" : "Falta escrever"}</Tag></td>
                       </tr>
                     );
                   })}
@@ -180,7 +176,7 @@ export function PacoteDetailView({
               <p>Volte ao plano e mova um conteúdo para cá pelo modal da tarefa.</p>
             </div>
           )}
-        </section>
+        </Card>
       </main>
 
       {editingTask !== undefined ? (
@@ -215,7 +211,7 @@ function Ficha({
 }) {
   const pessoa = membro && memberById ? memberById.get(membro) : undefined;
   return (
-    <div className="pacote-ficha">
+    <Card className="vz-package-fact">
       <span className="pacote-ficha__topo">
         <span className={`metric-icon ${tom === "violet" ? "violet" : tom}`}>{icone}</span>
         <span className="ds-label">{rotulo}</span>
@@ -225,6 +221,6 @@ function Ficha({
         <strong>{pessoa?.name ?? texto ?? "definir"}</strong>
       </span>
       {apoio ? <small>{apoio}</small> : null}
-    </div>
+    </Card>
   );
 }
