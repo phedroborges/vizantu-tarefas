@@ -6,7 +6,7 @@ const db = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_
 
 // O jeito de ver é de cada pessoa; as cores são do time. Estes testes travam
 // as duas metades contra o servidor de verdade.
-const PADRAO = { taskView: "lista", taskColumns: null, dateFormat: "inteligente", showFinalized: false };
+const PADRAO = { taskView: "lista", taskColumns: null, dateFormat: "inteligente", showFinalized: false, taskFilters: { query: "", projectId: "", assigneeId: "", status: "", list: "" } };
 
 test.describe("preferências de exibição", () => {
   test("1. seguem a conta, não o navegador", async ({ page }) => {
@@ -140,5 +140,15 @@ test.describe("preferências de exibição", () => {
     expect(preferences.dateFormat).toBe("curto"); // a conta manda
     // e a chave velha foi embora mesmo assim
     await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("vizantu-tarefas:date-format:v1")), { timeout: 10_000 }).toBeNull();
+  });
+
+  test("9. filtros voltam depois de recarregar e são individuais", async ({ page }) => {
+    await loginAsTestDono(page);
+    const filters = { query: "reels", projectId: "projeto-teste", assigneeId: "membro-teste", status: "atrasada", list: "criativa" };
+    const saved = await page.request.patch("/api/preferences", { data: { taskFilters: filters } });
+    expect(saved.ok()).toBeTruthy();
+    expect((await saved.json()).preferences.taskFilters).toEqual(filters);
+    const reread = await (await page.request.get("/api/preferences")).json();
+    expect(reread.preferences.taskFilters).toEqual(filters);
   });
 });

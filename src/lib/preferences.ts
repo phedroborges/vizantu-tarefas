@@ -7,14 +7,14 @@
 // quem olha, é código visual compartilhado — se cada um pintasse o seu, duas
 // pessoas olhando a mesma tela veriam coisas diferentes.
 //
-// Também ficam de fora a busca e os filtros de projeto/responsável/status: são
-// recortes do momento ("o que a Erika tem pra hoje"), não jeito de trabalhar.
-// Um filtro grudado entre sessões faz a pessoa achar que sumiram tarefas.
+// Os filtros também seguem a conta. Na operação real cada pessoa mantém um
+// recorte recorrente, então zerá-lo a cada recarga só obriga a refazer trabalho.
 
 import { DEFAULT_DATE_FORMAT, isDateFormatKey, type DateFormatKey } from "./date-format";
-import { TASK_COLUMNS, type TaskColumnKey } from "./types";
+import { TASK_COLUMNS, TASK_LIST_KINDS, type TaskColumnKey, type TaskListKind } from "./types";
 
 export type TaskView = "lista" | "calendario";
+export type SavedTaskFilters = { query: string; projectId: string; assigneeId: string; status: string; list: TaskListKind | "" };
 
 export type MemberPreferences = {
   taskView: TaskView;
@@ -26,6 +26,7 @@ export type MemberPreferences = {
   taskColumnWidths: Partial<Record<TaskColumnKey | "name", number>>;
   dateFormat: DateFormatKey;
   showFinalized: boolean;
+  taskFilters: SavedTaskFilters;
 };
 
 const KNOWN_COLUMNS = new Set(TASK_COLUMNS.map((column) => column.key));
@@ -38,6 +39,7 @@ export function defaultPreferences(): MemberPreferences {
     taskColumnWidths: {},
     dateFormat: DEFAULT_DATE_FORMAT,
     showFinalized: false,
+    taskFilters: { query: "", projectId: "", assigneeId: "", status: "", list: "" },
   };
 }
 
@@ -65,6 +67,15 @@ function normalizeWidths(value: unknown): MemberPreferences["taskColumnWidths"] 
   return saida;
 }
 
+function normalizeFilters(value: unknown): SavedTaskFilters {
+  const empty: SavedTaskFilters = { query: "", projectId: "", assigneeId: "", status: "", list: "" };
+  if (!value || typeof value !== "object" || Array.isArray(value)) return empty;
+  const raw = value as Record<string, unknown>;
+  const text = (key: keyof SavedTaskFilters, max: number) => typeof raw[key] === "string" ? raw[key].slice(0, max) : "";
+  const list = text("list", 40);
+  return { query: text("query", 200), projectId: text("projectId", 80), assigneeId: text("assigneeId", 80), status: text("status", 80), list: TASK_LIST_KINDS.some((item) => item.value === list) ? list as TaskListKind : "" };
+}
+
 // Toda leitura passa por aqui: o jsonb do banco é dado solto, e uma coluna
 // removida numa versão futura não pode quebrar a tela de quem tinha ela salva.
 export function normalizePreferences(raw: unknown): MemberPreferences {
@@ -78,6 +89,7 @@ export function normalizePreferences(raw: unknown): MemberPreferences {
     taskColumnWidths: normalizeWidths(value.taskColumnWidths),
     dateFormat: isDateFormatKey(value.dateFormat) ? value.dateFormat : base.dateFormat,
     showFinalized: typeof value.showFinalized === "boolean" ? value.showFinalized : base.showFinalized,
+    taskFilters: normalizeFilters(value.taskFilters),
   };
 }
 
@@ -96,6 +108,7 @@ export function mergePreferences(current: MemberPreferences, patch: unknown): Me
     taskColumnWidths: value.taskColumnWidths ?? current.taskColumnWidths,
     dateFormat: value.dateFormat ?? current.dateFormat,
     showFinalized: value.showFinalized ?? current.showFinalized,
+    taskFilters: value.taskFilters ?? current.taskFilters,
   });
 }
 

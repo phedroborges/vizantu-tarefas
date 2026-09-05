@@ -40,7 +40,7 @@ describe("preferências de exibição por pessoa", () => {
   it("chave desconhecida no corpo do PATCH não entra", () => {
     const next = mergePreferences(defaultPreferences(), { statusColors: { finalizado: "#000000" }, admin: true });
     expect(next).toEqual(defaultPreferences());
-    expect(Object.keys(next).sort()).toEqual(["dateFormat", "showFinalized", "taskColumnWidths", "taskColumns", "taskView"]);
+    expect(Object.keys(next).sort()).toEqual(["dateFormat", "showFinalized", "taskColumnWidths", "taskColumns", "taskFilters", "taskView"]);
   });
 
   // A largura de coluna já foi perdida em silêncio uma vez: mergePreferences
@@ -67,5 +67,20 @@ describe("preferências de exibição por pessoa", () => {
   it("liga e desliga coluna sem duplicar", () => {
     expect(toggleColumn(["status"], "assignee")).toEqual(["status", "assignee"]);
     expect(toggleColumn(["status", "assignee"], "status")).toEqual(["assignee"]);
+  });
+
+  it("salva os filtros usados pela pessoa", () => {
+    const next = mergePreferences(defaultPreferences(), { taskFilters: { query: "urgente", projectId: "projeto-1", assigneeId: "membro-2", status: "atrasada", list: "criativa" } });
+    expect(next.taskFilters).toEqual({ query: "urgente", projectId: "projeto-1", assigneeId: "membro-2", status: "atrasada", list: "criativa" });
+  });
+
+  it("filtro salvo sobrevive a PATCH de outra preferência", () => {
+    const current = normalizePreferences({ taskFilters: { query: "", projectId: "cliente", assigneeId: "", status: "", list: "estrategica" } });
+    expect(mergePreferences(current, { dateFormat: "relativo" }).taskFilters.projectId).toBe("cliente");
+  });
+
+  it("descarta lista inválida sem apagar os outros filtros", () => {
+    const next = normalizePreferences({ taskFilters: { query: "x", projectId: "p", assigneeId: "m", status: "feito", list: "inventada" } });
+    expect(next.taskFilters).toEqual({ query: "x", projectId: "p", assigneeId: "m", status: "feito", list: "" });
   });
 });

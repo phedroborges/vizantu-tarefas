@@ -186,12 +186,6 @@ export function TarefasView({
   const [channelTags, setChannelTags] = useState(initialChannelTags);
   const [statusColors, setStatusColors] = useState(initialStatusColors);
 
-  const [query, setQuery] = useState("");
-  const [projectFilter, setProjectFilter] = useState("");
-  const [assigneeFilter, setAssigneeFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [listFilter, setListFilter] = useState<TaskListKind | "">("");
-
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const withDue = initialTasks.filter((task) => task.dueDate).map((task) => monthKeyFromDate(task.dueDate!));
     return withDue.sort().at(-1) || currentMonthKey();
@@ -215,7 +209,8 @@ export function TarefasView({
     });
     return () => { active = false; };
   }, [hasSavedPreferences, replacePreferences]);
-  const { taskView: view, taskColumns: visibleColumns, taskColumnWidths, dateFormat, showFinalized } = preferences;
+  const { taskView: view, taskColumns: visibleColumns, taskColumnWidths, dateFormat, showFinalized, taskFilters } = preferences;
+  const { query, projectId: projectFilter, assigneeId: assigneeFilter, status: statusFilter, list: listFilter } = taskFilters;
 
   // Largura de coluna: o título da tarefa NUNCA quebra em duas linhas — ele
   // trunca — e quem precisa de mais espaço arrasta a divisória do cabeçalho.
@@ -236,6 +231,7 @@ export function TarefasView({
   const setView = (next: MemberPreferences["taskView"]) => updatePreferences({ taskView: next });
   const setShowFinalized = (next: boolean) => updatePreferences({ showFinalized: next });
   const setDateFormat = (next: MemberPreferences["dateFormat"]) => updatePreferences({ dateFormat: next });
+  const setTaskFilters = (patch: Partial<MemberPreferences["taskFilters"]>) => updatePreferences({ taskFilters: { ...taskFilters, ...patch } });
   const toggleColumn = (key: MemberPreferences["taskColumns"][number]) =>
     updatePreferences({ taskColumns: toggleColumnKey(visibleColumns, key) });
 
@@ -531,11 +527,13 @@ export function TarefasView({
           <TaskToolbar
             filters={{ query, projectId: projectFilter, assigneeId: assigneeFilter, status: statusFilter, list: listFilter, showFinalized }}
             onFiltersChange={(next) => {
-              if (next.query !== undefined) setQuery(next.query);
-              if (next.projectId !== undefined) setProjectFilter(next.projectId);
-              if (next.assigneeId !== undefined) setAssigneeFilter(next.assigneeId);
-              if (next.status !== undefined) setStatusFilter(next.status);
-              if (next.list !== undefined) setListFilter(next.list);
+              const filterPatch: Partial<MemberPreferences["taskFilters"]> = {};
+              if (next.query !== undefined) filterPatch.query = next.query;
+              if (next.projectId !== undefined) filterPatch.projectId = next.projectId;
+              if (next.assigneeId !== undefined) filterPatch.assigneeId = next.assigneeId;
+              if (next.status !== undefined) filterPatch.status = next.status;
+              if (next.list !== undefined) filterPatch.list = next.list;
+              if (Object.keys(filterPatch).length) setTaskFilters(filterPatch);
               if (next.showFinalized !== undefined) setShowFinalized(next.showFinalized);
             }}
             projects={initialProjects}

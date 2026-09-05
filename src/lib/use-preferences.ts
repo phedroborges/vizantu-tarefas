@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { mergePreferences, type MemberPreferences } from "./preferences";
 
 // Substitui os antigos use-task-columns/use-date-format, que guardavam no
@@ -17,24 +17,31 @@ export function usePreferences(initial: MemberPreferences) {
   const timer = useRef<number | undefined>(undefined);
   const pending = useRef<Partial<MemberPreferences>>({});
 
-  const update = useCallback((patch: Partial<MemberPreferences>) => {
-    setPreferences((current) => mergePreferences(current, patch));
-    pending.current = { ...pending.current, ...patch };
-
-    window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => {
-      const body = pending.current;
-      pending.current = {};
-      // Falha de rede não desfaz o que está na tela: a pessoa continua vendo o
-      // que escolheu, e o próximo ajuste tenta salvar de novo. Perder a
-      // preferência por um blip de conexão seria pior que salvar tarde.
-      void fetch("/api/preferences", {
+  const flush = useCallback(() => {
+    if (!Object.keys(pending.current).length) return;
+    const body = pending.current;
+    pending.current = {};
+    void fetch("/api/preferences", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
-      }).catch(() => {});
-    }, SAVE_DELAY_MS);
+        keepalive: true,
+      }).then((response) => { if (!response.ok) pending.current = { ...body, ...pending.current }; })
+        .catch(() => { pending.current = { ...body, ...pending.current }; });
   }, []);
+
+  const update = useCallback((patch: Partial<MemberPreferences>) => {
+    setPreferences((current) => mergePreferences(current, patch));
+    pending.current = { ...pending.current, ...patch };
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(flush, SAVE_DELAY_MS);
+  }, [flush]);
+
+  useEffect(() => {
+    const onPageHide = () => flush();
+    window.addEventListener("pagehide", onPageHide);
+    return () => { window.clearTimeout(timer.current); window.removeEventListener("pagehide", onPageHide); flush(); };
+  }, [flush]);
 
   // Troca o conjunto inteiro sem disparar PATCH: usado pela migração do
   // localStorage, que já gravou no servidor antes de devolver o resultado.
