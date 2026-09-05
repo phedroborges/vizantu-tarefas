@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiFailure } from "@/lib/api-error";
 import { isResponse, requireUser } from "@/lib/authz";
-import { deleteTask, updateTask } from "@/lib/storage";
+import { deleteTask, getTask, notifyTaskAssigned, updateTask } from "@/lib/storage";
 import { TASK_KINDS, TASK_STATUSES } from "@/lib/types";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -16,6 +16,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     return NextResponse.json({ error: "Tipo de tarefa inválido." }, { status: 400 });
   }
   try {
+    const previous = body.assigneeId !== undefined ? await getTask(id) : undefined;
     const task = await updateTask(id, {
       projectId: body.projectId,
       name: body.name,
@@ -36,6 +37,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       sequenceOrder: body.sequenceOrder,
     });
     if (!task) return NextResponse.json({ error: "Tarefa não encontrada." }, { status: 404 });
+    await notifyTaskAssigned(task, auth.id, previous?.assigneeId);
     return NextResponse.json({ task });
   } catch (error) {
     return apiFailure(error, "salvar a tarefa");

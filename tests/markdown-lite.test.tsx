@@ -31,7 +31,7 @@ describe("markdown-lite: links clicáveis na referência", () => {
   it("5. pontuação de fim de frase fica fora do endereço", () => {
     const out = html("A referência é https://exemplo.com.");
     expect(out).toContain('href="https://exemplo.com"');
-    expect(out).toContain("com</a>.");
+    expect(out).toContain("</a>.");
   });
 
   it("6. esquema perigoso continua sendo texto, nunca link", () => {

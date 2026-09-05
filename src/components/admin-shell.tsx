@@ -1,12 +1,13 @@
 "use client";
 
-import { BarChart3, BookOpen, CheckSquare, ClipboardList, FileText, Folders, LogOut, Menu, Palette, Sparkles, Users, X } from "lucide-react";
+import { BarChart3, Bell, BookOpen, CheckSquare, ClipboardList, FileText, Folders, LogOut, Menu, Palette, Sparkles, Users, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { AiAssistant } from "@/components/ai-assistant";
 import { AnnouncementComposer } from "@/components/announcement-composer";
 import { AnnouncementGate } from "@/components/announcement-gate";
+import { NotificationBell } from "@/components/notification-bell";
 import { ThemeSwitch } from "@/components/theme-switch";
 import { Avatar } from "@/components/avatar";
 import { Logo } from "@/components/vz/logo";
@@ -14,7 +15,7 @@ import type { CurrentUser } from "@/lib/current-user";
 import { PageContextProvider } from "@/lib/page-context";
 import { createClient } from "@/lib/supabase/browser-client";
 
-export type AdminShellActive = "dashboard" | "projetos" | "tarefas" | "planos" | "marcas" | "contratos" | "membros" | "conhecimento" | "assistente";
+export type AdminShellActive = "dashboard" | "projetos" | "tarefas" | "planos" | "marcas" | "contratos" | "membros" | "conhecimento" | "assistente" | "notificacoes";
 
 const PAGE_LABELS: Record<AdminShellActive, string> = {
   dashboard: "Página atual: Dashboard (visão geral de métricas, prazos e ranking do time).",
@@ -26,6 +27,7 @@ const PAGE_LABELS: Record<AdminShellActive, string> = {
   membros: "Página atual: Membros.",
   conhecimento: "Página atual: Base de conhecimento.",
   assistente: "Página atual: Assistente (chat completo).",
+  notificacoes: "Página atual: Caixa de entrada de notificações.",
 };
 
 export function AdminShell({
@@ -77,6 +79,10 @@ export function AdminShell({
             <CheckSquare size={18} />
             <span>Tarefas</span>
           </Link>
+          <Link className={active === "notificacoes" ? "active" : ""} href="/notificacoes" onClick={() => setMenuOpen(false)}>
+            <Bell size={18} />
+            <span>Notificações</span>
+          </Link>
           <Link className={active === "planos" ? "active" : ""} href="/planos" onClick={() => setMenuOpen(false)}>
             <ClipboardList size={18} />
             <span>Planos</span>
@@ -123,8 +129,8 @@ export function AdminShell({
         </div>
       </aside>
       <div className="admin-main">
+        <div className="admin-global-actions"><NotificationBell />{user.role !== "visualizador" ? <AnnouncementComposer currentUserRole={user.role} /> : null}</div>
         {/* Enviar aviso é ação de qualquer lugar, não de uma tela específica. */}
-        {user.role !== "visualizador" ? <AnnouncementComposer currentUserRole={user.role} /> : null}
         <header className="admin-mobile-bar">
           <button type="button" aria-label="Abrir menu" onClick={() => setMenuOpen(true)}><Menu size={21} /></button>
           <Logo className="admin-mobile-logo" height={20} />

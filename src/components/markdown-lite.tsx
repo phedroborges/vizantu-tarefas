@@ -7,6 +7,7 @@
 // cliente. Quebras de linha ficam por conta do `white-space: pre-wrap` de quem
 // renderiza, então o texto original é preservado caractere a caractere.
 
+import { AtSign, ExternalLink as ExternalLinkIcon, FileText, Globe2, Play } from "lucide-react";
 import type { MouseEvent, ReactNode } from "react";
 
 // Quatro formas inline, numa varredura só. A ordem da alternância importa em
@@ -24,7 +25,16 @@ import type { MouseEvent, ReactNode } from "react";
 const INLINE =
   /!\[([^\]\n]*)\]\((https?:\/\/[^\s)]+)\)|\*\*([^*\n]+)\*\*|\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<>()[\]]+)/g;
 
+function siteMeta(href: string) {
+  const host = new URL(href).hostname.replace(/^www\./, "");
+  if (host.includes("drive.google") || host.includes("docs.google")) return { host, label: "Google", icon: <FileText size={13} /> };
+  if (host.includes("instagram")) return { host, label: "Instagram", icon: <AtSign size={13} /> };
+  if (host.includes("youtube") || host === "youtu.be") return { host, label: "YouTube", icon: <Play size={13} /> };
+  return { host, label: host, icon: <Globe2 size={13} /> };
+}
+
 function ExternalLink({ href, children }: { href: string; children: ReactNode }) {
+  const site = siteMeta(href);
   return (
     <a
       className="markdown-lite-link"
@@ -36,7 +46,9 @@ function ExternalLink({ href, children }: { href: string; children: ReactNode })
       // edição por baixo. Clicar fora do link continua editando normalmente.
       onClick={(event: MouseEvent) => event.stopPropagation()}
     >
-      {children}
+      <span className="markdown-lite-link__icon">{site.icon}</span>
+      <span className="markdown-lite-link__copy"><strong>{children}</strong><small>{site.host}</small></span>
+      <ExternalLinkIcon className="markdown-lite-link__external" size={12} />
     </a>
   );
 }

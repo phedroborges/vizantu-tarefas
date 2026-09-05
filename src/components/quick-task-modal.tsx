@@ -1,13 +1,14 @@
 "use client";
 
-import { CalendarDays, Check, Folder, Radio, Shapes, User } from "lucide-react";
+import { Check, Folder, Radio, Shapes, User } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DatePicker } from "@/components/vz/date-picker";
 import { TagPickerPopover } from "@/components/tag-picker";
 import { responseError } from "@/lib/request-error";
 import { emptySections, serializeDescription } from "@/lib/description-sections";
-import { formatDueDate, todayIso } from "@/lib/dates";
+import { todayIso } from "@/lib/dates";
 import { STATUS_GROUPS, TASK_KINDS, TASK_STATUSES } from "@/lib/types";
 import type { Member, Project, StatusColor, Tag, Task, TaskKind, TaskStatus } from "@/lib/types";
 
@@ -209,11 +210,7 @@ export function QuickTaskModal({
           </Popover>
 
           {/* Prazo */}
-          <label className={`qt-chip qt-chip-date ${dueDate ? "filled" : ""}`}>
-            <CalendarDays size={12} />
-            {dueDate ? formatDueDate(dueDate) : "Prazo"}
-            <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-          </label>
+          <DatePicker className="qt-chip qt-chip-date" value={dueDate} onChange={setDueDate} placeholder="Prazo" />
 
           {/* Formato */}
           <TagPickerPopover

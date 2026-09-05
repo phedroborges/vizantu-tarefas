@@ -9,6 +9,7 @@ import { TaskModal } from "@/components/task-modal";
 import { StatusTag, statusColorMap } from "@/components/status-tag";
 import { Avatar } from "@/components/avatar";
 import { ClientLinkPanel } from "@/components/client-link-panel";
+import { DatePicker } from "@/components/vz/date-picker";
 import { useConfirm } from "@/components/confirm-dialog";
 import { formatDueDate } from "@/lib/dates";
 import { networkError, responseError } from "@/lib/request-error";
@@ -732,12 +733,7 @@ export function PlanoDetailView({
                         <dt>{captura ? "Captação" : "Prazo"}</dt>
                         <dd>
                           {editando("prazo") ? (
-                            <input
-                              type="date" autoFocus aria-label={`Data sugerida para ${c.label}`}
-                              value={prazo}
-                              onChange={(event) => setSuggestionDate(c.id, event.target.value)}
-                              onBlur={() => setEditingField("")}
-                            />
+                            <DatePicker value={prazo} onChange={(value) => { setSuggestionDate(c.id, value); setEditingField(""); }} placeholder="Escolher data" />
                           ) : (
                             <button type="button" className={`quiet-value${prazo ? "" : " is-empty"}`} onClick={() => abrir("prazo")} disabled={!canEdit}>
                               {prazo ? formatDueDate(prazo) : "definir"}

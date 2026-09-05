@@ -17,6 +17,8 @@ import type {
   ProjectProfile,
   KnowledgeDoc,
   Member,
+  Notification,
+  NotificationType,
   Plan,
   PlanApprovalEvent,
   PlanApprovalResponse,
@@ -647,12 +649,78 @@ export async function deleteTask(id: string): Promise<boolean> {
   return (rows as unknown[]).length > 0;
 }
 
-export async function addComment(taskId: string, input: { author: string; text: string }): Promise<Task | undefined> {
+export async function addComment(taskId: string, input: { author: string; authorMemberId?: string; mentionedMemberIds?: string[]; text: string }): Promise<Task | undefined> {
   const current = await getTask(taskId);
   if (!current) return undefined;
-  const comments = [...current.comments, { id: newId(), author: input.author.trim() || "Equipe", text: input.text.trim(), createdAt: nowIso() }];
+  const commentId = newId();
+  const requestedMentions = dedupeIds(input.mentionedMemberIds ?? []).filter((id) => id !== input.authorMemberId);
+  const validMembers = requestedMentions.length ? new Set((await listMembers()).filter((member) => member.active).map((member) => member.id)) : new Set<string>();
+  const mentionedMemberIds = requestedMentions.filter((id) => validMembers.has(id));
+  const comments = [...current.comments, { id: commentId, author: input.author.trim() || "Equipe", authorMemberId: input.authorMemberId, mentionedMemberIds, text: input.text.trim(), createdAt: nowIso() }];
   const row = unwrap(await getSupabase().from("tasks").update({ comments, updated_at: nowIso() }).eq("id", taskId).select().maybeSingle());
+  if (row && mentionedMemberIds.length) {
+    await createNotifications(mentionedMemberIds.map((memberId) => ({
+      recipientMemberId: memberId, actorMemberId: input.authorMemberId, type: "mention" as const, taskId,
+      title: `${input.author.trim() || "Alguém"} mencionou você`, body: input.text.trim(), actionUrl: `/tarefas/${taskId}`,
+      dedupeKey: `mention:${commentId}:${memberId}`,
+    })));
+  }
   return row ? mapTask(row as TaskRow) : undefined;
+}
+
+type NotificationRow = {
+  id: string; recipient_member_id: string; actor_member_id: string | null; type: NotificationType;
+  task_id: string | null; title: string; body: string; action_url: string | null; read_at: string | null; created_at: string;
+};
+
+function mapNotification(row: NotificationRow): Notification {
+  return { id: row.id, recipientMemberId: row.recipient_member_id, actorMemberId: row.actor_member_id ?? undefined, type: row.type, taskId: row.task_id ?? undefined, title: row.title, body: row.body, actionUrl: row.action_url ?? undefined, readAt: row.read_at ?? undefined, createdAt: row.created_at };
+}
+
+export type NotificationInput = {
+  recipientMemberId: string; actorMemberId?: string; type: NotificationType; taskId?: string;
+  title: string; body?: string; actionUrl?: string; dedupeKey?: string;
+};
+
+export async function createNotifications(inputs: NotificationInput[]): Promise<void> {
+  if (!inputs.length) return;
+  const db = getSupabase();
+  const keys = inputs.map((item) => item.dedupeKey).filter((key): key is string => Boolean(key));
+  const existing = keys.length ? unwrap(await db.from("notifications").select("dedupe_key").in("dedupe_key", keys)) as { dedupe_key: string }[] : [];
+  const existingKeys = new Set(existing.map((row) => row.dedupe_key));
+  const rows = inputs.filter((item) => !item.dedupeKey || !existingKeys.has(item.dedupeKey)).map((item) => ({
+    id: newId(), recipient_member_id: item.recipientMemberId, actor_member_id: item.actorMemberId || null,
+    type: item.type, task_id: item.taskId || null, title: item.title, body: item.body || "",
+    action_url: item.actionUrl || null, dedupe_key: item.dedupeKey || null, created_at: nowIso(),
+  }));
+  if (rows.length) unwrap(await db.from("notifications").insert(rows));
+}
+
+export async function notifyTaskAssigned(task: Task, actorMemberId?: string, previousAssigneeId?: string): Promise<void> {
+  if (!task.assigneeId || task.assigneeId === previousAssigneeId || task.assigneeId === actorMemberId) return;
+  const project = await getProject(task.projectId);
+  await createNotifications([{ recipientMemberId: task.assigneeId, actorMemberId, type: "task_assigned", taskId: task.id, title: "Nova tarefa atribuída a você", body: `${task.name}${project ? ` · ${project.name}` : ""}`, actionUrl: `/tarefas/${task.id}`, dedupeKey: `assigned:${task.id}:${task.assigneeId}:${task.updatedAt}` }]);
+}
+
+export async function listNotificationsForMember(memberId: string, limit = 100): Promise<Notification[]> {
+  const rows = unwrap(await getSupabase().from("notifications").select("*").eq("recipient_member_id", memberId).order("created_at", { ascending: false }).limit(limit));
+  return (rows as NotificationRow[]).map(mapNotification);
+}
+
+export async function markNotificationRead(id: string, memberId: string): Promise<boolean> {
+  const rows = unwrap(await getSupabase().from("notifications").update({ read_at: nowIso() }).eq("id", id).eq("recipient_member_id", memberId).select("id"));
+  return (rows as { id: string }[]).length > 0;
+}
+
+export async function markAllNotificationsRead(memberId: string): Promise<void> {
+  unwrap(await getSupabase().from("notifications").update({ read_at: nowIso() }).eq("recipient_member_id", memberId).is("read_at", null));
+}
+
+export async function createDailyOverdueNotifications(date = new Date().toISOString().slice(0, 10)): Promise<number> {
+  const tasks = await listTasks();
+  const overdue = tasks.filter((task) => task.assigneeId && isOverdue(task.dueDate, task.status));
+  await createNotifications(overdue.map((task) => ({ recipientMemberId: task.assigneeId!, type: "task_overdue" as const, taskId: task.id, title: "Tarefa atrasada", body: `${task.name} venceu em ${task.dueDate}`, actionUrl: `/tarefas/${task.id}`, dedupeKey: `overdue:${date}:${task.id}:${task.assigneeId}` })));
+  return overdue.length;
 }
 
 export async function requestTaskDateChange(input: { projectId: string; taskId: string; reviewerName: string; requestedDate: string; reason?: string }): Promise<Task | undefined> {

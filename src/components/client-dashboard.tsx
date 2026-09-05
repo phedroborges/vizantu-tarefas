@@ -1,8 +1,10 @@
 "use client";
 
-import { AlertCircle, ArrowRight, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clapperboard, Clock3, Copy, ExternalLink, ImageIcon, Images, MessageCircleMore, Play, Sparkles, X } from "lucide-react";
+import { AlertCircle, ArrowRight, CalendarDays, Check, CheckCircle2, Clapperboard, Clock3, Copy, ExternalLink, ImageIcon, Images, MessageCircleMore, Play, Sparkles, X } from "lucide-react";
 import { useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { renderMarkdownLite } from "@/components/markdown-lite";
+import { MonthCalendar, MonthCalendarDay, MonthCalendarEvent, MonthCalendarGrid, MonthCalendarHeader, MonthCalendarWeekdays } from "@/components/vz/month-calendar";
+import { DatePicker } from "@/components/vz/date-picker";
 import { burst } from "@/lib/confetti";
 import { renderScriptView } from "@/components/script-table";
 import { descriptionHeadingKey, parseDescription } from "@/lib/description-sections";
@@ -36,7 +38,6 @@ const REVIEWER_KEY = "vizantu-client-reviewer-name";
 const subscribeToStoredName = () => () => {};
 const readStoredName = () => window.localStorage.getItem(REVIEWER_KEY) || "";
 const readStoredNameOnServer = () => "";
-const WEEKDAYS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 const isCreativeStage = (item: DashboardItem) => item.reviewVersion >= 100;
 const copyStatus = (item: DashboardItem) => isCreativeStage(item) ? "approved" : item.approvalStatus;
 const isReviewed = (item: DashboardItem) => item.approvalStatus !== "pending";
@@ -102,7 +103,6 @@ export function ClientDashboard({
       .sort((a, b) => (a.dueDate || "").localeCompare(b.dueDate || ""))[0]?.dueDate;
     return firstScheduled ? new Date(`${firstScheduled}T12:00:00`) : new Date();
   });
-  const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
   // A identificação é pedida na ENTRADA, não na hora de decidir. Antes disso o
   // cliente com pressa ia direto nos botões, que ficavam desabilitados por
   // causa do nome vazio — sem erro, sem aviso, só não acontecia nada. Com o
@@ -163,7 +163,6 @@ export function ClientDashboard({
     return map;
   }, [items, events]);
 
-  const selectedDayItems = selectedCalendarDate ? cellsByDay.get(selectedCalendarDate) || [] : [];
 
   function updateItemLocal(id: string, patch: Partial<DashboardItem>) {
     setItems((current) => current.map((i) => (i.id === id ? { ...i, ...patch } : i)));
@@ -294,68 +293,34 @@ export function ClientDashboard({
           </div>
           <CalendarDays size={20} />
         </div>
-        <div className="cd-calendar">
-          <div className="cd-calendar-head">
-            <button type="button" onClick={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))} aria-label="Mês anterior"><ChevronLeft size={16} /></button>
-            <strong style={{ fontSize: 13, textTransform: "capitalize" }}>{month.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</strong>
-            <button type="button" onClick={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))} aria-label="Próximo mês"><ChevronRight size={16} /></button>
-          </div>
-          <div className="cd-calendar-grid">
-            {WEEKDAYS.map((w) => <div className="cd-calendar-weekday" key={w}>{w}</div>)}
+        <MonthCalendar className="client-calendar">
+          <MonthCalendarHeader
+            label={month.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}
+            onPrevious={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
+            onNext={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
+          />
+          <div className="vz-calendar__scroll">
+          <MonthCalendarGrid>
+            <MonthCalendarWeekdays />
             {grid.map((cell, idx) => {
               const iso = cell.date ? isoDate(cell.date) : null;
               const dayItems = iso ? cellsByDay.get(iso) || [] : [];
               const muted = !cell.date || monthKey(cell.date) !== currentMonthKey;
               return (
-                <div className={`cd-calendar-cell ${muted ? "is-muted" : ""}`} key={idx}>
-                  {cell.date ? <span className="cd-calendar-daynum">{cell.date.getDate()}</span> : null}
+                <MonthCalendarDay day={cell.date?.getDate()} muted={muted} hasItems={dayItems.length > 0} key={idx}>
                   {dayItems.slice(0, 3).map((d, i) => (
-                    <button type="button" key={i} className={`cd-cal-item status-${d.kind === "event" || d.kind === "capture" ? d.kind : d.approvalStatus}`} title={d.label} onClick={() => d.itemId && setActiveItemId(d.itemId)} disabled={!d.itemId}>
+                    <MonthCalendarEvent key={i} className={`status-${d.kind === "event" || d.kind === "capture" ? d.kind : d.approvalStatus}`} title={d.label} onClick={() => d.itemId && setActiveItemId(d.itemId)} disabled={!d.itemId}>
                       {d.kind === "capture" ? <Clapperboard size={11} /> : d.kind === "content" ? <ContentIcon format={d.format} size={10} /> : <CalendarDays size={10} />}
                       <span>{d.label}</span>
                       {d.approvalStatus === "approved" ? <Check size={10} /> : d.approvalStatus === "rejected" ? <X size={10} /> : null}
-                    </button>
+                    </MonthCalendarEvent>
                   ))}
-                </div>
+                </MonthCalendarDay>
               );
             })}
+          </MonthCalendarGrid>
           </div>
-        </div>
-        <div className="cd-mobile-calendar">
-          <div className="cd-mobile-calendar-head">
-            <button type="button" onClick={() => { setMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1)); setSelectedCalendarDate(null); }} aria-label="Mês anterior"><ChevronLeft size={17} /></button>
-            <strong>{month.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</strong>
-            <button type="button" onClick={() => { setMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1)); setSelectedCalendarDate(null); }} aria-label="Próximo mês"><ChevronRight size={17} /></button>
-          </div>
-          <div className="cd-mobile-calendar-grid">
-            {WEEKDAYS.map((weekday) => <span className="cd-mobile-weekday" key={weekday}>{weekday.slice(0, 1)}</span>)}
-            {grid.map((cell, index) => {
-              const date = cell.date ? isoDate(cell.date) : null;
-              const entries = date ? cellsByDay.get(date) || [] : [];
-              const selected = date === selectedCalendarDate;
-              return <button type="button" key={index} className={`${!cell.date ? "is-empty" : ""}${selected ? " is-selected" : ""}`} disabled={!cell.date} onClick={() => date && setSelectedCalendarDate(date)}>
-                {cell.date ? <span className="cd-mobile-day-number">{cell.date.getDate()}</span> : null}
-                <span className="cd-mobile-day-icons">
-                  {entries.slice(0, 4).map((entry, entryIndex) => <span key={entryIndex} className={`cd-mobile-format-icon status-${entry.kind === "capture" || entry.kind === "event" ? entry.kind : entry.approvalStatus}`}>
-                    {entry.kind === "capture" ? <Clapperboard size={10} /> : entry.kind === "event" ? <CalendarDays size={10} /> : <ContentIcon format={entry.format} size={9} />}
-                  </span>)}
-                  {entries.length > 4 ? <small>+{entries.length - 4}</small> : null}
-                </span>
-              </button>;
-            })}
-          </div>
-          {selectedCalendarDate ? <div className="cd-mobile-day-detail">
-            <div className="cd-mobile-day-detail-head">
-              <strong>{new Date(`${selectedCalendarDate}T12:00:00`).toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" })}</strong>
-              <button type="button" onClick={() => setSelectedCalendarDate(null)} aria-label="Fechar lista"><X size={15} /></button>
-            </div>
-            {selectedDayItems.length ? selectedDayItems.map((entry, index) => <button type="button" className="cd-mobile-day-item" key={index} disabled={!entry.itemId} onClick={() => entry.itemId && setActiveItemId(entry.itemId)}>
-              <span className={`cd-mobile-format-icon status-${entry.kind === "capture" || entry.kind === "event" ? entry.kind : entry.approvalStatus}`}>{entry.kind === "capture" ? <Clapperboard size={12} /> : entry.kind === "event" ? <CalendarDays size={12} /> : <ContentIcon format={entry.format} size={11} />}</span>
-              <span>{entry.label}</span>
-              {entry.approvalStatus === "approved" ? <Check size={14} /> : entry.approvalStatus === "rejected" ? <X size={14} /> : entry.itemId ? <ArrowRight size={14} /> : null}
-            </button>) : <p>Nenhum conteúdo neste dia.</p>}
-          </div> : <p className="cd-mobile-calendar-hint">Toque em um dia para ver os conteúdos.</p>}
-        </div>
+        </MonthCalendar>
       </div>
 
       {activeItem ? (
@@ -563,7 +528,7 @@ function ApprovalModal({
 
         <button type="button" className="cd-date-change-toggle" onClick={() => setDateRequestOpen((open) => !open)}><CalendarDays size={15} /> {dateSent ? "Pedido de nova data enviado" : "Pedir alteração de data"}</button>
         {dateRequestOpen ? <div className="cd-date-change-form">
-          <label>Nova data sugerida<input type="date" value={requestedDate} onChange={(e) => setRequestedDate(e.target.value)} /></label>
+          <label>Nova data sugerida<DatePicker value={requestedDate} onChange={setRequestedDate} placeholder="Escolher data" /></label>
           <label>Motivo (opcional)<textarea value={dateReason} onChange={(e) => setDateReason(e.target.value)} placeholder="Conte rapidamente por que essa data funciona melhor." /></label>
           <button type="button" className="cd-btn date" disabled={!requestedDate || !reviewerName.trim()} onClick={requestDateChange}>Enviar sugestão de data</button>
         </div> : null}

@@ -12,7 +12,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: "Escreva um comentário." }, { status: 400 });
   }
   try {
-    const task = await addComment(id, { author: body.author || "Equipe", text: body.text });
+    const task = await addComment(id, { author: auth.name, authorMemberId: auth.id, mentionedMemberIds: Array.isArray(body.mentionedMemberIds) ? body.mentionedMemberIds : [], text: body.text });
     if (!task) return NextResponse.json({ error: "Tarefa não encontrada." }, { status: 404 });
     return NextResponse.json({ task }, { status: 201 });
   } catch (error) {

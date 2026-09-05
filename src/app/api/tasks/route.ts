@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiFailure } from "@/lib/api-error";
 import { filterTasksByAccess, filterTasksByListAccess, isResponse, requireUser } from "@/lib/authz";
-import { createTask, listTasks } from "@/lib/storage";
+import { createTask, listTasks, notifyTaskAssigned } from "@/lib/storage";
 import { TASK_KINDS, TASK_STATUSES } from "@/lib/types";
 
 export async function GET() {
@@ -48,6 +48,7 @@ export async function POST(request: NextRequest) {
       captacaoId: body.captacaoId,
       sequenceOrder: body.sequenceOrder,
     });
+    await notifyTaskAssigned(task, auth.id);
     return NextResponse.json({ task }, { status: 201 });
   } catch (error) {
     return apiFailure(error, "criar a tarefa");

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isResponse, requireUser } from "@/lib/authz";
-import { createAnnouncement, listAnnouncements, listPendingAnnouncementsForMember } from "@/lib/storage";
+import { createAnnouncement, createNotifications, listAnnouncements, listMembers, listPendingAnnouncementsForMember } from "@/lib/storage";
 import { ANNOUNCEMENT_SCOPES, USER_ROLES } from "@/lib/types";
 
 // Sem query param -> lista completa (tela de gestão, dono/editor). Com
@@ -51,5 +51,9 @@ export async function POST(request: NextRequest) {
     scopeMemberId: body.scopeMemberId,
     expiresAt: body.expiresAt,
   });
+  const members = (await listMembers()).filter((member) => member.active && (
+    body.scope === "all" || (body.scope === "role" && member.role === body.scopeRole) || (body.scope === "member" && member.id === body.scopeMemberId)
+  ));
+  await createNotifications(members.map((member) => ({ recipientMemberId: member.id, actorMemberId: auth.id, type: "announcement", title: announcement.title || "Novo aviso", body: announcement.body, actionUrl: "/notificacoes", dedupeKey: `announcement:${announcement.id}:${member.id}` })));
   return NextResponse.json({ announcement }, { status: 201 });
 }

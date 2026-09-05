@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, CalendarDays, CheckSquare, Plus } from "lucide-react";
+import { CalendarDays, CheckSquare, Plus } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   currentMonthKey,
@@ -30,9 +30,10 @@ import { Avatar, AvatarName } from "@/components/avatar";
 import { celebrateFrom } from "@/lib/celebrate";
 import { TaskToolbar } from "@/components/task-toolbar";
 import { useArrastoDeColuna } from "@/components/vz/use-resize";
-import { Button, Card, EmptyState, IconButton, Input, PageHeader } from "@/components/vz";
+import { Button, Card, EmptyState, Input, PageHeader } from "@/components/vz";
+import { MonthCalendar, MonthCalendarDay, MonthCalendarGrid, MonthCalendarHeader, MonthCalendarWeekdays } from "@/components/vz/month-calendar";
+import { DatePicker } from "@/components/vz/date-picker";
 
-const WEEKDAYS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 const NO_ASSIGNEE = "none";
 // Base UI's <Select.Value> só resolve o rótulo se o Root receber esse mapa.
 const STATUS_LABELS: Record<string, string> = Object.fromEntries(TASK_STATUSES.map((status) => [status.value, status.label]));
@@ -114,22 +115,7 @@ function InlineAssigneeCell({ task, members, onChange }: { task: Task; members: 
 function InlineDueDateCell({ task, locked, dateFormat, onChange, onLockedClick }: { task: Task; locked: boolean; dateFormat: DateFormatKey; onChange: (value: string) => void; onLockedClick: () => void }) {
   const [editing, setEditing] = useState(false);
 
-  if (editing) {
-    return (
-      <input
-        type="date"
-        className="cell-date-input"
-        defaultValue={task.dueDate || ""}
-        autoFocus
-        onClick={(event) => event.stopPropagation()}
-        onChange={(event) => {
-          setEditing(false);
-          onChange(event.target.value);
-        }}
-        onBlur={() => setEditing(false)}
-      />
-    );
-  }
+  if (editing) return <span onClick={(event) => event.stopPropagation()}><DatePicker className="cell-date-input" value={task.dueDate || ""} onChange={(value) => { setEditing(false); onChange(value); }} /></span>;
 
   return (
     <button
@@ -645,39 +631,33 @@ export function TarefasView({
             </>
           ) : (
             <>
-              <div className="calendar-summary">
-                <div className="calendar-filter">
-                  <IconButton size="sm" type="button" onClick={() => setSelectedMonth((current) => moveMonth(current, -1))} aria-label="Mês anterior"><ArrowLeft size={16} /></IconButton>
-                  <Input size="sm" type="month" value={selectedMonth} onChange={(e) => e.target.value && setSelectedMonth(e.target.value)} />
-                  <IconButton size="sm" type="button" onClick={() => setSelectedMonth((current) => moveMonth(current, 1))} aria-label="Próximo mês"><ArrowRight size={16} /></IconButton>
-                </div>
-                <strong style={{ textTransform: "capitalize" }}>{monthLabel(selectedMonth)}</strong>
-                <span>{monthTasks.length} {monthTasks.length === 1 ? "tarefa" : "tarefas"}</span>
-              </div>
-              <div className="calendar-scroll">
-                <div className="calendar-grid" aria-label={`Calendário de ${monthLabel(selectedMonth)}`}>
-                  {WEEKDAYS.map((weekday) => <span className="calendar-weekday" key={weekday}>{weekday}</span>)}
+              <MonthCalendar className="task-calendar" aria-label={`Calendário de ${monthLabel(selectedMonth)}`}>
+                <MonthCalendarHeader label={monthLabel(selectedMonth)} onPrevious={() => setSelectedMonth((current) => moveMonth(current, -1))} onNext={() => setSelectedMonth((current) => moveMonth(current, 1))} start={<Input size="sm" type="month" value={selectedMonth} onChange={(e) => e.target.value && setSelectedMonth(e.target.value)} />} end={<span className="vz-caption">{monthTasks.length} {monthTasks.length === 1 ? "tarefa" : "tarefas"}</span>} />
+                <div className="calendar-scroll">
+                <MonthCalendarGrid>
+                  <MonthCalendarWeekdays />
                   {calendarDays.map((day, index) => {
-                    if (day === null) return <span className="calendar-day empty" key={`empty-${index}`} aria-hidden="true" />;
+                    if (day === null) return <MonthCalendarDay day={null} key={`empty-${index}`} aria-hidden="true" />;
                     const key = `${selectedMonth}-${String(day).padStart(2, "0")}`;
                     const dayTasks = tasksByDay.get(key) || [];
                     const isToday = key === todayIso();
                     return (
-                      <div className={`calendar-day ${dayTasks.length ? "has-tasks" : ""} ${isToday ? "today" : ""}`} key={key}>
-                        <div className="calendar-date"><span>{day}</span>{dayTasks.length ? <small>{dayTasks.length}</small> : null}</div>
-                        <div className="calendar-cards">
+                      <MonthCalendarDay day={day} today={isToday} hasItems={Boolean(dayTasks.length)} key={key}>
+                        <div className="calendar-date">{dayTasks.length ? <small>{dayTasks.length}</small> : null}</div>
+                        <div className="vz-calendar__events">
                           {dayTasks.map((task) => (
-                            <button className={`task-card ${statusOf(task)}`} type="button" onClick={() => setSelectedTask(task)} key={task.id}>
+                            <button className={`vz-calendar__event task-card ${statusOf(task)}`} type="button" onClick={() => setSelectedTask(task)} key={task.id}>
                               <span>{projectById.get(task.projectId)?.name || "Sem projeto"}</span>
                               <strong>{task.name}</strong>
                             </button>
                           ))}
                         </div>
-                      </div>
+                      </MonthCalendarDay>
                     );
                   })}
-                </div>
+                </MonthCalendarGrid>
               </div>
+              </MonthCalendar>
               {!monthTasks.length ? (
                 <EmptyState icon={<CalendarDays size={24} />} title="Nenhuma tarefa neste mês" description="Use as setas ou o filtro para consultar outro período." />
               ) : null}

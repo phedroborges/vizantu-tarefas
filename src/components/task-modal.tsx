@@ -1,6 +1,6 @@
 "use client";
 
-import { AlignLeft, CalendarDays, Check, Copy, ExternalLink, Folder, ImagePlus, Link2, Loader2, Lock, Package, Plus, Send, Share2, Trash2, TriangleAlert, User, X } from "lucide-react";
+import { AlignLeft, CalendarDays, Check, Copy, ExternalLink, Folder, ImagePlus, Link2, Loader2, Lock, Package, Plus, Share2, Trash2, TriangleAlert, User, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -17,6 +17,8 @@ import { resizeImageFile } from "@/lib/resize-image";
 import { TASK_KINDS } from "@/lib/types";
 import type { Member, PlanCaptacao, Project, StatusColor, Tag, TagKind, Task, TaskKind, TaskStatus } from "@/lib/types";
 import { celebrateFrom } from "@/lib/celebrate";
+import { MentionCommentForm } from "@/components/mention-comment-form";
+import { DatePicker } from "@/components/vz/date-picker";
 
 type Draft = {
   projectId: string;
@@ -40,6 +42,13 @@ const NO_ASSIGNEE = "none";
 const NO_CAPTACAO = "none";
 const NO_PROJECT = "none";
 const AUTOSAVE_DEBOUNCE_MS = 700;
+
+function renderCommentText(text: string, members: Member[]) {
+  const names = members.map((member) => member.name).toSorted((a, b) => b.length - a.length);
+  if (!names.length) return text;
+  const pattern = new RegExp(`(@(?:${names.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")}))`, "g");
+  return text.split(pattern).map((part, index) => part.startsWith("@") && names.includes(part.slice(1)) ? <mark className="comment-mention" key={index}>{part}</mark> : part);
+}
 
 // A IA escreve as descrições em Markdown; sem tratar, os **negritos** apareciam
 // crus, com asteriscos. O negrito é renderizado por renderMarkdownLite, que é o
@@ -326,16 +335,14 @@ export function TaskModal({
     updateField("images", draft.images.filter((item) => item !== url), { immediate: true });
   }
 
-  async function sendComment(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function sendComment(mentionedMemberIds: string[]) {
     if (!liveTaskId || !commentText.trim()) return;
     setIsSendingComment(true);
     // O usuário está logado — assina o comentário com o nome dele, sem pedir.
-    const author = members.find((member) => member.id === currentUserId)?.name || "Equipe";
     const response = await fetch(`/api/tasks/${liveTaskId}/comments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ author, text: commentText }),
+      body: JSON.stringify({ text: commentText, mentionedMemberIds }),
     });
     setIsSendingComment(false);
     if (!response.ok) return setError(await responseError(response, "enviar o comentário"));
@@ -438,12 +445,7 @@ export function TaskModal({
 
               <MetaRow icon={<CalendarDays size={13} />} label="Entrega">
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <input
-                    className="meta-date"
-                    type="date"
-                    value={draft.dueDate}
-                    onChange={(e) => updateField("dueDate", e.target.value, { immediate: true })}
-                  />
+                  <DatePicker className="meta-date" value={draft.dueDate} onChange={(value) => updateField("dueDate", value, { immediate: true })} placeholder="Sem prazo" />
                   {/* O atraso é fato da data, não do status — por isso o aviso
                       mora ao lado do prazo e não na etapa. */}
                   {lateDays ? (
@@ -673,7 +675,7 @@ export function TaskModal({
                   {comments.map((comment) => (
                     <li className="comment-item" key={comment.id}>
                       <div><strong>{comment.author}</strong><small>{formatDateTime(comment.createdAt)}</small></div>
-                      <p>{comment.text}</p>
+                      <p>{renderCommentText(comment.text, members)}</p>
                     </li>
                   ))}
                 </ul>
@@ -681,10 +683,7 @@ export function TaskModal({
                 <p style={{ margin: 0, color: "var(--muted-text)", fontSize: 11 }}>Nenhum comentário ainda.</p>
               )}
               {canEdit ? (
-                <form className="comment-form" onSubmit={sendComment} style={{ marginTop: 10 }}>
-                  <input value={commentText} onChange={(e) => setCommentText(e.target.value)} placeholder="Escreva um comentário" maxLength={600} />
-                  <button className="icon-button" type="submit" disabled={isSendingComment || !commentText.trim()} aria-label="Enviar comentário"><Send size={15} /></button>
-                </form>
+                <MentionCommentForm value={commentText} onChange={setCommentText} members={members} disabled={isSendingComment} onSubmit={sendComment} />
               ) : null}
             </div>
           ) : null}

@@ -148,7 +148,24 @@ export type StatusHistoryEntry = {
 export type Comment = {
   id: string;
   author: string;
+  authorMemberId?: string;
+  mentionedMemberIds?: string[];
   text: string;
+  createdAt: string;
+};
+
+export type NotificationType = "mention" | "task_assigned" | "task_overdue" | "announcement";
+
+export type Notification = {
+  id: string;
+  recipientMemberId: string;
+  actorMemberId?: string;
+  type: NotificationType;
+  taskId?: string;
+  title: string;
+  body: string;
+  actionUrl?: string;
+  readAt?: string;
   createdAt: string;
 };
 

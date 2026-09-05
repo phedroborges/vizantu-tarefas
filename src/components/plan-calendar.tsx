@@ -1,10 +1,11 @@
 "use client";
 
-import { CalendarDays, ChevronLeft, ChevronRight, Lock, Sparkles } from "lucide-react";
-import { useMemo, useState } from "react";
+import { CalendarDays, Lock, Sparkles } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
 import { currentMonthKey, daysInCalendarMonth, monthKeyFromDate, monthLabel, moveMonth } from "@/lib/dates";
 import { formatFamily, weekStart, WEEKLY_MINIMUM, type FormatFamily } from "@/lib/plan-schedule";
 import type { Tag, Task } from "@/lib/types";
+import { MonthCalendar, MonthCalendarDay, MonthCalendarGrid, MonthCalendarHeader, MonthCalendarWeekdays } from "@/components/vz/month-calendar";
 
 // O calendário do plano, com arrastar e soltar.
 //
@@ -47,8 +48,8 @@ export function PlanCalendar({
   const [overDay, setOverDay] = useState<string | null>(null);
 
   const labelById = useMemo(() => new Map(formatTags.map((tag) => [tag.id, tag.label])), [formatTags]);
-  const familia = (task: Task): FormatFamily =>
-    formatFamily((task.formatTagIds || []).map((id) => labelById.get(id) || ""));
+  const familia = useCallback((task: Task): FormatFamily =>
+    formatFamily((task.formatTagIds || []).map((id) => labelById.get(id) || "")), [labelById]);
 
   const porDia = useMemo(() => {
     const mapa = new Map<string, Task[]>();
@@ -84,7 +85,7 @@ export function PlanCalendar({
       if (falta.length) faltas.set(chave, falta);
     }
     return faltas;
-  }, [tasks, labelById]);
+  }, [tasks, familia]);
 
   function soltar(dia: number) {
     setOverDay(null);
@@ -100,52 +101,39 @@ export function PlanCalendar({
   const semDataCount = tasks.filter((task) => !task.dueDate).length;
 
   return (
-    <section className="panel plan-calendar" aria-label="Calendário do plano">
-      <div className="panel-head">
-        <div>
+    <MonthCalendar className="plan-calendar" aria-label="Calendário do plano">
+      <MonthCalendarHeader label={monthLabel(monthKey)} onPrevious={() => setMonthKey(moveMonth(monthKey, -1))} onNext={() => setMonthKey(moveMonth(monthKey, 1))} start={<div>
           <h2><CalendarDays size={14} /> Calendário</h2>
           <p>Arraste um conteúdo para mudar a data de entrega.</p>
-        </div>
-        <div className="plan-calendar-nav">
-          <button type="button" className="icon-button" onClick={() => setMonthKey(moveMonth(monthKey, -1))} aria-label="Mês anterior"><ChevronLeft size={15} /></button>
-          <strong>{monthLabel(monthKey)}</strong>
-          <button type="button" className="icon-button" onClick={() => setMonthKey(moveMonth(monthKey, 1))} aria-label="Próximo mês"><ChevronRight size={15} /></button>
-        </div>
-      </div>
+        </div>} />
 
-      <div className="plan-calendar-grid" role="grid">
-        {["seg", "ter", "qua", "qui", "sex", "sáb", "dom"].map((dia) => (
-          <div className="plan-calendar-weekday" key={dia}>{dia}</div>
-        ))}
+      <MonthCalendarGrid>
+        <MonthCalendarWeekdays />
 
         {dias.map((dia, index) => {
-          if (dia === null) return <div className="plan-calendar-day is-empty" key={`vazio-${index}`} />;
+          if (dia === null) return <MonthCalendarDay day={null} key={`vazio-${index}`} />;
           const data = iso(dia);
           const doDia = porDia.get(data) ?? [];
           const falta = faltaPorSemana.get(weekStart(data));
           const primeiroDaSemana = new Date(`${data}T12:00:00Z`).getUTCDay() === 1;
 
           return (
-            <div
+            <MonthCalendarDay
               key={data}
+              day={dia}
+              hasItems={Boolean(doDia.length)}
               className={`plan-calendar-day${overDay === data ? " is-drop" : ""}${doDia.length ? " has-items" : ""}`}
+              dayHeaderEnd={primeiroDaSemana && falta ? <small className="plan-calendar-falta" title={`Falta na semana: ${falta.join(", ")}`}>falta {falta.join(", ")}</small> : null}
               onDragOver={(e) => { if (canEdit && dragId) { e.preventDefault(); setOverDay(data); } }}
               onDragLeave={() => setOverDay((atual) => (atual === data ? null : atual))}
               onDrop={(e) => { e.preventDefault(); soltar(dia); }}
             >
-              <div className="plan-calendar-daynum">
-                <span>{dia}</span>
-                {primeiroDaSemana && falta ? (
-                  <small className="plan-calendar-falta" title={`Falta na semana: ${falta.join(", ")}`}>
-                    falta {falta.join(", ")}
-                  </small>
-                ) : null}
-              </div>
+              <div className="vz-calendar__events">
               {doDia.map((task) => (
                 <button
                   type="button"
                   key={task.id}
-                  className={`plan-calendar-item ${CORES[familia(task)]}${task.seasonal ? " is-seasonal" : ""}${dragId === task.id ? " is-dragging" : ""}`}
+                  className={`vz-calendar__event plan-calendar-item ${CORES[familia(task)]}${task.seasonal ? " is-seasonal" : ""}${dragId === task.id ? " is-dragging" : ""}`}
                   draggable={canEdit && !task.seasonal}
                   onDragStart={() => setDragId(task.id)}
                   onDragEnd={() => { setDragId(null); setOverDay(null); }}
@@ -156,10 +144,11 @@ export function PlanCalendar({
                   <span>{task.name}</span>
                 </button>
               ))}
-            </div>
+              </div>
+            </MonthCalendarDay>
           );
         })}
-      </div>
+      </MonthCalendarGrid>
 
       <footer className="plan-calendar-legend">
         <span className="cal-video">vídeo</span>
@@ -168,6 +157,6 @@ export function PlanCalendar({
         <span className="plan-calendar-legend-lock"><Lock size={10} /> data fixa</span>
         {semDataCount ? <span className="plan-calendar-legend-warn"><Sparkles size={10} /> {semDataCount} sem data</span> : null}
       </footer>
-    </section>
+    </MonthCalendar>
   );
 }
