@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { AdminShell, type AdminShellActive } from "@/components/admin-shell";
 import { BrandsView } from "@/components/brands-view";
 import { ContratosView } from "@/components/contratos-view";
+import { ClientDashboard } from "@/components/client-dashboard";
 import { DashboardView } from "@/components/dashboard-view";
 import { KnowledgeView } from "@/components/knowledge-view";
 import { MembrosView } from "@/components/membros-view";
@@ -10,6 +11,7 @@ import { PlanoDetailView } from "@/components/plano-detail-view";
 import { ProjetosView } from "@/components/projetos-view";
 import { TarefasView } from "@/components/tarefas-view";
 import { defaultPreferences } from "@/lib/preferences";
+import { parseDescription } from "@/lib/description-sections";
 import {
   ACESSO_LISTAS, ACESSO_PROJETOS, APROVACOES, CANAIS, CAPTACOES, CATEGORIAS, CONTAGEM_MARCAS,
   CONTRATOS, CORES_STATUS, DASHBOARD, DOCUMENTOS, FORMATOS, MARCAS, MEMBROS, PLANO, PROJETO,
@@ -27,12 +29,12 @@ import {
 // tela escondida, é uma tela que não atende.
 export const dynamic = "force-dynamic";
 
-const TELAS = ["dashboard", "tarefas", "plano", "pacote", "projetos", "marcas", "membros", "contratos", "conhecimento"] as const;
+const TELAS = ["dashboard", "tarefas", "plano", "pacote", "cliente", "projetos", "marcas", "membros", "contratos", "conhecimento"] as const;
 type Tela = (typeof TELAS)[number];
 
 const ATIVO: Record<Tela, AdminShellActive> = {
   dashboard: "dashboard", tarefas: "tarefas", plano: "planos", pacote: "planos", projetos: "projetos",
-  marcas: "marcas", membros: "membros", contratos: "contratos", conhecimento: "conhecimento",
+  cliente: "planos", marcas: "marcas", membros: "membros", contratos: "contratos", conhecimento: "conhecimento",
 };
 
 export default async function PreviaPage({ searchParams }: { searchParams: Promise<{ tela?: string }> }) {
@@ -104,6 +106,27 @@ export default async function PreviaPage({ searchParams }: { searchParams: Promi
           categoryTags={CATEGORIAS}
           statusColors={CORES_STATUS}
           currentUserId={USUARIO.id}
+        />
+      ) : null}
+
+      {tela === "cliente" ? (
+        <ClientDashboard
+          clientName="TerraNet"
+          roleTitle="Marketing"
+          city="Portelândia"
+          instagramHandle="terranet"
+          initialItems={TAREFAS_DO_PLANO.map((task, index) => ({
+            id: task.id, name: task.name, status: task.status, dueDate: task.dueDate || null,
+            captacaoLabel: CAPTACOES.find((capture) => capture.id === task.captacaoId)?.label || null,
+            formatLabel: FORMATOS.find((tag) => task.formatTagIds.includes(tag.id))?.label || null,
+            channelLabel: CANAIS.find((tag) => task.channelTagIds.includes(tag.id))?.label || "Instagram",
+            categoryLabel: CATEGORIAS.find((tag) => task.categoryTagIds.includes(tag.id))?.label || null,
+            reference: parseDescription(task.description).referencia || (index === 0 ? "https://instagram.com/reel/referencia" : null),
+            description: task.description || null, materialLink: task.driveLink || null,
+            approvalStatus: (index < 2 ? "approved" : "pending") as "approved" | "pending", reviewVersion: index === 1 ? 100 : 1, updatedAt: task.updatedAt,
+          }))}
+          events={[]}
+          initialScore={9}
         />
       ) : null}
 

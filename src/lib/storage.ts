@@ -2,6 +2,7 @@ import { isOverdue } from "./dates";
 import { derivePlanStage, formatRequiresCapture, nextApprovalReviewVersion, taskStatusAfterClientDecision } from "./approval-workflow";
 import { mergePreferences, normalizePreferences, type MemberPreferences } from "./preferences";
 import { inheritsCaptureEditor } from "./assignee-inheritance";
+import { parseDescription } from "./description-sections";
 import { getSupabase } from "./supabase-client";
 import { BRAND_STAGES, DEFAULT_STATUS_COLORS, TASK_STATUSES } from "./types";
 import type {
@@ -1033,7 +1034,9 @@ export type ProjectPlanItem = {
   dueDate: string | null;
   captacaoLabel: string | null;
   formatLabel: string | null;
+  channelLabel: string | null;
   categoryLabel: string | null;
+  reference: string | null;
   description: string | null;
   materialLink: string | null;
   approvalStatus: PlanApprovalStatus;
@@ -1050,7 +1053,7 @@ export async function listProjectPlanItems(projectId: string): Promise<ProjectPl
   const rows = unwrap(
     await db
       .from("tasks")
-      .select("id, captacao_id, name, status, due_date, format_tag_ids, category_tag_ids, description, drive_link, updated_at")
+      .select("id, captacao_id, name, status, due_date, format_tag_ids, channel_tag_ids, category_tag_ids, description, drive_link, updated_at")
       .in("plan_id", planIds),
   ) as {
     id: string;
@@ -1059,6 +1062,7 @@ export async function listProjectPlanItems(projectId: string): Promise<ProjectPl
     status: string;
     due_date: string | null;
     format_tag_ids: string[];
+    channel_tag_ids: string[];
     category_tag_ids: string[];
     description: string | null;
     drive_link: string | null;
@@ -1068,7 +1072,7 @@ export async function listProjectPlanItems(projectId: string): Promise<ProjectPl
 
   const taskIds = rows.map((t) => t.id);
   const captacaoIds = Array.from(new Set(rows.map((t) => t.captacao_id).filter((v): v is string => Boolean(v))));
-  const tagIds = Array.from(new Set(rows.flatMap((t) => [...t.format_tag_ids, ...t.category_tag_ids])));
+  const tagIds = Array.from(new Set(rows.flatMap((t) => [...t.format_tag_ids, ...t.channel_tag_ids, ...t.category_tag_ids])));
 
   const [captacoes, tags, approvals] = await Promise.all([
     captacaoIds.length ? (unwrap(await db.from("plan_captacoes").select("id, label").in("id", captacaoIds)) as { id: string; label: string }[]) : Promise.resolve([]),
@@ -1086,7 +1090,9 @@ export async function listProjectPlanItems(projectId: string): Promise<ProjectPl
 
   return rows.map((t) => {
     const formatId = t.format_tag_ids.find((id) => tagById.get(id)?.kind === "formato");
+    const channelId = t.channel_tag_ids.find((id) => tagById.get(id)?.kind === "canal");
     const approval = approvalByTask.get(t.id);
+    const reference = parseDescription(t.description || undefined).referencia || null;
     return {
       id: t.id,
       name: t.name,
@@ -1094,14 +1100,16 @@ export async function listProjectPlanItems(projectId: string): Promise<ProjectPl
       dueDate: t.due_date,
       captacaoLabel: t.captacao_id ? captacaoById.get(t.captacao_id) || null : null,
       formatLabel: formatId ? tagById.get(formatId)?.label || null : null,
+      channelLabel: channelId ? tagById.get(channelId)?.label || null : null,
       categoryLabel: t.category_tag_ids[0] ? tagById.get(t.category_tag_ids[0])?.label || null : null,
+      reference,
       description: t.description,
       materialLink: t.drive_link,
       approvalStatus: approval?.status || "pending",
       reviewVersion: approval?.review_version || 1,
       updatedAt: t.updated_at,
     };
-  });
+  }).sort((a, b) => (a.dueDate || "9999-12-31").localeCompare(b.dueDate || "9999-12-31") || a.name.localeCompare(b.name, "pt-BR"));
 }
 
 // ---------- Aprovação do cliente (eixo separado de tasks.status) ----------

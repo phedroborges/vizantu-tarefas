@@ -1,9 +1,9 @@
 "use client";
 
-import { AlertCircle, ArrowRight, CalendarDays, Check, CheckCircle2, Clapperboard, Clock3, Copy, ExternalLink, ImageIcon, Images, MessageCircleMore, Play, Sparkles, X } from "lucide-react";
+import { AlertCircle, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Copy, ExternalLink, ImageIcon, Images, Link2, MessageCircleMore, Play, Sparkles, X } from "lucide-react";
 import { useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { renderMarkdownLite } from "@/components/markdown-lite";
-import { MonthCalendar, MonthCalendarDay, MonthCalendarEvent, MonthCalendarGrid, MonthCalendarHeader, MonthCalendarWeekdays } from "@/components/vz/month-calendar";
+import { Button, Count, IconButton, Tag } from "@/components/vz";
 import { DatePicker } from "@/components/vz/date-picker";
 import { burst } from "@/lib/confetti";
 import { renderScriptView } from "@/components/script-table";
@@ -17,7 +17,9 @@ export type DashboardItem = {
   dueDate: string | null;
   captacaoLabel: string | null;
   formatLabel: string | null;
+  channelLabel: string | null;
   categoryLabel: string | null;
+  reference: string | null;
   description: string | null;
   materialLink: string | null;
   approvalStatus: "pending" | "approved" | "changes_requested" | "rejected";
@@ -41,13 +43,16 @@ const readStoredNameOnServer = () => "";
 const isCreativeStage = (item: DashboardItem) => item.reviewVersion >= 100;
 const copyStatus = (item: DashboardItem) => isCreativeStage(item) ? "approved" : item.approvalStatus;
 const isReviewed = (item: DashboardItem) => item.approvalStatus !== "pending";
-const roundNumber = (version: number) => version >= 100 ? version - 99 : version;
 
 function ContentIcon({ format, size = 13 }: { format?: string | null; size?: number }) {
   const value = (format || "").toLowerCase();
   if (/vídeo|video|reel/.test(value)) return <Play size={size} fill="currentColor" />;
   if (/carrossel/.test(value)) return <Images size={size} />;
   return <ImageIcon size={size} />;
+}
+
+function referenceUrl(reference: string | null) {
+  return reference?.match(/https?:\/\/[^\s<>]+/i)?.[0] || null;
 }
 
 function monthKey(date: Date) {
@@ -60,10 +65,11 @@ function daysGrid(monthDate: Date) {
   const first = new Date(year, month, 1);
   const startOffset = (first.getDay() + 6) % 7; // segunda = 0
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const cells: { date: Date | null }[] = [];
-  for (let i = 0; i < startOffset; i++) cells.push({ date: null });
+  const cells: { date: Date }[] = [];
+  for (let i = startOffset; i > 0; i--) cells.push({ date: new Date(year, month, 1 - i) });
   for (let d = 1; d <= daysInMonth; d++) cells.push({ date: new Date(year, month, d) });
-  while (cells.length % 7 !== 0) cells.push({ date: null });
+  let next = 1;
+  while (cells.length % 7 !== 0 || cells.length < 35) cells.push({ date: new Date(year, month + 1, next++) });
   return cells;
 }
 
@@ -98,10 +104,10 @@ export function ClientDashboard({
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
   const activeItem = items.find((i) => i.id === activeItemId) || null;
   const [month, setMonth] = useState(() => {
-    const firstScheduled = [...initialItems]
-      .filter((item) => item.dueDate)
-      .sort((a, b) => (a.dueDate || "").localeCompare(b.dueDate || ""))[0]?.dueDate;
-    return firstScheduled ? new Date(`${firstScheduled}T12:00:00`) : new Date();
+    const counts = new Map<string, number>();
+    for (const item of initialItems) if (item.dueDate) { const key = item.dueDate.slice(0, 7); counts.set(key, (counts.get(key) || 0) + 1); }
+    const dominant = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0];
+    return dominant ? new Date(`${dominant}-01T12:00:00`) : new Date();
   });
   // A identificação é pedida na ENTRADA, não na hora de decidir. Antes disso o
   // cliente com pressa ia direto nos botões, que ficavam desabilitados por
@@ -126,34 +132,21 @@ export function ClientDashboard({
     setPassedGate(true);
   }
 
-  const hasCreativeReview = items.some(isCreativeStage);
-  const activeStage = hasCreativeReview ? "creative" : "copy";
-  const activeStageItems = items.filter((item) => activeStage === "creative" ? isCreativeStage(item) : !isCreativeStage(item));
-  const activeStageLabel = activeStage === "creative" ? "Aprovação de criativos" : "Aprovação de texto";
-  const activeRound = Math.max(1, ...activeStageItems.map((item) => roundNumber(item.reviewVersion)));
-  const reviewedCount = activeStageItems.filter(isReviewed).length;
-  const approvedInStageCount = activeStageItems.filter((item) => item.approvalStatus === "approved").length;
-  const reviewedRate = activeStageItems.length ? Math.round((reviewedCount / activeStageItems.length) * 100) : 0;
-  const approvalRate = activeStageItems.length ? Math.round((approvedInStageCount / activeStageItems.length) * 100) : 0;
-  const adjustmentCount = activeStageItems.filter((i) => i.approvalStatus === "changes_requested" || i.approvalStatus === "rejected").length;
-  const pendingCount = activeStageItems.filter((i) => i.approvalStatus === "pending").length;
+  const orderedItems = useMemo(() => [...items].sort((a, b) => (a.dueDate || "9999-12-31").localeCompare(b.dueDate || "9999-12-31") || a.name.localeCompare(b.name, "pt-BR")), [items]);
+  const reviewedCount = items.filter(isReviewed).length;
+  const approvedInStageCount = items.filter((item) => item.approvalStatus === "approved").length;
+  const reviewedRate = items.length ? Math.round((reviewedCount / items.length) * 100) : 0;
+  const approvalRate = items.length ? Math.round((approvedInStageCount / items.length) * 100) : 0;
+  const adjustmentCount = items.filter((i) => i.approvalStatus === "changes_requested" || i.approvalStatus === "rejected").length;
+  const pendingCount = items.filter((i) => i.approvalStatus === "pending").length;
   const lastDeliveries = useMemo(
     () => [...items].filter((i) => isCreativeStage(i) && i.approvalStatus === "approved" && (i.status === "aprovado" || i.status === "finalizado")).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 3),
     [items],
   );
 
-  const groups = useMemo(() => {
-    const map = new Map<string, DashboardItem[]>();
-    for (const item of items) {
-      const label = item.captacaoLabel ? `${item.formatLabel || "Conteúdo"} | ${item.captacaoLabel}` : item.formatLabel || "Conteúdo";
-      (map.get(label) || map.set(label, []).get(label)!).push(item);
-    }
-    return Array.from(map.entries());
-  }, [items]);
-
   const cellsByDay = useMemo(() => {
     const map = new Map<string, { label: string; kind: "content" | "event" | "capture"; itemId?: string; format?: string | null; approvalStatus?: string }[]>();
-    for (const item of items) {
+    for (const item of orderedItems) {
       if (!item.dueDate) continue;
       (map.get(item.dueDate) || map.set(item.dueDate, []).get(item.dueDate)!).push({ label: item.name, kind: "content", itemId: item.id, format: item.formatLabel, approvalStatus: item.approvalStatus });
     }
@@ -161,7 +154,7 @@ export function ClientDashboard({
       (map.get(ev.date) || map.set(ev.date, []).get(ev.date)!).push({ label: ev.title, kind: ev.eventType.startsWith("captacao:") ? "capture" : "event" });
     }
     return map;
-  }, [items, events]);
+  }, [orderedItems, events]);
 
 
   function updateItemLocal(id: string, patch: Partial<DashboardItem>) {
@@ -183,7 +176,9 @@ export function ClientDashboard({
       const rect = buttonEl.getBoundingClientRect();
       burst(rect.left + rect.width / 2, rect.top + rect.height / 2, 60);
     }
-    setTimeout(() => setActiveItemId(null), status === "approved" ? 650 : 150);
+    const currentIndex = orderedItems.findIndex((entry) => entry.id === item.id);
+    const nextItem = orderedItems.slice(currentIndex + 1).find((entry) => entry.approvalStatus === "pending") || orderedItems.slice(0, currentIndex).find((entry) => entry.approvalStatus === "pending");
+    setTimeout(() => setActiveItemId(status === "approved" && nextItem ? nextItem.id : null), status === "approved" ? 650 : 150);
   }
 
   async function submitSurvey(newScore: number) {
@@ -202,7 +197,7 @@ export function ClientDashboard({
           <div>
             <span className="cd-eyebrow">Portal do cliente · Vizantu</span>
             <h1>Olá, {clientName}</h1>
-            <p>Você está na etapa de <strong>{activeStageLabel.toLowerCase()}</strong>. Leia cada conteúdo e registre sua decisão.</p>
+            <p>Seu plano está em ordem de publicação. Abra o próximo conteúdo, confira <strong>texto ou criativo</strong> e registre sua decisão.</p>
           </div>
           <div className="cd-header-meta">
             {[roleTitle, city].filter(Boolean).join(" · ")}
@@ -246,8 +241,8 @@ export function ClientDashboard({
         <section className="cd-review-section">
           <div className="cd-review-heading">
             <div>
-              <span className="cd-eyebrow">Etapa atual · Rodada {activeRound}</span>
-              <h2>{activeStageLabel}</h2>
+              <span className="cd-eyebrow">Fluxo de aprovação</span>
+              <h2>Conteúdos em ordem de publicação</h2>
             </div>
             <small>Toque em um conteúdo para ler e responder.</small>
           </div>
@@ -255,34 +250,30 @@ export function ClientDashboard({
           <div className="cd-approval-bar-wrap">
             <div className="cd-approval-bar-label">
               <strong>{reviewedRate}% revisado</strong>
-              <span>{reviewedCount} de {activeStageItems.length} analisados</span>
+              <span>{reviewedCount} de {items.length} analisados</span>
             </div>
             <div className="cd-approval-bar-track"><div className="cd-approval-bar-fill" style={{ width: `${reviewedRate}%` }} /></div>
             <div className="cd-stage-progress"><span>Aprovação: {approvalRate}%</span><span>{approvedInStageCount} aprovados · {reviewedCount - approvedInStageCount} com retorno</span></div>
-            {reviewedRate === 100 && activeStageItems.length ? <div className="cd-review-complete"><CheckCircle2 size={16} /><span><strong>Rodada 100% revisada.</strong> A equipe já pode seguir com os aprovados e preparar os ajustes necessários.</span></div> : null}
+            {reviewedRate === 100 && items.length ? <div className="cd-review-complete"><CheckCircle2 size={16} /><span><strong>Plano 100% revisado.</strong> A equipe já pode seguir com os aprovados e preparar os ajustes necessários.</span></div> : null}
           </div>
 
-          <div className="cd-groups">
-            {groups.map(([label, groupItems]) => (
-              <div className="cd-group" key={label}>
-                <div className="cd-group-head"><h3>{label}</h3><span>{groupItems.length} {groupItems.length === 1 ? "conteúdo" : "conteúdos"}</span></div>
-                {groupItems.map((item, index) => (
-                  <button type="button" className="cd-group-item" key={item.id} onClick={() => setActiveItemId(item.id)}>
-                    <span className="cd-item-index">{String(index + 1).padStart(2, "0")}</span>
-                    <span className="cd-group-item-main">
-                      <span className="cd-group-item-name">{item.name}</span>
-                      <span className="cd-item-tags">
-                        {item.categoryLabel ? <span className="cd-pill tag">{item.categoryLabel}</span> : null}
-                        <span className={`cd-pill status-${copyStatus(item)}`}>Texto: {STATUS_LABEL[copyStatus(item)]}</span>
-                        <span className={`cd-pill ${isCreativeStage(item) ? `status-${item.approvalStatus}` : "stage-locked"}`}>Criação: {isCreativeStage(item) ? STATUS_LABEL[item.approvalStatus] : "aguardando"}</span>
-                      </span>
-                    </span>
-                    <ArrowRight size={17} className="cd-item-arrow" />
-                  </button>
-                ))}
-              </div>
+          <div className="cd-sequence">
+            {orderedItems.map((item, index) => (
+              <button type="button" className="cd-sequence-item" key={item.id} onClick={() => setActiveItemId(item.id)}>
+                <span className="cd-item-index">{String(index + 1).padStart(2, "0")}</span>
+                <span className="cd-sequence-date">{item.dueDate ? new Date(`${item.dueDate}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }) : "Sem data"}</span>
+                <span className="cd-group-item-main">
+                  <span className="cd-group-item-name">{item.name}</span>
+                  <span className="cd-item-tags">
+                    <Tag tone="violet" icon={<ContentIcon format={item.formatLabel} size={10} />}>{item.formatLabel || "Formato não informado"}</Tag>
+                    <Tag tone="blue">{item.channelLabel || "Canal não informado"}</Tag>
+                    {item.categoryLabel ? <Tag>{item.categoryLabel}</Tag> : null}
+                  </span>
+                </span>
+                <span className="cd-sequence-stage"><span className={`cd-pill status-${item.approvalStatus}`}>{isCreativeStage(item) ? "Criativo" : "Texto"}: {STATUS_LABEL[item.approvalStatus]}</span>{item.reference ? <small><Link2 size={10} /> referência</small> : null}</span>
+              </button>
             ))}
-            {!groups.length ? <div className="cd-empty-state"><CheckCircle2 size={26} /><strong>Tudo certo por aqui</strong><span>Nenhum conteúdo aguardando revisão.</span></div> : null}
+            {!orderedItems.length ? <div className="cd-empty-state"><CheckCircle2 size={26} /><strong>Tudo certo por aqui</strong><span>Nenhum conteúdo aguardando revisão.</span></div> : null}
           </div>
         </section>
 
@@ -293,34 +284,23 @@ export function ClientDashboard({
           </div>
           <CalendarDays size={20} />
         </div>
-        <MonthCalendar className="client-calendar">
-          <MonthCalendarHeader
-            label={month.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}
-            onPrevious={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
-            onNext={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
-          />
-          <div className="vz-calendar__scroll">
-          <MonthCalendarGrid>
-            <MonthCalendarWeekdays />
+        <section className="vz-cal client-calendar">
+          <div className="vz-cal__head"><div className="calendar-month-title"><strong className="vz-cal__month">{month.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</strong><Count>{orderedItems.filter((item) => item.dueDate?.startsWith(monthKey(month))).length} conteúdos</Count></div><div className="vz-cal__nav"><IconButton size="sm" aria-label="Mês anterior" onClick={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}><ChevronLeft size={14} /></IconButton><Button variant="ghost" size="sm" onClick={() => setMonth(new Date())}>Hoje</Button><IconButton size="sm" aria-label="Próximo mês" onClick={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}><ChevronRight size={14} /></IconButton></div></div>
+          <div className="calendar-scroll"><div className="vz-cal__weekdays">{["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((day) => <span key={day}>{day}</span>)}</div><div className="vz-cal__grid">
             {grid.map((cell, idx) => {
-              const iso = cell.date ? isoDate(cell.date) : null;
-              const dayItems = iso ? cellsByDay.get(iso) || [] : [];
-              const muted = !cell.date || monthKey(cell.date) !== currentMonthKey;
+              const iso = isoDate(cell.date);
+              const dayItems = cellsByDay.get(iso) || [];
+              const muted = monthKey(cell.date) !== currentMonthKey;
               return (
-                <MonthCalendarDay day={cell.date?.getDate()} muted={muted} hasItems={dayItems.length > 0} key={idx}>
+                <div className={`vz-cal__day${muted ? " vz-cal__day--out" : ""}`} key={idx}><span className="vz-cal__daynum">{cell.date.getDate()}</span>
                   {dayItems.slice(0, 3).map((d, i) => (
-                    <MonthCalendarEvent key={i} className={`status-${d.kind === "event" || d.kind === "capture" ? d.kind : d.approvalStatus}`} title={d.label} onClick={() => d.itemId && setActiveItemId(d.itemId)} disabled={!d.itemId}>
-                      {d.kind === "capture" ? <Clapperboard size={11} /> : d.kind === "content" ? <ContentIcon format={d.format} size={10} /> : <CalendarDays size={10} />}
-                      <span>{d.label}</span>
-                      {d.approvalStatus === "approved" ? <Check size={10} /> : d.approvalStatus === "rejected" ? <X size={10} /> : null}
-                    </MonthCalendarEvent>
+                    <button key={i} className={`vz-cal-card vz-cal-card--${/carrossel/i.test(d.format || "") ? "blue" : /estát|imagem/i.test(d.format || "") ? "green" : "violet"}`} title={d.label} onClick={() => d.itemId && setActiveItemId(d.itemId)} disabled={!d.itemId}><div className="vz-cal-card__top"><span className="vz-minitag vz-minitag--outline">{d.format || (d.kind === "capture" ? "Captação" : "Conteúdo")}</span></div><span className="vz-cal-card__title">{d.label}</span>{d.kind === "content" ? <span className={`vz-minitag vz-minitag--${d.approvalStatus === "approved" ? "green" : d.approvalStatus === "rejected" ? "red" : "blue"}`}>{STATUS_LABEL[d.approvalStatus || "pending"]}</span> : null}</button>
                   ))}
-                </MonthCalendarDay>
+                </div>
               );
             })}
-          </MonthCalendarGrid>
-          </div>
-        </MonthCalendar>
+          </div></div><div className="vz-cal__legend"><span><i className="vz-dot vz-dot--violet" />Reels</span><span><i className="vz-dot vz-dot--blue" />Carrossel</span><span><i className="vz-dot vz-dot--green" />Estático</span></div>
+        </section>
       </div>
 
       {activeItem ? (
@@ -497,7 +477,7 @@ function ApprovalModal({
       <div className="cd-approval-modal" onClick={(e) => e.stopPropagation()}>
         <button className="cd-close" type="button" onClick={onClose} aria-label="Fechar"><X size={16} /></button>
         <h3>{item.name}</h3>
-        <div className="cd-meta">{[item.formatLabel, item.captacaoLabel].filter(Boolean).join(" · ") || "Conteúdo"}</div>
+        <div className="cd-modal-context"><Tag tone="violet" icon={<ContentIcon format={item.formatLabel} size={10} />}>{item.formatLabel || "Formato não informado"}</Tag><Tag tone="blue">{item.channelLabel || "Canal não informado"}</Tag>{item.dueDate ? <Tag outline>{new Date(`${item.dueDate}T12:00:00`).toLocaleDateString("pt-BR")}</Tag> : null}</div>
 
         <div className="cd-approval-steps">
           <span className={copyStatus(item) === "approved" ? "is-done" : "is-current"}>{copyStatus(item) === "approved" ? <Check size={13} /> : null} 1. Texto</span>
@@ -505,6 +485,8 @@ function ApprovalModal({
         </div>
 
         {item.description ? <div className="cd-item-description"><ItemDescription text={item.description} /></div> : <div className="cd-item-description cd-description-empty">Este conteúdo ainda não tem descrição.</div>}
+
+        {item.reference ? <div className="cd-reference-card"><span className="cd-eyebrow">Referência</span><p>{item.reference}</p>{referenceUrl(item.reference) ? <a href={referenceUrl(item.reference)!} target="_blank" rel="noreferrer"><ExternalLink size={13} />Abrir referência</a> : null}</div> : null}
 
         {creativeStage && item.materialLink ? <a className="cd-material-link" href={item.materialLink} target="_blank" rel="noreferrer"><ExternalLink size={16} /><span><strong>Abrir material para revisar</strong><small>Confira o {item.formatLabel || "material"} antes de responder.</small></span></a> : !creativeStage && item.approvalStatus === "approved" ? <div className="cd-material-wait"><Clock3 size={15} /> Texto aprovado. A criação aparecerá quando estiver pronta.</div> : null}
 
