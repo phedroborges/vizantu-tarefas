@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Copy, ExternalLink, ImageIcon, Images, Link2, MessageCircleMore, Play, Sparkles, X } from "lucide-react";
+import { AlertCircle, CalendarClock, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Copy, ExternalLink, ImageIcon, Images, Link2, MessageCircleMore, Play, Sparkles, Video, X } from "lucide-react";
 import { useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { renderMarkdownLite } from "@/components/markdown-lite";
 import { Button, Count, IconButton, Tag } from "@/components/vz";
@@ -145,13 +145,15 @@ export function ClientDashboard({
   );
 
   const cellsByDay = useMemo(() => {
-    const map = new Map<string, { label: string; kind: "content" | "event" | "capture"; itemId?: string; format?: string | null; approvalStatus?: string }[]>();
+    const map = new Map<string, { label: string; kind: "content" | "event" | "capture" | "deadline"; itemId?: string; format?: string | null; approvalStatus?: string }[]>();
     for (const item of orderedItems) {
       if (!item.dueDate) continue;
       (map.get(item.dueDate) || map.set(item.dueDate, []).get(item.dueDate)!).push({ label: item.name, kind: "content", itemId: item.id, format: item.formatLabel, approvalStatus: item.approvalStatus });
     }
     for (const ev of events) {
-      (map.get(ev.date) || map.set(ev.date, []).get(ev.date)!).push({ label: ev.title, kind: ev.eventType.startsWith("captacao:") ? "capture" : "event" });
+      const kind = ev.eventType.startsWith("captacao:") || /captação/i.test(ev.title) ? "capture" : ev.eventType.startsWith("producao:") || /prazo de criação|entrega do pacote/i.test(ev.title) ? "deadline" : "event";
+      const label = ev.title.replace(/^(Sugestão de captação|Prazo de criação):\s*/i, "");
+      (map.get(ev.date) || map.set(ev.date, []).get(ev.date)!).push({ label, kind });
     }
     return map;
   }, [orderedItems, events]);
@@ -280,12 +282,13 @@ export function ClientDashboard({
         <div className="cd-section-heading">
           <div>
             <span className="cd-eyebrow">Planejamento</span>
-            <h2>Calendário de conteúdos</h2>
+            <h2>Calendário de publicações e entregas</h2>
           </div>
           <CalendarDays size={20} />
         </div>
         <section className="vz-cal client-calendar">
-          <div className="vz-cal__head"><div className="calendar-month-title"><strong className="vz-cal__month">{month.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</strong><Count>{orderedItems.filter((item) => item.dueDate?.startsWith(monthKey(month))).length} conteúdos</Count></div><div className="vz-cal__nav"><IconButton size="sm" aria-label="Mês anterior" onClick={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}><ChevronLeft size={14} /></IconButton><Button variant="ghost" size="sm" onClick={() => setMonth(new Date())}>Hoje</Button><IconButton size="sm" aria-label="Próximo mês" onClick={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}><ChevronRight size={14} /></IconButton></div></div>
+          <div className="vz-cal__head"><div className="calendar-month-title"><strong className="vz-cal__month">{month.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</strong><Count>{orderedItems.filter((item) => item.dueDate?.startsWith(monthKey(month))).length} publicações</Count>{events.filter((event) => event.date.startsWith(monthKey(month))).length ? <Count>{events.filter((event) => event.date.startsWith(monthKey(month))).length} marcos do plano</Count> : null}</div><div className="vz-cal__nav"><IconButton size="sm" aria-label="Mês anterior" onClick={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}><ChevronLeft size={14} /></IconButton><Button variant="ghost" size="sm" onClick={() => setMonth(new Date())}>Hoje</Button><IconButton size="sm" aria-label="Próximo mês" onClick={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}><ChevronRight size={14} /></IconButton></div></div>
+          <div className="cd-calendar-key"><span><strong>Publicações</strong> são os conteúdos que irão ao ar.</span><span><strong>Marcos do plano</strong> são datas internas de captação, criação ou entrega do pacote.</span></div>
           <div className="calendar-scroll"><div className="vz-cal__weekdays">{["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((day) => <span key={day}>{day}</span>)}</div><div className="vz-cal__grid">
             {grid.map((cell, idx) => {
               const iso = isoDate(cell.date);
@@ -294,12 +297,12 @@ export function ClientDashboard({
               return (
                 <div className={`vz-cal__day${muted ? " vz-cal__day--out" : ""}`} key={idx}><span className="vz-cal__daynum">{cell.date.getDate()}</span>
                   {dayItems.slice(0, 3).map((d, i) => (
-                    <button key={i} className={`vz-cal-card vz-cal-card--${/carrossel/i.test(d.format || "") ? "blue" : /estát|imagem/i.test(d.format || "") ? "green" : "violet"}`} title={d.label} onClick={() => d.itemId && setActiveItemId(d.itemId)} disabled={!d.itemId}><div className="vz-cal-card__top"><span className="vz-minitag vz-minitag--outline">{d.format || (d.kind === "capture" ? "Captação" : "Conteúdo")}</span></div><span className="vz-cal-card__title">{d.label}</span>{d.kind === "content" ? <span className={`vz-minitag vz-minitag--${d.approvalStatus === "approved" ? "green" : d.approvalStatus === "rejected" ? "red" : "blue"}`}>{STATUS_LABEL[d.approvalStatus || "pending"]}</span> : null}</button>
+                    <button key={i} className={`vz-cal-card ${d.kind === "content" ? `vz-cal-card--${/carrossel/i.test(d.format || "") ? "blue" : /estát|imagem/i.test(d.format || "") ? "green" : "violet"}` : `cd-milestone-card cd-milestone-card--${d.kind}`}`} title={d.label} onClick={() => d.itemId && setActiveItemId(d.itemId)} disabled={!d.itemId}><div className="vz-cal-card__top">{d.kind === "content" ? <span className="vz-minitag vz-minitag--outline"><ContentIcon format={d.format} size={10} /> Publicação · {d.format || "formato não informado"}</span> : <span className="cd-milestone-label">{d.kind === "capture" ? <><Video size={11} /> Captação do pacote</> : d.kind === "deadline" ? <><CalendarClock size={11} /> Entrega do pacote</> : <><CalendarDays size={11} /> Marco do plano</>}</span>}</div><span className="vz-cal-card__title">{d.label}</span>{d.kind === "content" ? <span className={`vz-minitag vz-minitag--${d.approvalStatus === "approved" ? "green" : d.approvalStatus === "rejected" ? "red" : "blue"}`}>{STATUS_LABEL[d.approvalStatus || "pending"]}</span> : null}</button>
                   ))}
                 </div>
               );
             })}
-          </div></div><div className="vz-cal__legend"><span><i className="vz-dot vz-dot--violet" />Reels</span><span><i className="vz-dot vz-dot--blue" />Carrossel</span><span><i className="vz-dot vz-dot--green" />Estático</span></div>
+          </div></div><div className="vz-cal__legend cd-calendar-legend"><strong>Publicações:</strong><span><i className="vz-dot vz-dot--violet" />Reels</span><span><i className="vz-dot vz-dot--blue" />Carrossel</span><span><i className="vz-dot vz-dot--green" />Estático</span><strong className="cd-legend-divider">Marcos do plano:</strong><span className="cd-legend-milestone is-capture"><Video size={11} /> Captação</span><span className="cd-legend-milestone is-deadline"><CalendarClock size={11} /> Entrega do pacote</span></div>
         </section>
       </div>
 

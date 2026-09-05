@@ -125,7 +125,10 @@ export default async function PreviaPage({ searchParams }: { searchParams: Promi
             description: task.description || null, materialLink: task.driveLink || null,
             approvalStatus: (index < 2 ? "approved" : "pending") as "approved" | "pending", reviewVersion: index === 1 ? 100 : 1, updatedAt: task.updatedAt,
           }))}
-          events={[]}
+          events={[
+            { id: "previa-captacao", title: "Sugestão de captação: 1ª Captação — Reels", date: "2026-09-11", eventType: "captacao:previa" },
+            { id: "previa-entrega", title: "Prazo de criação: Carrosséis — Pacote 1", date: "2026-09-14", eventType: "producao:previa" },
+          ]}
           initialScore={9}
         />
       ) : null}

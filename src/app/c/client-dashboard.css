@@ -94,6 +94,21 @@
 .cd-section-heading svg { color: var(--cd-purple); }
 .client-calendar .vz-cal__day { min-height: 150px; }
 .client-calendar .vz-cal-card { cursor: pointer; }
+.client-calendar .vz-cal-card__top .vz-minitag { display: inline-flex; align-items: center; gap: 4px; }
+.cd-calendar-key { display: flex; align-items: center; gap: 24px; padding: 10px 16px; color: var(--vz-text-muted); background: var(--vz-bg-sunken); border-bottom: 1px solid var(--vz-border); font-size: 11px; }
+.cd-calendar-key span { display: flex; align-items: center; gap: 4px; }
+.cd-calendar-key span::before { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--vz-brand); content: ""; }
+.cd-calendar-key span + span::before { border-radius: 2px; background: var(--vz-amber-solid); }
+.cd-milestone-card { cursor: default !important; border: 1px dashed var(--vz-border) !important; border-left-width: 3px !important; box-shadow: none !important; }
+.cd-milestone-card--capture { color: var(--vz-teal-ink); background: var(--vz-teal-bg) !important; border-color: var(--vz-teal-line) !important; }
+.cd-milestone-card--deadline { color: var(--vz-amber-ink); background: var(--vz-amber-bg) !important; border-color: var(--vz-amber-line) !important; }
+.cd-milestone-card--event { color: var(--vz-text-soft); background: var(--vz-bg-sunken) !important; }
+.cd-milestone-label { display: inline-flex; align-items: center; gap: 4px; font-size: 9px; font-weight: 750; text-transform: uppercase; letter-spacing: .03em; }
+.cd-calendar-legend > strong { color: var(--vz-text); font-size: 10px; }
+.cd-calendar-legend .cd-legend-divider { margin-left: 12px; padding-left: 16px; border-left: 1px solid var(--vz-border); }
+.cd-legend-milestone { display: inline-flex; align-items: center; gap: 5px; font-weight: 650; }
+.cd-legend-milestone.is-capture { color: var(--vz-teal-ink); }
+.cd-legend-milestone.is-deadline { color: var(--vz-amber-ink); }
 .cd-calendar { display: none; background: var(--vz-panel); border: 1px solid var(--cd-line); }
 .cd-calendar-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--cd-line); }
 .cd-calendar-head button { width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid var(--cd-line); background: var(--vz-panel); color: var(--cd-purple-strong); cursor: pointer; }
@@ -255,6 +270,8 @@
 }
 
 @media (max-width: 619px) {
+  .cd-calendar-key { align-items: flex-start; flex-direction: column; gap: 6px; }
+  .cd-calendar-legend .cd-legend-divider { width: 100%; margin: 4px 0 0; padding: 8px 0 0; border-top: 1px solid var(--vz-border); border-left: 0; }
   .cd-sequence-item { grid-template-columns: 32px minmax(0, 1fr); gap: 8px 10px; }
   .cd-sequence-date { grid-column: 2; grid-row: 2; }
   .cd-sequence-stage { grid-column: 2; justify-items: start; }
