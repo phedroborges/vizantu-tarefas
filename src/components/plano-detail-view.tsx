@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDays, Camera, ChevronRight, ClipboardList, Filter, LayoutGrid, Link as LinkIcon, List, MessageSquareText, Package, Palette, Plus, Search, Send, Trash2 } from "lucide-react";
+import { CalendarDays, Camera, ChevronRight, ClipboardList, Filter, LayoutGrid, Link as LinkIcon, List, MessageSquareText, Package, Palette, Plus, Search, Send, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { PlanCalendar } from "@/components/plan-calendar";
@@ -238,8 +238,8 @@ export function PlanoDetailView({
   const [captacoes, setCaptacoes] = useState(initialCaptacoes);
   const [suggestions, setSuggestions] = useState(captureSuggestions);
   const [tasks, setTasks] = useState(initialTasks);
-  const [newCaptacaoLabel, setNewCaptacaoLabel] = useState("");
-  const [newPackageKind, setNewPackageKind] = useState<PlanCaptacao["packageKind"]>("creation");
+  const [packageCreatorOpen, setPackageCreatorOpen] = useState(false);
+  const [newPackageType, setNewPackageType] = useState<"captacao" | "carrossel" | "sazonal" | "estatico">("captacao");
   const [newItemName, setNewItemName] = useState("");
   const [newItemFormatId, setNewItemFormatId] = useState(formatTags[0]?.id || "");
   const [editingTask, setEditingTask] = useState<Task | null | undefined>(undefined);
@@ -303,16 +303,27 @@ export function PlanoDetailView({
 
   async function addCaptacao(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!newCaptacaoLabel.trim()) return;
+    const packageNames = {
+      captacao: { singular: "Captação", stem: "capt", gender: "f", kind: "capture" as const },
+      carrossel: { singular: "Carrossel", stem: "carross", gender: "m", kind: "creation" as const },
+      sazonal: { singular: "Sazonal", stem: "sazon", gender: "m", kind: "creation" as const },
+      estatico: { singular: "Estático", stem: "estat", gender: "m", kind: "creation" as const },
+    };
+    const selected = packageNames[newPackageType];
+    const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
+    const sameTypeCount = captacoes.filter((item) => normalize(item.label).includes(selected.stem)).length;
+    const sequence = sameTypeCount + 1;
+    const ordinal = `${sequence}${selected.gender === "f" ? "ª" : "º"}`;
+    const label = `${ordinal} ${selected.singular}`;
     const response = await fetch("/api/plan-captacoes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ planId: plan.id, label: newCaptacaoLabel, packageKind: newPackageKind, sequenceOrder: captacoes.length }),
+      body: JSON.stringify({ planId: plan.id, label, packageKind: selected.kind, sequenceOrder: captacoes.length }),
     });
     const result = await response.json();
     if (!response.ok) return showToast(result.error || "Não foi possível criar o pacote.");
     setCaptacoes((current) => [...current, result.captacao]);
-    setNewCaptacaoLabel("");
+    setPackageCreatorOpen(false);
   }
 
   async function removeCaptacao(captacao: PlanCaptacao) {
@@ -681,7 +692,7 @@ export function PlanoDetailView({
                 <h3 className="vz-h3">Pacotes de produção</h3>
                 <span className="vz-caption">Como as entregas se agrupam para gravar e editar</span>
               </div>
-              {canEdit ? <Button variant="ghost" size="sm" type="button" onClick={() => document.getElementById("novo-pacote")?.focus()}><Plus size={14} />Novo pacote</Button> : null}
+              {canEdit ? <Button variant="ghost" size="sm" type="button" onClick={() => setPackageCreatorOpen(true)}><Plus size={14} />Novo pacote</Button> : null}
             </div>
             <div className="vz-card__body vz-plan-package-grid">
               {captacoes.map((c) => {
@@ -765,16 +776,6 @@ export function PlanoDetailView({
                 );
               })}
               {!captacoes.length ? <span className="plan-item-empty">Nenhum pacote ainda.</span> : null}
-              {canEdit ? (
-                <form onSubmit={addCaptacao} className="plan-captacao-form vz-plan-package-form">
-                  <input id="novo-pacote" value={newCaptacaoLabel} onChange={(e) => setNewCaptacaoLabel(e.target.value)} placeholder="Ex.: Carrosséis — Pacote 1" />
-                  <select aria-label="Tipo do novo pacote" value={newPackageKind} onChange={(event) => setNewPackageKind(event.target.value as PlanCaptacao["packageKind"])}>
-                    <option value="creation">Pacote de criação</option>
-                    <option value="capture">Exige captação</option>
-                  </select>
-                  <button className="secondary-button" type="submit"><Plus size={13} /></button>
-                </form>
-              ) : null}
             </div>
           </Card>
         ) : null}
@@ -837,7 +838,7 @@ export function PlanoDetailView({
           ) : null}
 
           {aba === "calendario" && isContent ? (
-            <PlanCalendar tasks={tasks} formatTags={formatTags} canEdit={canEdit} onMove={moveTaskDate} onOpen={setEditingTask} />
+            <PlanCalendar tasks={tasks} formatTags={formatTags} channelTags={channelTags} members={members} canEdit={canEdit} onMove={moveTaskDate} onOpen={setEditingTask} />
           ) : null}
 
           {aba === "board" && isContent ? (
@@ -884,6 +885,21 @@ export function PlanoDetailView({
         />
       ) : null}
       {ConfirmDialog}
+      {packageCreatorOpen ? (
+        <div className="modal-layer" role="presentation">
+          <button className="modal-backdrop" type="button" aria-label="Fechar criação de pacote" onClick={() => setPackageCreatorOpen(false)} />
+          <form className="vz-modal" onSubmit={addCaptacao} role="dialog" aria-modal="true" aria-labelledby="new-package-title">
+            <div className="vz-modal__head">
+              <div><span className="vz-eyebrow">Pacotes de produção</span><h2 className="vz-h2" id="new-package-title">Novo pacote</h2></div>
+              <button type="button" className="vz-icon-btn vz-icon-btn--sm" onClick={() => setPackageCreatorOpen(false)} aria-label="Fechar"><X size={15} /></button>
+            </div>
+            <div className="vz-modal__body">
+              <label className="vz-field"><span className="vz-label">Tipo do pacote</span><select className="vz-select" value={newPackageType} onChange={(event) => setNewPackageType(event.target.value as typeof newPackageType)} autoFocus><option value="captacao">Captação</option><option value="carrossel">Carrossel</option><option value="sazonal">Sazonal</option><option value="estatico">Estático</option></select><span className="vz-hint">O número é criado automaticamente conforme os pacotes existentes.</span></label>
+            </div>
+            <div className="vz-modal__foot"><Button type="button" variant="secondary" onClick={() => setPackageCreatorOpen(false)}>Cancelar</Button><Button type="submit" variant="primary"><Plus size={14} />Criar pacote</Button></div>
+          </form>
+        </div>
+      ) : null}
       {toast ? <div className="toast">{toast}</div> : null}
     </>
   );

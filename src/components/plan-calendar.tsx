@@ -1,162 +1,82 @@
 "use client";
 
-import { CalendarDays, Lock, Sparkles } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
-import { currentMonthKey, daysInCalendarMonth, monthKeyFromDate, monthLabel, moveMonth } from "@/lib/dates";
-import { formatFamily, weekStart, WEEKLY_MINIMUM, type FormatFamily } from "@/lib/plan-schedule";
-import type { Tag, Task } from "@/lib/types";
-import { MonthCalendar, MonthCalendarDay, MonthCalendarGrid, MonthCalendarHeader, MonthCalendarWeekdays } from "@/components/vz/month-calendar";
+import { ChevronLeft, ChevronRight, Image as ImageIcon, Layers, Link2, Lock, Megaphone, MessageSquare, Paperclip, Settings2, Smartphone, Video } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Avatar } from "@/components/avatar";
+import { Button, Check, Count, IconButton } from "@/components/vz";
+import { currentMonthKey, monthKeyFromDate, monthLabel, moveMonth, todayIso } from "@/lib/dates";
+import { TASK_STATUSES } from "@/lib/types";
+import type { Member, Tag, Task } from "@/lib/types";
 
-// O calendário do plano, com arrastar e soltar.
-//
-// A lista de itens ordenada por data responde "o que vem agora". Ela não
-// responde "como está a semana", que é a pergunta que aparece quando o cliente
-// atrasa a aprovação e tudo precisa ser remanejado. Num mês em grade dá pra
-// ver de relance o buraco de terça e os três conteúdos empilhados na sexta.
-//
-// Arrastar altera SÓ a data de entrega. É a mesma edição do campo de prazo no
-// modal, feita com a mão em vez de com o teclado, e por isso não existe regra
-// nova aqui: dois ou três conteúdos no mesmo dia são permitidos, porque na
-// vida real isso acontece quando um plano precisa recuperar atraso.
+type CardField = "formato" | "etapa" | "responsavel" | "canal" | "link" | "comentarios";
+const CARD_FIELDS: { key: CardField; label: string }[] = [
+  { key: "formato", label: "Formato" }, { key: "etapa", label: "Etapa" }, { key: "responsavel", label: "Responsável" },
+  { key: "canal", label: "Canal" }, { key: "link", label: "Link do material" }, { key: "comentarios", label: "Comentários e anexos" },
+];
 
-const CORES: Record<FormatFamily, string> = {
-  video: "cal-video",
-  carrossel: "cal-carrossel",
-  estatico: "cal-estatico",
-  outro: "cal-outro",
-};
-
-export function PlanCalendar({
-  tasks,
-  formatTags,
-  canEdit,
-  onMove,
-  onOpen,
-}: {
-  tasks: Task[];
-  formatTags: Tag[];
-  canEdit: boolean;
-  onMove: (taskId: string, dueDate: string) => void;
-  onOpen: (task: Task) => void;
-}) {
-  const primeiraData = useMemo(
-    () => tasks.map((task) => task.dueDate).filter(Boolean).sort()[0],
-    [tasks],
-  );
-  const [monthKey, setMonthKey] = useState(() => (primeiraData ? monthKeyFromDate(primeiraData) : currentMonthKey()));
-  const [dragId, setDragId] = useState<string | null>(null);
-  const [overDay, setOverDay] = useState<string | null>(null);
-
-  const labelById = useMemo(() => new Map(formatTags.map((tag) => [tag.id, tag.label])), [formatTags]);
-  const familia = useCallback((task: Task): FormatFamily =>
-    formatFamily((task.formatTagIds || []).map((id) => labelById.get(id) || "")), [labelById]);
-
-  const porDia = useMemo(() => {
-    const mapa = new Map<string, Task[]>();
-    for (const task of tasks) {
-      if (!task.dueDate) continue;
-      const lista = mapa.get(task.dueDate) ?? [];
-      lista.push(task);
-      mapa.set(task.dueDate, lista);
-    }
-    return mapa;
-  }, [tasks]);
-
-  const dias = daysInCalendarMonth(monthKey);
-  const iso = (dia: number) => `${monthKey}-${String(dia).padStart(2, "0")}`;
-
-  // O que falta em cada semana VISÍVEL, pra cobrança aparecer ao lado da
-  // semana em que ela acontece, e não numa lista solta embaixo.
-  const faltaPorSemana = useMemo(() => {
-    const contagem = new Map<string, Record<FormatFamily, number>>();
-    for (const task of tasks) {
-      if (!task.dueDate) continue;
-      const chave = weekStart(task.dueDate);
-      const atual = contagem.get(chave) ?? { video: 0, carrossel: 0, estatico: 0, outro: 0 };
-      atual[familia(task)] += 1;
-      contagem.set(chave, atual);
-    }
-    const faltas = new Map<string, string[]>();
-    for (const [chave, counts] of contagem) {
-      const nomes: Record<string, string> = { video: "vídeo", carrossel: "carrossel", estatico: "estático" };
-      const falta = (Object.keys(WEEKLY_MINIMUM) as (keyof typeof WEEKLY_MINIMUM)[])
-        .filter((family) => counts[family] < WEEKLY_MINIMUM[family])
-        .map((family) => `${WEEKLY_MINIMUM[family] - counts[family]} ${nomes[family]}`);
-      if (falta.length) faltas.set(chave, falta);
-    }
-    return faltas;
-  }, [tasks, familia]);
-
-  function soltar(dia: number) {
-    setOverDay(null);
-    const id = dragId;
-    setDragId(null);
-    if (!id || !canEdit) return;
-    const destino = iso(dia);
-    const task = tasks.find((item) => item.id === id);
-    if (!task || task.dueDate === destino) return;
-    onMove(id, destino);
+function calendarDates(month: string) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const first = new Date(year, monthNumber - 1, 1, 12);
+  const start = new Date(first); start.setDate(first.getDate() - ((first.getDay() + 6) % 7));
+  const last = new Date(year, monthNumber, 0, 12);
+  const end = new Date(last); end.setDate(last.getDate() + ((7 - last.getDay()) % 7));
+  const result: { iso: string; day: number; outside: boolean }[] = [];
+  for (const date = new Date(start); date <= end || result.length < 35; date.setDate(date.getDate() + 1)) {
+    result.push({ iso: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`, day: date.getDate(), outside: date.getMonth() !== monthNumber - 1 });
   }
+  return result;
+}
 
-  const semDataCount = tasks.filter((task) => !task.dueDate).length;
+function formatMeta(label = "") {
+  if (/carrossel/i.test(label)) return { label: "Carrossel", tone: "blue", Icon: Layers };
+  if (/estát|estatic|imagem/i.test(label)) return { label: "Estático", tone: "green", Icon: ImageIcon };
+  if (/stor/i.test(label)) return { label: "Stories", tone: "pink", Icon: Smartphone };
+  if (/anún|anunc|ads?/i.test(label)) return { label: "Anúncio", tone: "amber", Icon: Megaphone };
+  if (/reel|vídeo|video/i.test(label)) return { label: "Reels", tone: "violet", Icon: Video };
+  return { label: label || "Conteúdo", tone: "slate", Icon: ImageIcon };
+}
 
-  return (
-    <MonthCalendar className="plan-calendar" aria-label="Calendário do plano">
-      <MonthCalendarHeader label={monthLabel(monthKey)} onPrevious={() => setMonthKey(moveMonth(monthKey, -1))} onNext={() => setMonthKey(moveMonth(monthKey, 1))} start={<div>
-          <h2><CalendarDays size={14} /> Calendário</h2>
-          <p>Arraste um conteúdo para mudar a data de entrega.</p>
-        </div>} />
+export function PlanCalendar({ tasks, formatTags, channelTags = [], members = [], canEdit, onMove, onOpen }: {
+  tasks: Task[]; formatTags: Tag[]; channelTags?: Tag[]; members?: Member[]; canEdit: boolean;
+  onMove: (taskId: string, dueDate: string) => void; onOpen: (task: Task) => void;
+}) {
+  const initialMonth = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const task of tasks) if (task.dueDate) { const key = monthKeyFromDate(task.dueDate); counts.set(key, (counts.get(key) || 0) + 1); }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] || currentMonthKey();
+  }, [tasks]);
+  const [month, setMonth] = useState(initialMonth);
+  const [fields, setFields] = useState<CardField[]>(["formato", "etapa", "responsavel", "link"]);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const formatById = useMemo(() => new Map(formatTags.map((tag) => [tag.id, tag.label])), [formatTags]);
+  const channelById = useMemo(() => new Map(channelTags.map((tag) => [tag.id, tag.label])), [channelTags]);
+  const memberById = useMemo(() => new Map(members.map((member) => [member.id, member])), [members]);
+  const byDay = useMemo(() => { const map = new Map<string, Task[]>(); for (const task of tasks) if (task.dueDate) map.set(task.dueDate, [...(map.get(task.dueDate) || []), task]); return map; }, [tasks]);
+  const monthTasks = tasks.filter((task) => task.dueDate?.startsWith(month));
+  const show = (field: CardField) => fields.includes(field);
+  const toggle = (field: CardField) => setFields((current) => current.includes(field) ? current.filter((item) => item !== field) : [...current, field]);
 
-      <MonthCalendarGrid>
-        <MonthCalendarWeekdays />
-
-        {dias.map((dia, index) => {
-          if (dia === null) return <MonthCalendarDay day={null} key={`vazio-${index}`} />;
-          const data = iso(dia);
-          const doDia = porDia.get(data) ?? [];
-          const falta = faltaPorSemana.get(weekStart(data));
-          const primeiroDaSemana = new Date(`${data}T12:00:00Z`).getUTCDay() === 1;
-
-          return (
-            <MonthCalendarDay
-              key={data}
-              day={dia}
-              hasItems={Boolean(doDia.length)}
-              className={`plan-calendar-day${overDay === data ? " is-drop" : ""}${doDia.length ? " has-items" : ""}`}
-              dayHeaderEnd={primeiroDaSemana && falta ? <small className="plan-calendar-falta" title={`Falta na semana: ${falta.join(", ")}`}>falta {falta.join(", ")}</small> : null}
-              onDragOver={(e) => { if (canEdit && dragId) { e.preventDefault(); setOverDay(data); } }}
-              onDragLeave={() => setOverDay((atual) => (atual === data ? null : atual))}
-              onDrop={(e) => { e.preventDefault(); soltar(dia); }}
-            >
-              <div className="vz-calendar__events">
-              {doDia.map((task) => (
-                <button
-                  type="button"
-                  key={task.id}
-                  className={`vz-calendar__event plan-calendar-item ${CORES[familia(task)]}${task.seasonal ? " is-seasonal" : ""}${dragId === task.id ? " is-dragging" : ""}`}
-                  draggable={canEdit && !task.seasonal}
-                  onDragStart={() => setDragId(task.id)}
-                  onDragEnd={() => { setDragId(null); setOverDay(null); }}
-                  onClick={() => onOpen(task)}
-                  title={task.seasonal ? `${task.name} (data fixa, não se move)` : task.name}
-                >
-                  {task.seasonal ? <Lock size={9} /> : null}
-                  <span>{task.name}</span>
-                </button>
-              ))}
-              </div>
-            </MonthCalendarDay>
-          );
-        })}
-      </MonthCalendarGrid>
-
-      <footer className="plan-calendar-legend">
-        <span className="cal-video">vídeo</span>
-        <span className="cal-carrossel">carrossel</span>
-        <span className="cal-estatico">estático</span>
-        <span className="plan-calendar-legend-lock"><Lock size={10} /> data fixa</span>
-        {semDataCount ? <span className="plan-calendar-legend-warn"><Sparkles size={10} /> {semDataCount} sem data</span> : null}
-      </footer>
-    </MonthCalendar>
-  );
+  return <section className="vz-cal task-calendar plan-calendar" aria-label={`Calendário de ${monthLabel(month)}`}>
+    <div className="vz-cal__head">
+      <div className="calendar-month-title"><strong className="vz-cal__month">{monthLabel(month)}</strong><Count>{monthTasks.length} conteúdos</Count></div>
+      <div className="vz-cal__nav"><IconButton size="sm" aria-label="Mês anterior" onClick={() => setMonth((value) => moveMonth(value, -1))}><ChevronLeft size={14} /></IconButton><Button variant="ghost" size="sm" onClick={() => setMonth(currentMonthKey())}>Hoje</Button><IconButton size="sm" aria-label="Próximo mês" onClick={() => setMonth((value) => moveMonth(value, 1))}><ChevronRight size={14} /></IconButton></div>
+    </div>
+    <div className="vz-toolbar calendar-card-config"><span className="ds-label"><Settings2 size={13} /> Mostrar no cartão</span><div className="vz-cal__config">{CARD_FIELDS.map((field) => <Check key={field.key} label={field.label} checked={show(field.key)} onChange={() => toggle(field.key)} />)}</div></div>
+    <div className="calendar-scroll"><div className="vz-cal__weekdays">{["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((day) => <span key={day}>{day}</span>)}</div><div className="vz-cal__grid">
+      {calendarDates(month).map((cell) => { const dayTasks = cell.outside ? [] : byDay.get(cell.iso) || []; return <div className={`vz-cal__day${cell.outside ? " vz-cal__day--out" : ""}${cell.iso === todayIso() ? " vz-cal__day--today" : ""}`} key={cell.iso} onDragOver={(event) => { if (canEdit && dragId && !cell.outside) event.preventDefault(); }} onDrop={() => { if (dragId && !cell.outside) onMove(dragId, cell.iso); setDragId(null); }}><span className="vz-cal__daynum">{cell.day}</span>{dayTasks.map((task) => {
+        const format = formatMeta(task.formatTagIds.map((id) => formatById.get(id)).find(Boolean)); const FormatIcon = format.Icon;
+        const assignee = task.assigneeId ? memberById.get(task.assigneeId) : undefined; const status = TASK_STATUSES.find((item) => item.value === task.status);
+        const statusTone = task.status === "problema" ? "red" : status?.group === "feita" ? "green" : status?.group === "em_andamento" ? "amber" : "blue";
+        const channel = task.channelTagIds.map((id) => channelById.get(id)).find(Boolean);
+        return <button className={`vz-cal-card vz-cal-card--${format.tone}`} type="button" title={task.name} draggable={canEdit && !task.seasonal} onDragStart={() => setDragId(task.id)} onDragEnd={() => setDragId(null)} onClick={() => onOpen(task)} key={task.id}>
+          {show("formato") ? <div className="vz-cal-card__top"><span className={`vz-minitag vz-minitag--${format.tone}`}><FormatIcon size={10} />{format.label}</span>{task.seasonal ? <Lock size={10} /> : null}</div> : null}<span className="vz-cal-card__title">{task.name}</span>
+          {show("etapa") ? <span className={`vz-minitag vz-minitag--${statusTone}`}>{status?.label || task.status}</span> : null}<div className="vz-cal-card__foot">
+            {show("canal") && channel ? <span className="vz-minitag vz-minitag--outline">{channel}</span> : null}{show("link") && task.driveLink ? <span className="vz-minitag vz-minitag--outline"><Link2 size={9} />Link</span> : null}
+            {show("comentarios") && task.comments.length ? <span className="vz-minitag vz-minitag--outline"><MessageSquare size={9} />{task.comments.length}</span> : null}{show("comentarios") && task.images.length ? <span className="vz-minitag vz-minitag--outline"><Paperclip size={9} />{task.images.length}</span> : null}
+            {show("responsavel") && assignee ? <span className="calendar-card-avatar"><Avatar name={assignee.name} imageUrl={assignee.avatarUrl} size={20} /></span> : null}
+          </div></button>;
+      })}</div>; })}
+    </div></div>
+    <div className="vz-cal__legend"><span><i className="vz-dot vz-dot--violet" />Reels</span><span><i className="vz-dot vz-dot--blue" />Carrossel</span><span><i className="vz-dot vz-dot--green" />Estático</span><span><i className="vz-dot vz-dot--pink" />Stories</span><span><i className="vz-dot vz-dot--amber" />Anúncio</span></div>
+  </section>;
 }

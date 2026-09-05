@@ -1693,7 +1693,6 @@ a.upcoming-item { color: inherit; text-decoration: none; }
 .vz-plan-package { display: grid; gap: 10px; padding: 14px; min-width: 0; }
 .vz-plan-package .plan-captacao-card-head { margin: 0; }
 .vz-plan-package .plan-captacao-meta { margin: 0; justify-content: space-between; }
-.vz-plan-package-form { align-content: center; min-height: 126px; padding: 14px; border: 1px dashed var(--vz-line-strong); border-radius: var(--vz-r-lg); }
 .vz-plan-content-card { padding: 0; overflow: hidden; }
 .vz-plan-search { display: flex; align-items: center; gap: 8px; height: var(--vz-h-sm); padding: 0 10px; border: 1px solid var(--vz-line-strong); border-radius: var(--vz-r-sm); background: var(--vz-panel); color: var(--vz-text-faint); }
 .vz-plan-search input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--vz-text); font: inherit; font-size: var(--vz-t-xs); }
