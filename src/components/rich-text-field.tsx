@@ -114,6 +114,7 @@ export function RichTextField({
     ? {}
     : { onDrop, onDragOver, onDragLeave: () => setIsDragging(false) };
   const stateClass = `${isDragging ? " is-drop-target" : ""}${isUploading ? " is-uploading" : ""}`;
+  const isInteractiveChild = (target: EventTarget | null) => target instanceof Element && Boolean(target.closest("a, button, input, select, textarea"));
 
   if (editing && !disabled) {
     return (
@@ -142,8 +143,8 @@ export function RichTextField({
       // textarea que ele substitui.
       tabIndex={disabled ? undefined : 0}
       role={disabled ? undefined : "textbox"}
-      onClick={disabled ? undefined : () => setEditing(true)}
-      onFocus={disabled ? undefined : () => setEditing(true)}
+      onClick={disabled ? undefined : (event) => { if (!isInteractiveChild(event.target)) setEditing(true); }}
+      onFocus={disabled ? undefined : (event) => { if (event.target === event.currentTarget) setEditing(true); }}
       {...dropProps}
     >
       {empty ? placeholder : custom ?? renderMarkdownLite(value)}

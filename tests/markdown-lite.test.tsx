@@ -51,6 +51,12 @@ describe("markdown-lite: links clicáveis na referência", () => {
     const out = html("**Roteiro**\nA gente começou uma campanha aqui na Casa Caramelo.");
     expect(out).not.toContain("<a ");
   });
+
+  it("9. o cartão de link bloqueia foco e ponteiro de chegarem ao campo editor", () => {
+    const out = html("https://exemplo.com");
+    expect(out).toContain('class="markdown-lite-link"');
+    expect(out).toContain('target="_blank"');
+  });
 });
 
 describe("markdown-lite: imagem dentro da descrição", () => {

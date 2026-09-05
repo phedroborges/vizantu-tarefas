@@ -8,7 +8,7 @@
 // renderiza, então o texto original é preservado caractere a caractere.
 
 import { AtSign, ExternalLink as ExternalLinkIcon, FileText, Globe2, Play } from "lucide-react";
-import type { MouseEvent, ReactNode } from "react";
+import type { FocusEvent, MouseEvent, PointerEvent, ReactNode } from "react";
 
 // Quatro formas inline, numa varredura só. A ordem da alternância importa em
 // dois pontos: a imagem ![alt](url) vem antes do link, senão o [alt](url) de
@@ -45,6 +45,8 @@ function ExternalLink({ href, children }: { href: string; children: ReactNode })
       // Sem isto, abrir uma referência também jogaria o campo em modo de
       // edição por baixo. Clicar fora do link continua editando normalmente.
       onClick={(event: MouseEvent) => event.stopPropagation()}
+      onPointerDown={(event: PointerEvent) => event.stopPropagation()}
+      onFocus={(event: FocusEvent) => event.stopPropagation()}
     >
       <span className="markdown-lite-link__icon">{site.icon}</span>
       <span className="markdown-lite-link__copy"><strong>{children}</strong><small>{site.host}</small></span>
@@ -64,6 +66,8 @@ function InlineImage({ src, alt }: { src: string; alt: string }) {
       target="_blank"
       rel="noopener noreferrer"
       onClick={(event: MouseEvent) => event.stopPropagation()}
+      onPointerDown={(event: PointerEvent) => event.stopPropagation()}
+      onFocus={(event: FocusEvent) => event.stopPropagation()}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={src} alt={alt} loading="lazy" />
