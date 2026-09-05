@@ -306,6 +306,7 @@ export function ClientDashboard({
       {activeItem ? (
         <ApprovalModal
           item={activeItem}
+          scheduleItems={orderedItems}
           reviewerName={reviewerName}
           onReviewerNameChange={setEditedName}
           onClose={() => setActiveItemId(null)}
@@ -445,12 +446,14 @@ function IdentificationGate({ onConfirm }: { onConfirm: (name: string) => void }
 
 function ApprovalModal({
   item,
+  scheduleItems,
   reviewerName,
   onReviewerNameChange,
   onClose,
   onSubmit,
 }: {
   item: DashboardItem;
+  scheduleItems: DashboardItem[];
   reviewerName: string;
   onReviewerNameChange: (v: string) => void;
   onClose: () => void;
@@ -462,14 +465,24 @@ function ApprovalModal({
   const [requestedDate, setRequestedDate] = useState("");
   const [dateReason, setDateReason] = useState("");
   const [dateSent, setDateSent] = useState(false);
+  const [dateError, setDateError] = useState("");
+  const [dateSending, setDateSending] = useState(false);
   const approveRef = useRef<HTMLButtonElement>(null);
   const decisionClosed = isReviewed(item);
   const creativeStage = isCreativeStage(item);
+  const dateConflicts = requestedDate ? scheduleItems.filter((entry) => entry.id !== item.id && entry.dueDate === requestedDate) : [];
+  const requestedDateValue = requestedDate ? new Date(`${requestedDate}T12:00:00`) : null;
+  const isWeekend = requestedDateValue ? requestedDateValue.getDay() === 0 || requestedDateValue.getDay() === 6 : false;
 
   async function requestDateChange() {
     if (!requestedDate || !reviewerName.trim()) return;
+    setDateSending(true);
+    setDateError("");
     const response = await fetch("/api/c/date-change", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ taskId: item.id, reviewerName, requestedDate, reason: dateReason }) });
+    const result = await response.json().catch(() => ({}));
+    setDateSending(false);
     if (response.ok) { setDateSent(true); setDateRequestOpen(false); }
+    else setDateError(result.error || "Não foi possível enviar a sugestão. Tente novamente.");
   }
 
   return (
@@ -511,8 +524,13 @@ function ApprovalModal({
         <button type="button" className="cd-date-change-toggle" onClick={() => setDateRequestOpen((open) => !open)}><CalendarDays size={15} /> {dateSent ? "Pedido de nova data enviado" : "Pedir alteração de data"}</button>
         {dateRequestOpen ? <div className="cd-date-change-form">
           <label>Nova data sugerida<DatePicker value={requestedDate} onChange={setRequestedDate} placeholder="Escolher data" /></label>
+          {requestedDate ? <div className={`cd-date-conflict ${dateConflicts.length ? "has-conflict" : "is-free"}`} role="status">
+            {dateConflicts.length ? <><AlertCircle size={16} /><span><strong>{dateConflicts.length === 1 ? "Já existe 1 conteúdo nesse dia" : `Já existem ${dateConflicts.length} conteúdos nesse dia`}</strong>{dateConflicts.map((entry) => entry.name).join(" · ")}</span></> : <><CheckCircle2 size={16} /><span><strong>Dia livre no plano</strong>Nenhum outro conteúdo está marcado para esta data.</span></>}
+          </div> : null}
+          {isWeekend ? <div className="cd-date-weekend"><CalendarDays size={14} />A data escolhida cai no fim de semana.</div> : null}
           <label>Motivo (opcional)<textarea value={dateReason} onChange={(e) => setDateReason(e.target.value)} placeholder="Conte rapidamente por que essa data funciona melhor." /></label>
-          <button type="button" className="cd-btn date" disabled={!requestedDate || !reviewerName.trim()} onClick={requestDateChange}>Enviar sugestão de data</button>
+          {dateError ? <p className="cd-date-error" role="alert">{dateError}</p> : null}
+          <button type="button" className="cd-btn date" disabled={!requestedDate || !reviewerName.trim() || dateSending} onClick={requestDateChange}>{dateSending ? "Enviando…" : "Enviar sugestão de data"}</button>
         </div> : null}
 
         {decisionClosed ? (

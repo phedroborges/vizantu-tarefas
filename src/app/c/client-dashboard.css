@@ -227,6 +227,14 @@
 .cd-date-change-form label { display: grid; gap: 5px; color: var(--cd-muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
 .cd-date-change-form input { min-height: 44px; padding: 0 10px; border: 1px solid var(--cd-line); background: var(--vz-panel); font-size: 16px; }
 .cd-date-change-form textarea { margin: 0; min-height: 72px; }
+.cd-date-change-form .vz-date-picker { width: 100%; min-height: 46px; justify-content: flex-start; border-radius: var(--vz-r-sm); text-transform: none; }
+.cd-date-conflict { display: flex; align-items: flex-start; gap: 9px; padding: 10px 11px; border: 1px solid; border-radius: var(--vz-r-sm); font-size: 11px; line-height: 1.45; }
+.cd-date-conflict svg { flex: none; margin-top: 1px; }
+.cd-date-conflict span { display: grid; gap: 2px; }
+.cd-date-conflict.is-free { color: var(--vz-green-ink); background: var(--vz-green-bg); border-color: var(--vz-green-line); }
+.cd-date-conflict.has-conflict { color: var(--vz-amber-ink); background: var(--vz-amber-bg); border-color: var(--vz-amber-line); }
+.cd-date-weekend { display: flex; align-items: center; gap: 7px; color: var(--vz-amber-ink); font-size: 11px; font-weight: 600; }
+.cd-date-error { margin: 0; color: var(--vz-red-ink); font-size: 11px; font-weight: 600; }
 
 @keyframes cdCheckPop { 0% { transform: scale(.4); opacity: 0; } 60% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(1); } }
 
