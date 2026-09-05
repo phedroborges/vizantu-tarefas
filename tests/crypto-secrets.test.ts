@@ -34,12 +34,16 @@ describe("segredo de credencial", () => {
     expect(() => cripto.decryptSecret(adulterado)).toThrow();
   });
 
-  it("5. sem chave configurada, recusa gravar em vez de gravar aberto", async () => {
+  it("5. usa uma chave derivada do segredo server-only do Supabase como fallback", () => {
     const original = process.env.CREDENTIALS_KEY;
+    const originalServiceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
     delete process.env.CREDENTIALS_KEY;
-    expect(cripto.secretsAvailable()).toBe(false);
-    expect(() => cripto.encryptSecret("senha")).toThrow(cripto.MissingSecretKeyError);
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-de-alta-entropia-para-o-teste";
+    expect(cripto.secretsAvailable()).toBe(true);
+    expect(cripto.decryptSecret(cripto.encryptSecret("senha"))).toBe("senha");
     process.env.CREDENTIALS_KEY = original;
+    if (originalServiceRole) process.env.SUPABASE_SERVICE_ROLE_KEY = originalServiceRole;
+    else delete process.env.SUPABASE_SERVICE_ROLE_KEY;
   });
 
   it("6. chave de tamanho errado é recusada, não usada torta", () => {
@@ -47,5 +51,16 @@ describe("segredo de credencial", () => {
     process.env.CREDENTIALS_KEY = Buffer.from("curta").toString("base64");
     expect(() => cripto.encryptSecret("senha")).toThrow(cripto.MissingSecretKeyError);
     process.env.CREDENTIALS_KEY = original;
+  });
+
+  it("7. sem nenhum segredo server-only, continua recusando gravar aberto", () => {
+    const originalKey = process.env.CREDENTIALS_KEY;
+    const originalServiceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    delete process.env.CREDENTIALS_KEY;
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    expect(cripto.secretsAvailable()).toBe(false);
+    expect(() => cripto.encryptSecret("senha")).toThrow(cripto.MissingSecretKeyError);
+    process.env.CREDENTIALS_KEY = originalKey;
+    if (originalServiceRole) process.env.SUPABASE_SERVICE_ROLE_KEY = originalServiceRole;
   });
 });

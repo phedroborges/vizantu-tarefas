@@ -21,16 +21,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const { id } = await params;
   const body = await request.json();
 
-  if (!body?.label || typeof body.label !== "string" || !body.label.trim()) {
-    return NextResponse.json({ error: "Dê um nome para esse acesso." }, { status: 400 });
-  }
   const kind = CREDENTIAL_KINDS.some((item) => item.value === body.kind) ? body.kind : "outro";
+  const label = CREDENTIAL_KINDS.find((item) => item.value === kind)?.label || "Outro acesso";
+  if (![body.username, body.secret, body.url, body.notes].some((value) => typeof value === "string" && value.trim())) {
+    return NextResponse.json({ error: "Informe pelo menos usuário, senha, link ou observação." }, { status: 400 });
+  }
 
   try {
     // A senha é cifrada AQUI, na entrada. Ela nunca chega ao banco em texto.
     const secretEncrypted = body.secret ? encryptSecret(String(body.secret)) : undefined;
     const credential = await createProjectCredential({
-      projectId: id, label: body.label, kind,
+      projectId: id, label, kind,
       username: body.username, url: body.url, notes: body.notes,
       secretEncrypted, createdBy: auth.id,
     });

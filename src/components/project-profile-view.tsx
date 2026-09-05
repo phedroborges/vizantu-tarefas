@@ -92,7 +92,8 @@ export function ProjectProfileView({
   }
 
   async function removerCredencial(credential: ProjectCredential) {
-    if (!(await confirm({ title: "Excluir acesso", message: `Excluir "${credential.label}"? A senha guardada some junto.`, confirmLabel: "Excluir", danger: true }))) return;
+    const kindLabel = CREDENTIAL_KINDS.find((item) => item.value === credential.kind)?.label || credential.kind;
+    if (!(await confirm({ title: "Excluir acesso", message: `Excluir o acesso de ${kindLabel}? A senha guardada some junto.`, confirmLabel: "Excluir", danger: true }))) return;
     const response = await fetch(`/api/credentials/${credential.id}`, { method: "DELETE" });
     if (!response.ok) return setError(await responseError(response, "excluir a credencial"));
     setCredentials((atual) => atual.filter((item) => item.id !== credential.id));
@@ -169,8 +170,7 @@ export function ProjectProfileView({
               <div className="project-credentials-body">
                 {!secretsConfigured ? (
                   <p className="contrato-pendencias">
-                    Este servidor está sem a chave de criptografia (CREDENTIALS_KEY). Dá para guardar usuário, link e
-                    observação, mas senha não: gravar aberta seria pior que não guardar.
+                    O cofre seguro não está disponível neste servidor. Configure CREDENTIALS_KEY ou SUPABASE_SERVICE_ROLE_KEY para guardar senhas.
                   </p>
                 ) : null}
 
@@ -245,8 +245,8 @@ function CredentialRow({
     <li className="credencial-item">
       <div className="credencial-topo">
         <div>
-          <strong>{credential.label}</strong>
-          <small>{kindLabel}{credential.username ? ` · ${credential.username}` : ""}</small>
+          <strong>{kindLabel}</strong>
+          <small>{credential.username || "Acesso do cliente"}</small>
         </div>
         <div className="credencial-acoes">
           {credential.hasSecret ? (
@@ -277,12 +277,12 @@ function CredentialForm({
   onSaved: (credential: ProjectCredential) => void;
   onError: (message: string) => void;
 }) {
-  const [form, setForm] = useState({ label: "", kind: "instagram", username: "", secret: "", url: "", notes: "" });
+  const [form, setForm] = useState({ kind: "instagram", username: "", secret: "", url: "", notes: "" });
   const [isSaving, setIsSaving] = useState(false);
 
   async function salvar(event: React.FormEvent) {
     event.preventDefault();
-    if (!form.label.trim()) return;
+    if (![form.username, form.secret, form.url, form.notes].some((value) => value.trim())) return onError("Informe pelo menos usuário, senha, link ou observação.");
     setIsSaving(true);
     try {
       const response = await fetch(`/api/projects/${projectId}/credentials`, {
@@ -303,12 +303,8 @@ function CredentialForm({
     <form className="credencial-form" onSubmit={salvar}>
       <div className="contrato-campos">
         <label className="contrato-campo">
-          <span>Nome do acesso</span>
-          <input autoFocus value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} placeholder="Instagram @casacaramelo" required />
-        </label>
-        <label className="contrato-campo">
           <span>Tipo</span>
-          <select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}>
+          <select autoFocus value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}>
             {CREDENTIAL_KINDS.map((kind) => <option key={kind.value} value={kind.value}>{kind.label}</option>)}
           </select>
         </label>
@@ -338,7 +334,7 @@ function CredentialForm({
       </div>
       <div className="credencial-form-acoes">
         <button type="button" className="secondary-button" onClick={onCancel}>Cancelar</button>
-        <button type="submit" className="primary-button" disabled={isSaving || !form.label.trim()}>{isSaving ? "Salvando..." : "Guardar acesso"}</button>
+        <button type="submit" className="primary-button" disabled={isSaving}>{isSaving ? "Salvando..." : "Guardar acesso"}</button>
       </div>
     </form>
   );
