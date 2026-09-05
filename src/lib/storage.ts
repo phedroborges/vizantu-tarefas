@@ -93,12 +93,18 @@ export async function getProject(id: string): Promise<Project | undefined> {
   return row ? mapProject(row as ProjectRow) : undefined;
 }
 
-export async function createProject(input: { name: string; client?: string; status?: Project["status"] }): Promise<Project> {
+export async function createProject(input: Pick<Project, "name"> & Partial<Pick<Project, "client" | "clientRole" | "clientCity" | "clientInstagram" | "avatarUrl" | "avatarColor" | "status">>): Promise<Project> {
   const now = nowIso();
   const row = unwrap(
     await getSupabase()
       .from("projects")
-      .insert({ id: newId(), name: input.name.trim(), client: input.client?.trim() || null, status: input.status || "ativo", created_at: now, updated_at: now })
+      .insert({
+        id: newId(), name: input.name.trim(), client: input.client?.trim() || null,
+        client_role: input.clientRole?.trim() || null, client_city: input.clientCity?.trim() || null,
+        client_instagram: input.clientInstagram?.trim().replace(/^@/, "") || null,
+        avatar_url: input.avatarUrl || null, avatar_color: input.avatarColor || null,
+        status: input.status || "ativo", created_at: now, updated_at: now,
+      })
       .select()
       .single(),
   );

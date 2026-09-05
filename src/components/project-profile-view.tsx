@@ -1,11 +1,15 @@
 "use client";
 
-import { ArrowLeft, Eye, EyeOff, KeyRound, Loader2, Plus, ShieldAlert, Trash2 } from "lucide-react";
+import { ArrowLeft, AtSign, BarChart3, CheckCircle2, Clock3, Eye, EyeOff, KeyRound, Loader2, MapPin, Plus, ShieldAlert, Target, Trash2, UserRound } from "lucide-react";
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { useConfirm } from "@/components/confirm-dialog";
 import { networkError, responseError } from "@/lib/request-error";
 import { CREDENTIAL_KINDS, type Project, type ProjectCredential, type ProjectProfile } from "@/lib/types";
+import type { ClientSatisfactionScore, Task } from "@/lib/types";
+import { Avatar } from "@/components/avatar";
+import { ProjectTaskHub } from "@/components/project-task-hub";
+import { Button, Card, EmptyState, Field, Input, Progress, Tag, Textarea } from "@/components/vz";
 
 const AUTOSAVE_MS = 700;
 
@@ -34,12 +38,18 @@ export function ProjectProfileView({
   initialCredentials,
   canManageCredentials,
   secretsConfigured,
+  initialTasks,
+  satisfactionScores,
+  canEditProfile,
 }: {
   project: Project;
   initialProfile: ProjectProfile | null;
   initialCredentials: ProjectCredential[];
   canManageCredentials: boolean;
   secretsConfigured: boolean;
+  initialTasks: Task[];
+  satisfactionScores: ClientSatisfactionScore[];
+  canEditProfile: boolean;
 }) {
   const [profile, setProfile] = useState<Partial<ProjectProfile>>(initialProfile ?? {});
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -48,6 +58,10 @@ export function ProjectProfileView({
   const [isAdding, setIsAdding] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { confirm, ConfirmDialog } = useConfirm();
+  const done = initialTasks.filter((task) => task.status === "finalizado").length;
+  const overdue = initialTasks.filter((task) => task.dueDate && task.dueDate < new Date().toISOString().slice(0, 10) && task.status !== "finalizado").length;
+  const completion = initialTasks.length ? Math.round(done / initialTasks.length * 100) : 0;
+  const nps = satisfactionScores.length ? Math.round(((satisfactionScores.filter((item) => item.score >= 9).length - satisfactionScores.filter((item) => item.score <= 6).length) / satisfactionScores.length) * 100) : null;
 
   async function persist(next: Partial<ProjectProfile>) {
     setSaveState("saving");
@@ -72,6 +86,7 @@ export function ProjectProfileView({
   function setCampo(key: keyof ProjectProfile, value: string) {
     const next = { ...profile, [key]: value };
     setProfile(next);
+    if (!canEditProfile) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => persist(next), AUTOSAVE_MS);
   }
@@ -86,70 +101,72 @@ export function ProjectProfileView({
   return (
     <>
       <main className="admin-page dashboard">
-        <div className="dashboard-head">
-          <div>
-            <Link href="/projetos" className="voltar-link"><ArrowLeft size={13} /> Projetos</Link>
-            <h1>{project.name}</h1>
-            <p>A ficha do cliente. O que a equipe precisa saber antes de escrever, gravar ou falar com ele.</p>
-          </div>
+        <section className="project-profile-hero" style={{ "--project-accent": project.avatarColor || "var(--vz-brand)" } as React.CSSProperties}>
+          <div className="project-profile-hero__cover"><Link href="/projetos" className="project-profile-back"><ArrowLeft size={14} /> Todos os projetos</Link></div>
+          <div className="project-profile-hero__main">
+            <Avatar name={project.name} imageUrl={project.avatarUrl} color={project.avatarColor} size={92} className="project-profile-hero__avatar" />
+            <div className="project-profile-hero__copy"><div><Tag tone={project.status === "ativo" ? "green" : project.status === "pausado" ? "amber" : "slate"}>{project.status === "concluido" ? "Concluído" : project.status === "pausado" ? "Pausado" : "Ativo"}</Tag></div><h1>{project.name}</h1><p>{project.client || "Projeto interno"}</p><div className="project-profile-facts">{project.clientRole ? <span><UserRound size={14} />{project.clientRole}</span> : null}{project.clientCity ? <span><MapPin size={14} />{project.clientCity}</span> : null}{project.clientInstagram ? <span><AtSign size={14} />{project.clientInstagram}</span> : null}</div></div>
           <span className="task-save-status" aria-live="polite">
             {saveState === "saving" ? "Salvando..." : saveState === "saved" ? "Salvo" : saveState === "error" ? "Erro ao salvar" : ""}
           </span>
-        </div>
+          </div>
+        </section>
 
         {error ? <div className="form-message">{error}</div> : null}
 
-        <div className="split-layout" style={{ gridTemplateColumns: "minmax(320px, 1.2fr) minmax(320px, 1fr)" }}>
-          <section className="panel">
-            <div className="panel-head"><h2>Dados</h2></div>
-            <div className="modal-body" style={{ padding: "18px 22px" }}>
-              <div className="contrato-campos">
+        <div className="project-metrics">
+          <Card><div className="vz-metric"><div className="vz-metric__top"><span className="vz-metric__icon"><BarChart3 size={18} /></span><div><strong className="vz-metric__value">{initialTasks.length}</strong><span className="vz-metric__label">Tarefas totais</span></div></div></div></Card>
+          <Card><div className="vz-metric"><div className="vz-metric__top"><span className="vz-metric__icon vz-metric__icon--green"><CheckCircle2 size={18} /></span><div><strong className="vz-metric__value">{completion}%</strong><span className="vz-metric__label">Conclusão</span></div></div><Progress value={completion} thin tone="green" /></div></Card>
+          <Card><div className="vz-metric"><div className="vz-metric__top"><span className="vz-metric__icon vz-metric__icon--red"><Clock3 size={18} /></span><div><strong className="vz-metric__value">{overdue}</strong><span className="vz-metric__label">Tarefas atrasadas</span></div></div></div></Card>
+          <Card><div className="vz-metric"><div className="vz-metric__top"><span className="vz-metric__icon vz-metric__icon--blue"><Target size={18} /></span><div><strong className="vz-metric__value">{nps === null ? "—" : nps > 0 ? `+${nps}` : nps}</strong><span className="vz-metric__label">NPS · {satisfactionScores.length} resposta{satisfactionScores.length === 1 ? "" : "s"}</span></div></div></div></Card>
+        </div>
+
+        <ProjectTaskHub tasks={initialTasks} />
+
+        <div className="project-profile-grid">
+          <Card className="project-context-card">
+            <div className="project-section-head"><div><span className="vz-eyebrow">Conhecimento compartilhado</span><h2 className="vz-h2">Contexto do cliente</h2><p className="vz-caption">Salvo automaticamente enquanto você escreve.</p></div></div>
+            <div className="project-context-body">
+              <div className="project-fields-grid">
                 {CAMPOS.map((campo) => (
-                  <label className="contrato-campo" key={campo.key} style={campo.longo ? { gridColumn: "1 / -1" } : undefined}>
-                    <span>{campo.label}</span>
-                    <input
+                  <Field label={campo.label} hint={campo.hint} key={campo.key}>
+                    <Input
+                      disabled={!canEditProfile}
                       value={(profile[campo.key] as string) || ""}
                       onChange={(e) => setCampo(campo.key, e.target.value)}
                       placeholder={campo.hint}
                     />
-                    {campo.hint ? <small>{campo.hint}</small> : null}
-                  </label>
+                  </Field>
                 ))}
               </div>
 
               {TEXTOS.map((campo) => (
-                <section className="contrato-grupo" key={campo.key} style={{ marginTop: 16 }}>
-                  <h4>{campo.label} <small>{campo.hint}</small></h4>
-                  <textarea
-                    className="knowledge-editor"
-                    style={{ minHeight: 110 }}
+                <Field label={campo.label} hint={campo.hint} key={campo.key}>
+                  <Textarea rows={5}
+                    disabled={!canEditProfile}
                     value={(profile[campo.key] as string) || ""}
                     onChange={(e) => setCampo(campo.key, e.target.value)}
                   />
-                </section>
+                </Field>
               ))}
             </div>
-          </section>
+          </Card>
 
-          <section className="panel">
-            <div className="panel-head">
+          <Card className="project-credentials-card">
+            <div className="project-section-head">
               <div>
                 <h2><KeyRound size={14} /> Acessos</h2>
                 <p>{credentials.length} {credentials.length === 1 ? "acesso guardado" : "acessos guardados"}</p>
               </div>
               {canManageCredentials ? (
-                <button type="button" className="secondary-button" onClick={() => setIsAdding(true)}><Plus size={13} /> Novo acesso</button>
+                <Button type="button" variant="secondary" onClick={() => setIsAdding(true)}><Plus size={13} /> Novo acesso</Button>
               ) : null}
             </div>
 
             {!canManageCredentials ? (
-              <div className="empty-state">
-                <ShieldAlert size={32} />
-                <h3>Acessos são do dono</h3>
-                <p>Senha de cliente é acesso à casa dele. Só o dono da conta vê e edita.</p>
-              </div>
+              <EmptyState icon={<ShieldAlert size={24} />} title="Acessos são do dono" description="Senha de cliente é acesso à casa dele. Só o dono da conta vê e edita." />
             ) : (
-              <div className="modal-body" style={{ padding: "14px 18px" }}>
+              <div className="project-credentials-body">
                 {!secretsConfigured ? (
                   <p className="contrato-pendencias">
                     Este servidor está sem a chave de criptografia (CREDENTIALS_KEY). Dá para guardar usuário, link e
@@ -182,15 +199,11 @@ export function ProjectProfileView({
                     ))}
                   </ul>
                 ) : !isAdding ? (
-                  <div className="empty-state">
-                    <KeyRound size={32} />
-                    <h3>Nenhum acesso ainda</h3>
-                    <p>Instagram, Meta, Google, hospedagem, chave de API. Tudo que a equipe precisa e hoje vive num print no WhatsApp.</p>
-                  </div>
+                  <EmptyState icon={<KeyRound size={24} />} title="Nenhum acesso ainda" description="Instagram, Meta, Google, hospedagem ou chave de API — seguros e disponíveis para o time autorizado." />
                 ) : null}
               </div>
             )}
-          </section>
+          </Card>
         </div>
       </main>
       {ConfirmDialog}
