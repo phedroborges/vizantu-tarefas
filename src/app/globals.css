@@ -536,6 +536,16 @@ a.upcoming-item { color: inherit; text-decoration: none; }
 .calendar-empty { min-height: 190px; padding: 30px; display: grid; place-items: center; align-content: center; gap: 8px; color: var(--muted-text); text-align: center; border-top: 1px solid var(--line); }
 .calendar-empty strong { color: var(--dark); font-size: 13px; }
 .calendar-empty p { margin: 0; font-size: 10px; }
+.task-calendar { border: 0; border-radius: 0; }
+.task-calendar .calendar-scroll { overflow-x: auto; }
+.task-calendar .vz-cal__weekdays, .task-calendar .vz-cal__grid { min-width: 980px; }
+.calendar-month-title { display: flex; align-items: center; gap: 10px; }
+.calendar-month-title .vz-cal__month { text-transform: capitalize; }
+.calendar-card-config { gap: 14px; }
+.calendar-card-config .ds-label { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.calendar-card-avatar { display: inline-flex; margin-left: auto; }
+.task-calendar .vz-cal__day { min-height: 158px; }
+.task-calendar .vz-cal-card__foot:empty { display: none; }
 
 /* ---------- Formulários ---------- */
 .field { display: grid; gap: 6px; }

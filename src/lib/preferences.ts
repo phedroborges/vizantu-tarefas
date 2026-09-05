@@ -15,6 +15,7 @@ import { TASK_COLUMNS, TASK_LIST_KINDS, type TaskColumnKey, type TaskListKind } 
 
 export type TaskView = "lista" | "calendario";
 export type SavedTaskFilters = { query: string; projectId: string; assigneeId: string; status: string; list: TaskListKind | "" };
+export type CalendarCardField = "formato" | "etapa" | "responsavel" | "canal" | "link" | "comentarios";
 
 export type MemberPreferences = {
   taskView: TaskView;
@@ -27,6 +28,7 @@ export type MemberPreferences = {
   dateFormat: DateFormatKey;
   showFinalized: boolean;
   taskFilters: SavedTaskFilters;
+  calendarCardFields: CalendarCardField[];
 };
 
 const KNOWN_COLUMNS = new Set(TASK_COLUMNS.map((column) => column.key));
@@ -40,6 +42,7 @@ export function defaultPreferences(): MemberPreferences {
     dateFormat: DEFAULT_DATE_FORMAT,
     showFinalized: false,
     taskFilters: { query: "", projectId: "", assigneeId: "", status: "", list: "" },
+    calendarCardFields: ["formato", "etapa", "responsavel", "link"],
   };
 }
 
@@ -76,6 +79,12 @@ function normalizeFilters(value: unknown): SavedTaskFilters {
   return { query: text("query", 200), projectId: text("projectId", 80), assigneeId: text("assigneeId", 80), status: text("status", 80), list: TASK_LIST_KINDS.some((item) => item.value === list) ? list as TaskListKind : "" };
 }
 
+const CALENDAR_FIELDS = new Set<CalendarCardField>(["formato", "etapa", "responsavel", "canal", "link", "comentarios"]);
+function normalizeCalendarFields(value: unknown): CalendarCardField[] {
+  if (!Array.isArray(value)) return ["formato", "etapa", "responsavel", "link"];
+  return Array.from(new Set(value.filter((field): field is CalendarCardField => CALENDAR_FIELDS.has(field as CalendarCardField))));
+}
+
 // Toda leitura passa por aqui: o jsonb do banco é dado solto, e uma coluna
 // removida numa versão futura não pode quebrar a tela de quem tinha ela salva.
 export function normalizePreferences(raw: unknown): MemberPreferences {
@@ -90,6 +99,7 @@ export function normalizePreferences(raw: unknown): MemberPreferences {
     dateFormat: isDateFormatKey(value.dateFormat) ? value.dateFormat : base.dateFormat,
     showFinalized: typeof value.showFinalized === "boolean" ? value.showFinalized : base.showFinalized,
     taskFilters: normalizeFilters(value.taskFilters),
+    calendarCardFields: normalizeCalendarFields(value.calendarCardFields),
   };
 }
 
@@ -109,6 +119,7 @@ export function mergePreferences(current: MemberPreferences, patch: unknown): Me
     dateFormat: value.dateFormat ?? current.dateFormat,
     showFinalized: value.showFinalized ?? current.showFinalized,
     taskFilters: value.taskFilters ?? current.taskFilters,
+    calendarCardFields: value.calendarCardFields ?? current.calendarCardFields,
   });
 }
 
