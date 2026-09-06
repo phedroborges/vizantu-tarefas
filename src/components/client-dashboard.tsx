@@ -109,6 +109,7 @@ export function ClientDashboard({
     const dominant = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0];
     return dominant ? new Date(`${dominant}-01T12:00:00`) : new Date();
   });
+  const [selectedMobileDate, setSelectedMobileDate] = useState<string | null>(null);
   // A identificação é pedida na ENTRADA, não na hora de decidir. Antes disso o
   // cliente com pressa ia direto nos botões, que ficavam desabilitados por
   // causa do nome vazio — sem erro, sem aviso, só não acontecia nada. Com o
@@ -191,6 +192,12 @@ export function ClientDashboard({
 
   const grid = useMemo(() => daysGrid(month), [month]);
   const currentMonthKey = monthKey(month);
+  const selectedMobileItems = selectedMobileDate ? cellsByDay.get(selectedMobileDate) || [] : [];
+
+  function moveCalendarMonth(offset: number) {
+    setMonth((current) => new Date(current.getFullYear(), current.getMonth() + offset, 1));
+    setSelectedMobileDate(null);
+  }
 
   return (
     <div className="cd-root">
@@ -286,8 +293,39 @@ export function ClientDashboard({
           </div>
           <CalendarDays size={20} />
         </div>
+        <section className="cd-mobile-calendar" aria-label="Calendário de publicações e entregas">
+          <div className="cd-mobile-calendar-head">
+            <button type="button" aria-label="Mês anterior" onClick={() => moveCalendarMonth(-1)}><ChevronLeft size={16} /></button>
+            <strong>{month.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</strong>
+            <button type="button" aria-label="Próximo mês" onClick={() => moveCalendarMonth(1)}><ChevronRight size={16} /></button>
+          </div>
+          <div className="cd-mobile-calendar-grid">
+            {['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map((day) => <span className="cd-mobile-weekday" key={day}>{day}</span>)}
+            {grid.map((cell) => {
+              const iso = isoDate(cell.date);
+              const dayItems = cellsByDay.get(iso) || [];
+              const isOutside = monthKey(cell.date) !== currentMonthKey;
+              return <button type="button" key={iso} className={`${isOutside ? "is-empty" : ""}${selectedMobileDate === iso ? " is-selected" : ""}`} disabled={isOutside || !dayItems.length} onClick={() => setSelectedMobileDate(iso)} aria-label={`${cell.date.toLocaleDateString("pt-BR", { day: "numeric", month: "long" })}${dayItems.length ? `, ${dayItems.length} ${dayItems.length === 1 ? "item" : "itens"}` : ", sem conteúdo"}`}>
+                <span className="cd-mobile-day-number">{cell.date.getDate()}</span>
+                <span className="cd-mobile-day-dots" aria-hidden="true">
+                  {dayItems.slice(0, 4).map((entry, index) => <i key={index} className={`kind-${entry.kind} status-${entry.approvalStatus || entry.kind}`} />)}
+                  {dayItems.length > 4 ? <small>+{dayItems.length - 4}</small> : null}
+                </span>
+              </button>;
+            })}
+          </div>
+          {selectedMobileDate ? <div className="cd-mobile-day-detail">
+            <div className="cd-mobile-day-detail-head"><strong>{new Date(`${selectedMobileDate}T12:00:00`).toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" })}</strong><button type="button" aria-label="Fechar conteúdos do dia" onClick={() => setSelectedMobileDate(null)}><X size={14} /></button></div>
+            {selectedMobileItems.map((entry, index) => <button type="button" className="cd-mobile-day-item" key={`${entry.label}-${index}`} disabled={!entry.itemId} onClick={() => entry.itemId && setActiveItemId(entry.itemId)}>
+              <span className={`cd-agenda-dot status-${entry.approvalStatus || entry.kind}`} />
+              <span className="cd-mobile-day-copy"><strong>{entry.label}</strong><small>{entry.kind === "content" ? `Publicação · ${entry.format || "formato não informado"}` : entry.kind === "capture" ? "Captação do pacote" : entry.kind === "deadline" ? "Entrega do pacote" : "Marco do plano"}</small></span>
+              {entry.itemId ? <ChevronRight size={14} /> : null}
+            </button>)}
+          </div> : <p className="cd-mobile-calendar-hint">Toque em um dia com pontos para ver os conteúdos.</p>}
+          <div className="cd-mobile-calendar-legend"><span><i className="is-content" />Publicação</span><span><i className="is-milestone" />Marco do plano</span></div>
+        </section>
         <section className="vz-cal client-calendar">
-          <div className="vz-cal__head"><div className="calendar-month-title"><strong className="vz-cal__month">{month.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</strong><Count>{orderedItems.filter((item) => item.dueDate?.startsWith(monthKey(month))).length} publicações</Count>{events.filter((event) => event.date.startsWith(monthKey(month))).length ? <Count>{events.filter((event) => event.date.startsWith(monthKey(month))).length} marcos do plano</Count> : null}</div><div className="vz-cal__nav"><IconButton size="sm" aria-label="Mês anterior" onClick={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}><ChevronLeft size={14} /></IconButton><Button variant="ghost" size="sm" onClick={() => setMonth(new Date())}>Hoje</Button><IconButton size="sm" aria-label="Próximo mês" onClick={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}><ChevronRight size={14} /></IconButton></div></div>
+          <div className="vz-cal__head"><div className="calendar-month-title"><strong className="vz-cal__month">{month.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</strong><Count>{orderedItems.filter((item) => item.dueDate?.startsWith(monthKey(month))).length} publicações</Count>{events.filter((event) => event.date.startsWith(monthKey(month))).length ? <Count>{events.filter((event) => event.date.startsWith(monthKey(month))).length} marcos do plano</Count> : null}</div><div className="vz-cal__nav"><IconButton size="sm" aria-label="Mês anterior" onClick={() => moveCalendarMonth(-1)}><ChevronLeft size={14} /></IconButton><Button variant="ghost" size="sm" onClick={() => { setMonth(new Date()); setSelectedMobileDate(null); }}>Hoje</Button><IconButton size="sm" aria-label="Próximo mês" onClick={() => moveCalendarMonth(1)}><ChevronRight size={14} /></IconButton></div></div>
           <div className="cd-calendar-key"><span><strong>Publicações</strong> são os conteúdos que irão ao ar.</span><span><strong>Marcos do plano</strong> são datas internas de captação, criação ou entrega do pacote.</span></div>
           <div className="calendar-scroll"><div className="vz-cal__weekdays">{["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((day) => <span key={day}>{day}</span>)}</div><div className="vz-cal__grid">
             {grid.map((cell, idx) => {
