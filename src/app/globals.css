@@ -545,7 +545,16 @@ a.upcoming-item { color: inherit; text-decoration: none; }
 .calendar-card-config .ds-label { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .calendar-card-avatar { display: inline-flex; margin-left: auto; }
 .task-calendar .vz-cal__day { min-height: 158px; }
+.task-calendar .vz-cal__day--drop { background: var(--vz-brand-softer); box-shadow: inset 0 0 0 2px var(--vz-brand); }
 .task-calendar .vz-cal-card__foot:empty { display: none; }
+.vz-cal__unscheduled { display: grid; gap: 10px; padding: 14px 16px; border-top: 1px solid var(--vz-line); background: var(--vz-bg-sunken); }
+.vz-cal__unscheduled > div:first-child { display: flex; align-items: baseline; gap: 9px; }
+.vz-cal__unscheduled strong { font-size: var(--vz-t-xs); }
+.vz-cal__unscheduled > div:first-child span { color: var(--vz-text-muted); font-size: var(--vz-t-tiny); }
+.vz-cal__unscheduled > div:last-child { display: flex; flex-wrap: wrap; gap: 7px; }
+.vz-cal__unscheduled button { max-width: 260px; min-height: 34px; display: inline-flex; align-items: center; gap: 7px; padding: 7px 10px; color: var(--vz-text); background: var(--vz-panel); border: 1px dashed var(--vz-line-strong); border-radius: var(--vz-r-sm); cursor: grab; font: inherit; font-size: var(--vz-t-tiny); }
+.vz-cal__unscheduled button:active { cursor: grabbing; }
+.vz-cal__unscheduled button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---------- Formulários ---------- */
 .field { display: grid; gap: 6px; }

@@ -1,15 +1,10 @@
 "use client";
 
-import { CalendarDays, CheckSquare, ChevronLeft, ChevronRight, Image as ImageIcon, Layers, Link2, Megaphone, MessageSquare, Paperclip, Plus, Settings2, Smartphone, Video } from "lucide-react";
+import { CheckSquare, Plus } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  currentMonthKey,
   isOverdue,
   overdueDays,
-  monthKeyFromDate,
-  monthLabel,
-  moveMonth,
-  todayIso,
 } from "@/lib/dates";
 import { responseError } from "@/lib/request-error";
 import { useSetPageDetail } from "@/lib/page-context";
@@ -21,7 +16,7 @@ import { TagPickerPopover } from "@/components/tag-picker";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { usePreferences } from "@/lib/use-preferences";
 import { migrateLocalPreferences } from "@/lib/migrate-local-preferences";
-import { toggleColumn as toggleColumnKey, type CalendarCardField, type MemberPreferences } from "@/lib/preferences";
+import { toggleColumn as toggleColumnKey, type MemberPreferences } from "@/lib/preferences";
 import type { DateFormatKey } from "@/lib/date-format";
 import { StatusTag } from "@/components/status-tag";
 import { DueDateValue } from "@/components/due-date-value";
@@ -29,40 +24,14 @@ import { Avatar, AvatarName } from "@/components/avatar";
 import { celebrateFrom } from "@/lib/celebrate";
 import { TaskToolbar } from "@/components/task-toolbar";
 import { useArrastoDeColuna } from "@/components/vz/use-resize";
-import { Button, Card, Check as VzCheck, Count, EmptyState, IconButton, Input, PageHeader } from "@/components/vz";
+import { Button, Card, EmptyState, Input, PageHeader } from "@/components/vz";
 import { DatePicker } from "@/components/vz/date-picker";
+import { PlanCalendar } from "@/components/plan-calendar";
 
 const NO_ASSIGNEE = "none";
 // Base UI's <Select.Value> só resolve o rótulo se o Root receber esse mapa.
 const STATUS_LABELS: Record<string, string> = Object.fromEntries(TASK_STATUSES.map((status) => [status.value, status.label]));
 const LIST_LABELS: Record<TaskListKind, string> = Object.fromEntries(TASK_LIST_KINDS.map((kind) => [kind.value, kind.label])) as Record<TaskListKind, string>;
-const CALENDAR_FIELDS: { key: CalendarCardField; label: string }[] = [
-  { key: "formato", label: "Formato" }, { key: "etapa", label: "Etapa" }, { key: "responsavel", label: "Responsável" },
-  { key: "canal", label: "Canal" }, { key: "link", label: "Link do material" }, { key: "comentarios", label: "Comentários e anexos" },
-];
-
-function calendarDates(month: string) {
-  const [year, monthNumber] = month.split("-").map(Number);
-  const first = new Date(year, monthNumber - 1, 1, 12);
-  const start = new Date(first); start.setDate(first.getDate() - ((first.getDay() + 6) % 7));
-  const last = new Date(year, monthNumber, 0, 12);
-  const end = new Date(last); end.setDate(last.getDate() + ((7 - last.getDay()) % 7));
-  const result: { iso: string; day: number; outside: boolean }[] = [];
-  for (const date = new Date(start); date <= end || result.length < 35; date.setDate(date.getDate() + 1)) {
-    result.push({ iso: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`, day: date.getDate(), outside: date.getMonth() !== monthNumber - 1 });
-  }
-  return result;
-}
-
-function formatMeta(label = "") {
-  if (/carrossel/i.test(label)) return { label: "Carrossel", tone: "blue", Icon: Layers };
-  if (/estát|estatic|imagem/i.test(label)) return { label: "Estático", tone: "green", Icon: ImageIcon };
-  if (/stor/i.test(label)) return { label: "Stories", tone: "pink", Icon: Smartphone };
-  if (/anún|anunc|ads?/i.test(label)) return { label: "Anúncio", tone: "amber", Icon: Megaphone };
-  if (/reel|vídeo|video/i.test(label)) return { label: "Reels", tone: "violet", Icon: Video };
-  return { label: label || "Conteúdo", tone: "slate", Icon: ImageIcon };
-}
-
 function statusLabel(task: Task): string {
   return TASK_STATUSES.find((status) => status.value === task.status)?.label || task.status;
 }
@@ -204,10 +173,6 @@ export function TarefasView({
   const [channelTags, setChannelTags] = useState(initialChannelTags);
   const [statusColors, setStatusColors] = useState(initialStatusColors);
 
-  const [selectedMonth, setSelectedMonth] = useState(() => {
-    const withDue = initialTasks.filter((task) => task.dueDate).map((task) => monthKeyFromDate(task.dueDate!));
-    return withDue.sort().at(-1) || currentMonthKey();
-  });
   const [selectedTask, setSelectedTask] = useState<Task | "new" | null>(
     () => initialTasks.find((task) => task.id === initialTaskId) ?? null,
   );
@@ -252,7 +217,6 @@ export function TarefasView({
   const setTaskFilters = (patch: Partial<MemberPreferences["taskFilters"]>) => updatePreferences({ taskFilters: { ...taskFilters, ...patch } });
   const toggleColumn = (key: MemberPreferences["taskColumns"][number]) =>
     updatePreferences({ taskColumns: toggleColumnKey(visibleColumns, key) });
-  const toggleCalendarField = (field: CalendarCardField) => updatePreferences({ calendarCardFields: calendarCardFields.includes(field) ? calendarCardFields.filter((item) => item !== field) : [...calendarCardFields, field] });
 
   const projectById = useMemo(() => new Map(initialProjects.map((project) => [project.id, project])), [initialProjects]);
   const memberById = useMemo(() => new Map(initialMembers.map((member) => [member.id, member])), [initialMembers]);
@@ -414,20 +378,6 @@ export function TarefasView({
     if (tag.kind === "formato") setFormatTags((current) => [...current, tag]);
     else setChannelTags((current) => [...current, tag]);
   }
-
-  const monthTasks = useMemo(
-    () => visibleTasks.filter((task) => task.dueDate && monthKeyFromDate(task.dueDate) === selectedMonth),
-    [visibleTasks, selectedMonth],
-  );
-  const tasksByDay = useMemo(() => {
-    const grouped = new Map<string, Task[]>();
-    monthTasks.forEach((task) => {
-      grouped.set(task.dueDate!, [...(grouped.get(task.dueDate!) || []), task]);
-    });
-    return grouped;
-  }, [monthTasks]);
-  const noDueTasks = useMemo(() => visibleTasks.filter((task) => !task.dueDate), [visibleTasks]);
-  const calendarCells = useMemo(() => calendarDates(selectedMonth), [selectedMonth]);
 
   function renderColumn(key: TaskColumnKey, task: Task) {
     switch (key) {
@@ -648,61 +598,7 @@ export function TarefasView({
             </>
           ) : (
             <>
-              <section className="vz-cal task-calendar" aria-label={`Calendário de ${monthLabel(selectedMonth)}`}>
-                <div className="vz-cal__head">
-                  <div className="calendar-month-title"><strong className="vz-cal__month">{monthLabel(selectedMonth)}</strong><Count>{monthTasks.length} {monthTasks.length === 1 ? "conteúdo" : "conteúdos"}</Count></div>
-                  <div className="vz-cal__nav"><IconButton size="sm" aria-label="Mês anterior" onClick={() => setSelectedMonth((current) => moveMonth(current, -1))}><ChevronLeft size={14} /></IconButton><Button variant="ghost" size="sm" onClick={() => setSelectedMonth(currentMonthKey())}>Hoje</Button><IconButton size="sm" aria-label="Próximo mês" onClick={() => setSelectedMonth((current) => moveMonth(current, 1))}><ChevronRight size={14} /></IconButton></div>
-                </div>
-                <div className="vz-toolbar calendar-card-config"><span className="ds-label"><Settings2 size={13} /> Mostrar no cartão</span><div className="vz-cal__config">{CALENDAR_FIELDS.map((field) => <VzCheck key={field.key} label={field.label} checked={calendarCardFields.includes(field.key)} onChange={() => toggleCalendarField(field.key)} />)}</div></div>
-                <div className="calendar-scroll">
-                  <div className="vz-cal__weekdays">{["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((day) => <span key={day}>{day}</span>)}</div>
-                  <div className="vz-cal__grid">
-                    {calendarCells.map((cell) => {
-                      const dayTasks = cell.outside ? [] : tasksByDay.get(cell.iso) || [];
-                      return <div className={`vz-cal__day${cell.outside ? " vz-cal__day--out" : ""}${cell.iso === todayIso() ? " vz-cal__day--today" : ""}`} key={cell.iso}>
-                        <span className="vz-cal__daynum">{cell.day}</span>
-                        {dayTasks.map((task) => {
-                          const format = formatMeta(task.formatTagIds.map((id) => formatTagById.get(id)?.label).find(Boolean));
-                          const FormatIcon = format.Icon;
-                          const assignee = task.assigneeId ? memberById.get(task.assigneeId) : undefined;
-                          const status = TASK_STATUSES.find((item) => item.value === task.status);
-                          const statusTone = task.status === "problema" ? "red" : status?.group === "feita" ? "green" : status?.group === "em_andamento" ? "amber" : "blue";
-                          const channel = task.channelTagIds.map((id) => channelTagById.get(id)?.label).find(Boolean);
-                          return <button className={`vz-cal-card vz-cal-card--${format.tone}`} type="button" title={task.name} onClick={() => setSelectedTask(task)} key={task.id}>
-                            {calendarCardFields.includes("formato") ? <div className="vz-cal-card__top"><span className={`vz-minitag vz-minitag--${format.tone}`}><FormatIcon size={10} />{format.label}</span></div> : null}
-                            <span className="vz-cal-card__title">{task.name}</span>
-                            {calendarCardFields.includes("etapa") ? <span className={`vz-minitag vz-minitag--${statusTone}`}>{statusLabel(task)}</span> : null}
-                            <div className="vz-cal-card__foot">
-                              {calendarCardFields.includes("canal") && channel ? <span className="vz-minitag vz-minitag--outline">{channel}</span> : null}
-                              {calendarCardFields.includes("link") && task.driveLink ? <span className="vz-minitag vz-minitag--outline"><Link2 size={9} />Link</span> : null}
-                              {calendarCardFields.includes("comentarios") && task.comments.length ? <span className="vz-minitag vz-minitag--outline"><MessageSquare size={9} />{task.comments.length}</span> : null}
-                              {calendarCardFields.includes("comentarios") && task.images.length ? <span className="vz-minitag vz-minitag--outline"><Paperclip size={9} />{task.images.length}</span> : null}
-                              {calendarCardFields.includes("responsavel") && assignee ? <span className="calendar-card-avatar"><Avatar name={assignee.name} imageUrl={assignee.avatarUrl} size={20} /></span> : null}
-                            </div>
-                          </button>;
-                        })}
-                      </div>;
-                    })}
-                  </div>
-                </div>
-                <div className="vz-cal__legend"><span><i className="vz-dot vz-dot--violet" />Reels</span><span><i className="vz-dot vz-dot--blue" />Carrossel</span><span><i className="vz-dot vz-dot--green" />Estático</span><span><i className="vz-dot vz-dot--pink" />Stories</span><span><i className="vz-dot vz-dot--amber" />Anúncio</span></div>
-              </section>
-              {!monthTasks.length ? (
-                <EmptyState icon={<CalendarDays size={24} />} title="Nenhuma tarefa neste mês" description="Use as setas ou o filtro para consultar outro período." />
-              ) : null}
-              {noDueTasks.length ? (
-                <div style={{ padding: "16px 20px", borderTop: "1px solid var(--line)" }}>
-                  <span className="eyebrow" style={{ marginBottom: 10 }}>Sem data de entrega</span>
-                  <ul className="upcoming-list" style={{ border: "1px solid var(--line)" }}>
-                    {noDueTasks.map((task) => (
-                      <li className="upcoming-item" key={task.id} onClick={() => setSelectedTask(task)} style={{ cursor: "pointer" }}>
-                        <div><strong>{task.name}</strong><span>{projectById.get(task.projectId)?.name || "Sem projeto"}</span></div>
-                        <StatusTag status={task.status} colorByStatus={colorByStatus} />
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
+              <PlanCalendar tasks={visibleTasks} formatTags={formatTags} channelTags={channelTags} members={initialMembers} canEdit={canEdit} cardFields={calendarCardFields} onCardFieldsChange={(fields) => updatePreferences({ calendarCardFields: fields })} onMove={(taskId, dueDate) => void patchTask(taskId, { dueDate })} onOpen={setSelectedTask} />
             </>
           )}
         </Card>

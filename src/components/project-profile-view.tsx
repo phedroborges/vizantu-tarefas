@@ -6,7 +6,7 @@ import { useRef, useState } from "react";
 import { useConfirm } from "@/components/confirm-dialog";
 import { networkError, responseError } from "@/lib/request-error";
 import { CREDENTIAL_KINDS, type Project, type ProjectCredential, type ProjectProfile } from "@/lib/types";
-import type { ClientSatisfactionScore, Task } from "@/lib/types";
+import type { ClientSatisfactionScore, Member, Tag as TaskTag, Task } from "@/lib/types";
 import { Avatar } from "@/components/avatar";
 import { ProjectTaskHub } from "@/components/project-task-hub";
 import { Button, Card, EmptyState, Field, Input, Progress, Tag, Textarea } from "@/components/vz";
@@ -41,6 +41,9 @@ export function ProjectProfileView({
   initialTasks,
   satisfactionScores,
   canEditProfile,
+  formatTags,
+  channelTags,
+  members,
 }: {
   project: Project;
   initialProfile: ProjectProfile | null;
@@ -50,6 +53,9 @@ export function ProjectProfileView({
   initialTasks: Task[];
   satisfactionScores: ClientSatisfactionScore[];
   canEditProfile: boolean;
+  formatTags: TaskTag[];
+  channelTags: TaskTag[];
+  members: Member[];
 }) {
   const [profile, setProfile] = useState<Partial<ProjectProfile>>(initialProfile ?? {});
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -122,7 +128,7 @@ export function ProjectProfileView({
           <Card><div className="vz-metric"><div className="vz-metric__top"><span className="vz-metric__icon vz-metric__icon--blue"><Target size={18} /></span><div><strong className="vz-metric__value">{nps === null ? "—" : nps > 0 ? `+${nps}` : nps}</strong><span className="vz-metric__label">NPS · {satisfactionScores.length} resposta{satisfactionScores.length === 1 ? "" : "s"}</span></div></div></div></Card>
         </div>
 
-        <ProjectTaskHub tasks={initialTasks} />
+        <ProjectTaskHub tasks={initialTasks} formatTags={formatTags} channelTags={channelTags} members={members} canEdit={canEditProfile} />
 
         <div className="project-profile-grid">
           <Card className="project-context-card">
