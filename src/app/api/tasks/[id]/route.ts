@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiFailure } from "@/lib/api-error";
 import { isResponse, requireUser } from "@/lib/authz";
-import { deleteTask, getTask, notifyTaskAssigned, updateTask } from "@/lib/storage";
+import { deleteTask, getTask, listTaskActivity, notifyTaskAssigned, updateTask } from "@/lib/storage";
 import { TASK_KINDS, TASK_STATUSES } from "@/lib/types";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -35,12 +35,27 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       planId: body.planId,
       captacaoId: body.captacaoId,
       sequenceOrder: body.sequenceOrder,
-    });
+    }, auth.id);
     if (!task) return NextResponse.json({ error: "Tarefa não encontrada." }, { status: 404 });
     await notifyTaskAssigned(task, auth.id, previous?.assigneeId);
     return NextResponse.json({ task });
   } catch (error) {
     return apiFailure(error, "salvar a tarefa");
+  }
+}
+
+export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireUser();
+  if (isResponse(auth)) return auth;
+  const { id } = await params;
+  try {
+    const task = await getTask(id);
+    if (!task) return NextResponse.json({ error: "Tarefa não encontrada." }, { status: 404 });
+    if (auth.accessibleProjectIds !== "all" && !auth.accessibleProjectIds.includes(task.projectId)) return NextResponse.json({ error: "Sem acesso." }, { status: 403 });
+    if (auth.accessibleListKinds !== "all" && task.lists.length && !task.lists.some((list) => auth.accessibleListKinds.includes(list))) return NextResponse.json({ error: "Sem acesso." }, { status: 403 });
+    return NextResponse.json({ activity: await listTaskActivity(id) });
+  } catch (error) {
+    return apiFailure(error, "carregar o histórico da tarefa");
   }
 }
 

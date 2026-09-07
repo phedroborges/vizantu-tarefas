@@ -233,6 +233,17 @@ export type Task = {
   updatedAt: string;
 };
 
+export type TaskActivityEvent = {
+  id: string;
+  taskId: string;
+  actorMemberId?: string;
+  actorName: string;
+  fieldKey: string;
+  oldValue: unknown;
+  newValue: unknown;
+  createdAt: string;
+};
+
 // ---------- Planos ----------
 // Um Plano é um container: title/projeto + kind. "content" = conjunto de
 // conteúdos (vídeos/posts/carrosséis), cada um vira uma Task com plan_id

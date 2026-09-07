@@ -1,6 +1,6 @@
 "use client";
 
-import { AlignLeft, CalendarDays, Check, Copy, ExternalLink, Folder, ImagePlus, Link2, Loader2, Lock, Package, Plus, Share2, Trash2, TriangleAlert, User, X } from "lucide-react";
+import { Activity, AlignLeft, CalendarDays, Check, Copy, ExternalLink, Folder, ImagePlus, Link2, Loader2, Lock, Package, Plus, Share2, Trash2, TriangleAlert, User, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -14,8 +14,8 @@ import { descriptionLayout, hasContentSections, parseDescription, serializeDescr
 import { formatDateTime, overdueDays, todayIso } from "@/lib/dates";
 import { networkError, responseError } from "@/lib/request-error";
 import { resizeImageFile } from "@/lib/resize-image";
-import { TASK_KINDS } from "@/lib/types";
-import type { Member, PlanCaptacao, Project, StatusColor, Tag, TagKind, Task, TaskKind, TaskStatus } from "@/lib/types";
+import { TASK_KINDS, TASK_STATUSES } from "@/lib/types";
+import type { Member, PlanCaptacao, Project, StatusColor, Tag, TagKind, Task, TaskActivityEvent, TaskKind, TaskStatus } from "@/lib/types";
 import { celebrateFrom } from "@/lib/celebrate";
 import { MentionCommentForm } from "@/components/mention-comment-form";
 import { DatePicker } from "@/components/vz/date-picker";
@@ -42,6 +42,7 @@ const NO_ASSIGNEE = "none";
 const NO_CAPTACAO = "none";
 const NO_PROJECT = "none";
 const AUTOSAVE_DEBOUNCE_MS = 700;
+const ACTIVITY_LABELS: Record<string, string> = { name: "Título", projectId: "Projeto", assigneeId: "Responsável", status: "Status", dueDate: "Entrega", seasonal: "Data fixa", kind: "Tipo", description: "Descrição", driveLink: "Link do Drive", formatTagIds: "Formato", channelTagIds: "Canal", categoryTagIds: "Categoria", planId: "Plano", captacaoId: "Pacote", sequenceOrder: "Ordem", images: "Imagens" };
 
 function renderCommentText(text: string, members: Member[]) {
   const names = members.map((member) => member.name).toSorted((a, b) => b.length - a.length);
@@ -152,6 +153,7 @@ export function TaskModal({
   const [error, setError] = useState("");
   const [editingLink, setEditingLink] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [activity, setActivity] = useState<TaskActivityEvent[]>([]);
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const statusRef = useRef<HTMLDivElement>(null);
@@ -171,6 +173,26 @@ export function TaskModal({
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
   }, [draft.name]);
+
+  async function loadActivity(taskId: string) {
+    try {
+      const response = await fetch(`/api/tasks/${taskId}`);
+      if (response.ok) setActivity((await response.json()).activity || []);
+    } catch {
+      // A tarefa continua utilizável se o histórico estiver temporariamente indisponível.
+    }
+  }
+
+  useEffect(() => {
+    if (!task?.id) return;
+    let active = true;
+    fetch(`/api/tasks/${task.id}`)
+      .then(async (response) => {
+        if (response.ok && active) setActivity((await response.json()).activity || []);
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [task?.id]);
 
   const isEditing = Boolean(liveTaskId);
   const lateDays = isEditing ? overdueDays(draft.dueDate, draft.status) : 0;
@@ -215,6 +237,7 @@ export function TaskModal({
       setStatusHistory(result.task.statusHistory);
       setSaveState("saved");
       onSaved(result.task);
+      void loadActivity(result.task.id);
     } catch {
       setSaveState("error");
       setError(networkError("salvar a tarefa"));
@@ -363,11 +386,23 @@ export function TaskModal({
     ...(currentInactiveAssignee ? { [currentInactiveAssignee.id]: `${currentInactiveAssignee.name} (inativo)` } : {}),
   };
   const projectLabels: Record<string, string> = Object.fromEntries(projects.map((project) => [project.id, project.name]));
+  const tagLabels = new Map([...formatTags, ...channelTags, ...categoryTags].map((tag) => [tag.id, tag.label]));
+  function activityValue(field: string, value: unknown): string {
+    if (value === null || value === undefined || value === "") return "vazio";
+    if (field === "projectId") return projectLabels[String(value)] || "Projeto";
+    if (field === "assigneeId") return assigneeLabels[String(value)] || "Sem responsável";
+    if (field === "status") return TASK_STATUSES.find((status) => status.value === value)?.label || String(value);
+    if (field === "seasonal") return value ? "Data fixa" : "Pode remanejar";
+    if (field.endsWith("TagIds") && Array.isArray(value)) return value.map((id) => tagLabels.get(String(id)) || String(id)).join(", ") || "vazio";
+    if (field === "images" && typeof value === "number") return `${value} ${value === 1 ? "imagem" : "imagens"}`;
+    const text = typeof value === "string" ? value.replace(/\s+/g, " ").trim() : JSON.stringify(value);
+    return text.length > 70 ? `${text.slice(0, 67)}…` : text;
+  }
 
   return (
     <>
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="!max-w-[920px] w-[calc(100%-2rem)] max-h-[min(860px,calc(100vh-3rem))] flex flex-col gap-0 overflow-hidden p-0" showCloseButton>
+      <DialogContent className="!max-w-[1220px] w-[calc(100%-2rem)] max-h-[min(900px,calc(100vh-3rem))] flex flex-col gap-0 overflow-hidden p-0" showCloseButton>
         <DialogHeader className="modal-head task-modal-head">
           <DialogTitle className="sr-only">{draft.name || (isEditing ? "Editar tarefa" : "Nova tarefa")}</DialogTitle>
           <textarea
@@ -665,6 +700,15 @@ export function TaskModal({
                 ) : null}
               </div>
             </div>
+            {isEditing ? <aside className="task-activity-pane">
+              <div className="task-activity-head"><Activity size={14} /><div><strong>Histórico</strong><span>Alterações na tarefa</span></div></div>
+              <div className="task-activity-list">
+                {activity.length ? activity.map((event) => <article key={event.id} className="task-activity-item">
+                  <i />
+                  <div><strong>{event.actorName}</strong><p>alterou <b>{ACTIVITY_LABELS[event.fieldKey] || event.fieldKey}</b></p><span className="task-activity-change"><del>{activityValue(event.fieldKey, event.oldValue)}</del><em>→</em><ins>{activityValue(event.fieldKey, event.newValue)}</ins></span><small>{formatDateTime(event.createdAt)}</small></div>
+                </article>) : <p className="task-activity-empty">Nenhuma alteração registrada ainda. As próximas mudanças aparecerão aqui.</p>}
+              </div>
+            </aside> : null}
           </div>
 
           {isEditing ? (

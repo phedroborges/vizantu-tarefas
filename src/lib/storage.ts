@@ -519,6 +519,7 @@ export async function duplicateTask(id: string): Promise<Task | undefined> {
 export async function updateTask(
   id: string,
   patch: Partial<Omit<TaskInput, "assigneeId">> & { assigneeId?: string | null },
+  actorMemberId?: string,
 ): Promise<Task | undefined> {
   const current = await getTask(id);
   if (!current) return undefined;
@@ -569,8 +570,35 @@ export async function updateTask(
   const row = unwrap(await getSupabase().from("tasks").update(update).eq("id", id).select().maybeSingle());
   if (!row) return undefined;
   const [updated] = await attachPlanKind([mapTask(row as TaskRow)]);
+  const tracked: [string, unknown, unknown][] = [
+    ["name", current.name, updated.name], ["projectId", current.projectId, updated.projectId], ["assigneeId", current.assigneeId ?? null, updated.assigneeId ?? null],
+    ["status", current.status, updated.status], ["dueDate", current.dueDate ?? null, updated.dueDate ?? null], ["seasonal", current.seasonal, updated.seasonal],
+    ["kind", current.kind, updated.kind], ["description", current.description ?? null, updated.description ?? null], ["driveLink", current.driveLink ?? null, updated.driveLink ?? null],
+    ["formatTagIds", current.formatTagIds, updated.formatTagIds], ["channelTagIds", current.channelTagIds, updated.channelTagIds], ["categoryTagIds", current.categoryTagIds, updated.categoryTagIds],
+    ["planId", current.planId ?? null, updated.planId ?? null], ["captacaoId", current.captacaoId ?? null, updated.captacaoId ?? null], ["sequenceOrder", current.sequenceOrder ?? null, updated.sequenceOrder ?? null],
+    // Registra a alteração sem duplicar URLs ou imagens serializadas no histórico.
+    ["images", current.images.length, updated.images.length],
+  ];
+  const changes = tracked.filter(([, before, after]) => JSON.stringify(before) !== JSON.stringify(after));
+  if (changes.length) {
+    try {
+      unwrap(await getSupabase().from("task_activity_events").insert(changes.map(([fieldKey, oldValue, newValue]) => ({ id: newId(), task_id: id, actor_member_id: actorMemberId || null, field_key: fieldKey, old_value: oldValue, new_value: newValue, created_at: nowIso() }))));
+    } catch (error) {
+      // Não deixa uma migração ainda não aplicada impedir o autosave da tarefa.
+      // Assim que a tabela existir, os próximos eventos passam a ser gravados.
+      console.error("Não foi possível registrar a atividade da tarefa:", error);
+    }
+  }
   await syncApprovalRoundFromTask(updated);
   return updated;
+}
+
+export async function listTaskActivity(taskId: string): Promise<import("./types").TaskActivityEvent[]> {
+  const rows = unwrap(await getSupabase().from("task_activity_events").select("id, task_id, actor_member_id, field_key, old_value, new_value, created_at").eq("task_id", taskId).order("created_at", { ascending: false }).limit(100)) as { id: string; task_id: string; actor_member_id: string | null; field_key: string; old_value: unknown; new_value: unknown; created_at: string }[];
+  const actorIds = [...new Set(rows.map((row) => row.actor_member_id).filter(Boolean))] as string[];
+  const members = actorIds.length ? unwrap(await getSupabase().from("members").select("id, name").in("id", actorIds)) as { id: string; name: string }[] : [];
+  const names = new Map(members.map((member) => [member.id, member.name]));
+  return rows.map((row) => ({ id: row.id, taskId: row.task_id, actorMemberId: row.actor_member_id || undefined, actorName: row.actor_member_id ? names.get(row.actor_member_id) || "Usuário" : "Sistema", fieldKey: row.field_key, oldValue: row.old_value, newValue: row.new_value, createdAt: row.created_at }));
 }
 
 async function reopenApproval(taskId: string, reviewVersion: number) {
