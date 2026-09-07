@@ -24,6 +24,7 @@ import {
   updatePlanCaptacao,
   updateTask,
 } from "./storage";
+import { isUserComment } from "./task-activity";
 import type { CurrentUser } from "./current-user";
 import {
   ANNOUNCEMENT_SCOPES,
@@ -164,7 +165,7 @@ async function toolGetTask(args: { taskId: string }, caller: CurrentUser) {
     driveLink: task.driveLink || null,
     formats: task.formatTagIds.map((id) => formatTagById.get(id)?.label).filter(Boolean),
     channels: task.channelTagIds.map((id) => channelTagById.get(id)?.label).filter(Boolean),
-    comments: task.comments.map((c) => ({ author: c.author, text: c.text, createdAt: c.createdAt })),
+    comments: task.comments.filter(isUserComment).map((c) => ({ author: c.author, text: c.text, createdAt: c.createdAt })),
     timeByStatus: durations,
   };
 }
@@ -269,7 +270,7 @@ async function toolDeleteTask(args: { taskId: string }) {
 async function toolAddComment(args: { taskId: string; text: string; author?: string }) {
   const task = await addComment(args.taskId, { author: args.author || "IA Vizantu", text: args.text });
   if (!task) return { error: "Tarefa não encontrada." };
-  return { ok: true, taskName: task.name, totalComments: task.comments.length };
+  return { ok: true, taskName: task.name, totalComments: task.comments.filter(isUserComment).length };
 }
 
 async function toolListKnowledgeDocs() {

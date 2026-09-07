@@ -6,6 +6,7 @@ import { Avatar } from "@/components/avatar";
 import { Button, Check, Count, IconButton } from "@/components/vz";
 import { currentMonthKey, monthKeyFromDate, monthLabel, moveMonth, todayIso } from "@/lib/dates";
 import type { CalendarCardField } from "@/lib/preferences";
+import { isUserComment } from "@/lib/task-activity";
 import { TASK_STATUSES } from "@/lib/types";
 import type { Member, Tag, Task } from "@/lib/types";
 
@@ -80,7 +81,7 @@ export function PlanCalendar({ tasks, formatTags, channelTags = [], members = []
           {show("formato") ? <div className="vz-cal-card__top"><span className={`vz-minitag vz-minitag--${format.tone}`}><FormatIcon size={10} />{format.label}</span>{task.seasonal ? <Lock size={10} /> : null}</div> : null}<span className="vz-cal-card__title">{task.name}</span>
           {show("etapa") ? <span className={`vz-minitag vz-minitag--${statusTone}`}>{status?.label || task.status}</span> : null}<div className="vz-cal-card__foot">
             {show("canal") && channel ? <span className="vz-minitag vz-minitag--outline">{channel}</span> : null}{show("link") && task.driveLink ? <span className="vz-minitag vz-minitag--outline"><Link2 size={9} />Link</span> : null}
-            {show("comentarios") && task.comments.length ? <span className="vz-minitag vz-minitag--outline"><MessageSquare size={9} />{task.comments.length}</span> : null}{show("comentarios") && task.images.length ? <span className="vz-minitag vz-minitag--outline"><Paperclip size={9} />{task.images.length}</span> : null}
+            {show("comentarios") && task.comments.some(isUserComment) ? <span className="vz-minitag vz-minitag--outline"><MessageSquare size={9} />{task.comments.filter(isUserComment).length}</span> : null}{show("comentarios") && task.images.length ? <span className="vz-minitag vz-minitag--outline"><Paperclip size={9} />{task.images.length}</span> : null}
             {show("responsavel") && assignee ? <span className="calendar-card-avatar"><Avatar name={assignee.name} imageUrl={assignee.avatarUrl} size={20} /></span> : null}
           </div></button>;
       })}</div>; })}

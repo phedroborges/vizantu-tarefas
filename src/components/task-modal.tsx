@@ -19,6 +19,7 @@ import type { Member, PlanCaptacao, Project, StatusColor, Tag, TagKind, Task, Ta
 import { celebrateFrom } from "@/lib/celebrate";
 import { MentionCommentForm } from "@/components/mention-comment-form";
 import { DatePicker } from "@/components/vz/date-picker";
+import { isUserComment } from "@/lib/task-activity";
 
 type Draft = {
   projectId: string;
@@ -146,7 +147,7 @@ export function TaskModal({
   const [statusHistory, setStatusHistory] = useState(task?.statusHistory ?? []);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [commentText, setCommentText] = useState("");
-  const [comments, setComments] = useState(task?.comments || []);
+  const [comments, setComments] = useState((task?.comments || []).filter(isUserComment));
   const [isSendingComment, setIsSendingComment] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
@@ -369,7 +370,7 @@ export function TaskModal({
     });
     setIsSendingComment(false);
     if (!response.ok) return setError(await responseError(response, "enviar o comentário"));
-    setComments((await response.json()).task.comments);
+    setComments((await response.json()).task.comments.filter(isUserComment));
     setCommentText("");
   }
 

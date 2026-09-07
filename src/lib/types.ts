@@ -152,6 +152,10 @@ export type Comment = {
   mentionedMemberIds?: string[];
   text: string;
   createdAt: string;
+  kind?: "comment" | "activity";
+  fieldKey?: string;
+  oldValue?: unknown;
+  newValue?: unknown;
 };
 
 export type NotificationType = "mention" | "task_assigned" | "task_overdue" | "announcement";

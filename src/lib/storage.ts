@@ -4,6 +4,7 @@ import { mergePreferences, normalizePreferences, type MemberPreferences } from "
 import { inheritsCaptureEditor } from "./assignee-inheritance";
 import { parseDescription } from "./description-sections";
 import { getSupabase } from "./supabase-client";
+import { activityEventsFromComments, createActivityComments } from "./task-activity";
 import { BRAND_STAGES, DEFAULT_STATUS_COLORS, TASK_STATUSES } from "./types";
 import type {
   Announcement,
@@ -569,7 +570,7 @@ export async function updateTask(
 
   const row = unwrap(await getSupabase().from("tasks").update(update).eq("id", id).select().maybeSingle());
   if (!row) return undefined;
-  const [updated] = await attachPlanKind([mapTask(row as TaskRow)]);
+  let [updated] = await attachPlanKind([mapTask(row as TaskRow)]);
   const tracked: [string, unknown, unknown][] = [
     ["name", current.name, updated.name], ["projectId", current.projectId, updated.projectId], ["assigneeId", current.assigneeId ?? null, updated.assigneeId ?? null],
     ["status", current.status, updated.status], ["dueDate", current.dueDate ?? null, updated.dueDate ?? null], ["seasonal", current.seasonal, updated.seasonal],
@@ -581,24 +582,22 @@ export async function updateTask(
   ];
   const changes = tracked.filter(([, before, after]) => JSON.stringify(before) !== JSON.stringify(after));
   if (changes.length) {
-    try {
-      unwrap(await getSupabase().from("task_activity_events").insert(changes.map(([fieldKey, oldValue, newValue]) => ({ id: newId(), task_id: id, actor_member_id: actorMemberId || null, field_key: fieldKey, old_value: oldValue, new_value: newValue, created_at: nowIso() }))));
-    } catch (error) {
-      // Não deixa uma migração ainda não aplicada impedir o autosave da tarefa.
-      // Assim que a tabela existir, os próximos eventos passam a ser gravados.
-      console.error("Não foi possível registrar a atividade da tarefa:", error);
-    }
+    const createdAt = nowIso();
+    const comments = [...updated.comments, ...createActivityComments(changes, actorMemberId, createdAt, newId)];
+    const activityRow = unwrap(await getSupabase().from("tasks").update({ comments }).eq("id", id).select().maybeSingle());
+    if (activityRow) [updated] = await attachPlanKind([mapTask(activityRow as TaskRow)]);
   }
   await syncApprovalRoundFromTask(updated);
   return updated;
 }
 
 export async function listTaskActivity(taskId: string): Promise<import("./types").TaskActivityEvent[]> {
-  const rows = unwrap(await getSupabase().from("task_activity_events").select("id, task_id, actor_member_id, field_key, old_value, new_value, created_at").eq("task_id", taskId).order("created_at", { ascending: false }).limit(100)) as { id: string; task_id: string; actor_member_id: string | null; field_key: string; old_value: unknown; new_value: unknown; created_at: string }[];
-  const actorIds = [...new Set(rows.map((row) => row.actor_member_id).filter(Boolean))] as string[];
+  const row = unwrap(await getSupabase().from("tasks").select("comments").eq("id", taskId).maybeSingle()) as { comments: Task["comments"] } | null;
+  const events = (row?.comments ?? []).filter((comment) => comment.kind === "activity" && comment.fieldKey).slice(-100).reverse();
+  const actorIds = [...new Set(events.map((event) => event.authorMemberId).filter(Boolean))] as string[];
   const members = actorIds.length ? unwrap(await getSupabase().from("members").select("id, name").in("id", actorIds)) as { id: string; name: string }[] : [];
   const names = new Map(members.map((member) => [member.id, member.name]));
-  return rows.map((row) => ({ id: row.id, taskId: row.task_id, actorMemberId: row.actor_member_id || undefined, actorName: row.actor_member_id ? names.get(row.actor_member_id) || "Usuário" : "Sistema", fieldKey: row.field_key, oldValue: row.old_value, newValue: row.new_value, createdAt: row.created_at }));
+  return activityEventsFromComments(row?.comments ?? [], taskId, names);
 }
 
 async function reopenApproval(taskId: string, reviewVersion: number) {
