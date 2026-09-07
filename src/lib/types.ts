@@ -371,6 +371,24 @@ export type ClientSatisfactionScore = {
   createdAt: string;
 };
 
+export type SurveyQuestionType = "short_text" | "long_text" | "single_choice" | "multiple_choice" | "scale" | "nps";
+export type SurveyQuestion = { id: string; title: string; description?: string; type: SurveyQuestionType; required: boolean; options?: string[] };
+export type SurveyAnswer = { questionId: string; value: string | string[] | number };
+export type SurveyResponse = { id: string; respondentName?: string; answers: SurveyAnswer[]; createdAt: string };
+export type SurveyStatus = "draft" | "published" | "closed";
+export type Survey = {
+  id: string;
+  projectId: string;
+  title: string;
+  description: string;
+  status: SurveyStatus;
+  token: string;
+  questions: SurveyQuestion[];
+  responses: SurveyResponse[];
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type PlanEvent = {
   id: string;
   projectId: string;

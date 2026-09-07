@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, Bell, BookOpen, CheckSquare, ClipboardList, FileText, Folders, LogOut, Menu, Palette, Sparkles, Users, X } from "lucide-react";
+import { BarChart3, Bell, BookOpen, CheckSquare, ClipboardList, FileQuestion, FileText, Folders, LogOut, Menu, Palette, Sparkles, Users, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -15,13 +15,14 @@ import type { CurrentUser } from "@/lib/current-user";
 import { PageContextProvider } from "@/lib/page-context";
 import { createClient } from "@/lib/supabase/browser-client";
 
-export type AdminShellActive = "dashboard" | "projetos" | "tarefas" | "planos" | "marcas" | "contratos" | "membros" | "conhecimento" | "assistente" | "notificacoes";
+export type AdminShellActive = "dashboard" | "projetos" | "tarefas" | "planos" | "pesquisas" | "marcas" | "contratos" | "membros" | "conhecimento" | "assistente" | "notificacoes";
 
 const PAGE_LABELS: Record<AdminShellActive, string> = {
   dashboard: "Página atual: Dashboard (visão geral de métricas, prazos e ranking do time).",
   projetos: "Página atual: Projetos.",
   tarefas: "Página atual: Tarefas.",
   planos: "Página atual: Planos (conteúdos e processos organizados por cliente).",
+  pesquisas: "Página atual: Pesquisas e formulários dos clientes.",
   marcas: "Página atual: Marcas (fluxos de branding e seus entregáveis).",
   contratos: "Página atual: Contratos (modelos da casa preenchidos com os dados do cliente).",
   membros: "Página atual: Membros.",
@@ -86,6 +87,10 @@ export function AdminShell({
           <Link className={active === "planos" ? "active" : ""} href="/planos" onClick={() => setMenuOpen(false)}>
             <ClipboardList size={18} />
             <span>Planos</span>
+          </Link>
+          <Link className={active === "pesquisas" ? "active" : ""} href="/pesquisas" onClick={() => setMenuOpen(false)}>
+            <FileQuestion size={18} />
+            <span>Pesquisas</span>
           </Link>
           <Link className={active === "marcas" ? "active" : ""} href="/marcas" onClick={() => setMenuOpen(false)}>
             <Palette size={18} />

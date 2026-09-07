@@ -25,10 +25,10 @@ const groupOf = (task: Task) => TASK_STATUSES.find((item) => item.value === task
 const statusLabel = (task: Task) => TASK_STATUSES.find((item) => item.value === task.status)?.label || task.status;
 const dateLabel = (date?: string) => date ? new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`)) : "Sem prazo";
 
-export function ProjectTaskHub({ tasks: initialTasks, formatTags, channelTags, members, canEdit }: { tasks: Task[]; formatTags: TaskTag[]; channelTags: TaskTag[]; members: Member[]; canEdit: boolean }) {
+export function ProjectTaskHub({ tasks: initialTasks, formatTags, channelTags, members, canEdit, initialView = "lista" }: { tasks: Task[]; formatTags: TaskTag[]; channelTags: TaskTag[]; members: Member[]; canEdit: boolean; initialView?: "lista" | "calendario" | "board" }) {
   const router = useRouter();
   const [tasks, setTasks] = useState(initialTasks);
-  const [view, setView] = useState<"lista" | "calendario" | "board">("lista");
+  const [view, setView] = useState<"lista" | "calendario" | "board">(initialView);
   const columns = useColunasRedimensionaveis("project-task-hub", tableColumns);
   const sorted = useMemo(() => tasks.toSorted((a, b) => (a.dueDate || "9999").localeCompare(b.dueDate || "9999")), [tasks]);
   async function moveTask(taskId: string, dueDate: string) {

@@ -42,6 +42,9 @@ import type {
   TaskKind,
   TaskListKind,
   TaskStatus,
+  Survey,
+  SurveyAnswer,
+  SurveyQuestion,
   UserRole,
 } from "./types";
 
@@ -1473,7 +1476,7 @@ function mapKnowledgeDoc(row: KnowledgeDocRow): KnowledgeDoc {
 
 export async function listKnowledgeDocs(): Promise<KnowledgeDoc[]> {
   const rows = unwrap(await getSupabase().from("knowledge_docs").select("*"));
-  return sortByLocale((rows as KnowledgeDocRow[]).map(mapKnowledgeDoc), (d) => d.title);
+  return sortByLocale((rows as KnowledgeDocRow[]).filter((row) => !row.title.startsWith("__survey__:")).map(mapKnowledgeDoc), (d) => d.title);
 }
 
 export async function getKnowledgeDoc(id: string): Promise<KnowledgeDoc | undefined> {
@@ -1504,6 +1507,91 @@ export async function updateKnowledgeDoc(id: string, patch: Partial<Pick<Knowled
 export async function deleteKnowledgeDoc(id: string): Promise<boolean> {
   const rows = unwrap(await getSupabase().from("knowledge_docs").delete().eq("id", id).select("id"));
   return (rows as unknown[]).length > 0;
+}
+
+// ---------- Pesquisas ----------
+// A instalação atual já possui knowledge_docs em produção. Pesquisas usam a
+// mesma camada persistente com um marcador reservado, mas nunca aparecem na
+// Base de conhecimento. Isso mantém o módulo funcional sem DDL adicional.
+const SURVEY_PREFIX = "__survey__:";
+type SurveyPayload = Omit<Survey, "id" | "createdAt" | "updatedAt">;
+
+function mapSurvey(row: KnowledgeDocRow): Survey | null {
+  if (!row.title.startsWith(SURVEY_PREFIX)) return null;
+  try {
+    const payload = JSON.parse(row.content) as SurveyPayload;
+    return { ...payload, id: row.id, createdAt: row.created_at, updatedAt: row.updated_at };
+  } catch { return null; }
+}
+
+async function allSurveyRows(): Promise<KnowledgeDocRow[]> {
+  return unwrap(await getSupabase().from("knowledge_docs").select("*").like("title", `${SURVEY_PREFIX}%`)) as KnowledgeDocRow[];
+}
+
+export async function listSurveys(projectId?: string): Promise<Survey[]> {
+  const surveys = (await allSurveyRows()).map(mapSurvey).filter(Boolean) as Survey[];
+  return surveys.filter((survey) => !projectId || survey.projectId === projectId).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+export async function getSurvey(id: string): Promise<Survey | undefined> {
+  const row = unwrap(await getSupabase().from("knowledge_docs").select("*").eq("id", id).maybeSingle());
+  return row ? mapSurvey(row as KnowledgeDocRow) ?? undefined : undefined;
+}
+
+export async function getSurveyByToken(token: string): Promise<Survey | undefined> {
+  return (await listSurveys()).find((survey) => survey.token === token);
+}
+
+export async function createSurvey(input: { projectId: string; title: string; description?: string; template?: "blank" | "brand_onboarding" | "satisfaction" }): Promise<Survey> {
+  const now = nowIso();
+  const q = (title: string, type: SurveyQuestion["type"] = "long_text", options?: string[]): SurveyQuestion => ({ id: newId(), title, type, required: true, options });
+  const questions = input.template === "brand_onboarding" ? [
+    q("Conte a história da marca e o momento atual do negócio."),
+    q("Qual é o propósito da marca? Por que ela existe?"),
+    q("Quais produtos ou serviços são prioritários hoje?"),
+    q("Quem é o público que a marca precisa alcançar?"),
+    q("Quais diferenciais fazem o cliente escolher vocês?"),
+    q("Quem são os principais concorrentes e referências?"),
+    q("Como a marca deve ser percebida? Escolha até cinco características."),
+    q("Quais objetivos a gestão de marca precisa alcançar nos próximos 12 meses?"),
+    q("Existe algo que a comunicação nunca deve fazer ou dizer?"),
+    q("Como funciona a aprovação e quem toma a decisão final?"),
+  ] : input.template === "satisfaction" ? [
+    q("De 0 a 10, o quanto você indicaria a Vizantu para outra empresa?", "nps"),
+    q("Qual foi o principal motivo da sua nota?"),
+    { ...q("O que podemos melhorar na próxima entrega?"), required: false },
+  ] : [];
+  const payload: SurveyPayload = { projectId: input.projectId, title: input.title.trim(), description: input.description?.trim() || "", status: "draft", token: newId(), questions, responses: [] };
+  const row = unwrap(await getSupabase().from("knowledge_docs").insert({ id: newId(), title: `${SURVEY_PREFIX}${input.projectId}:${payload.title}`, content: JSON.stringify(payload), created_at: now, updated_at: now }).select().single());
+  return mapSurvey(row as KnowledgeDocRow)!;
+}
+
+export async function updateSurvey(id: string, patch: Partial<Pick<Survey, "title" | "description" | "status" | "questions">>): Promise<Survey | undefined> {
+  const current = await getSurvey(id);
+  if (!current) return undefined;
+  const payload: SurveyPayload = { projectId: current.projectId, title: patch.title?.trim() ?? current.title, description: patch.description?.trim() ?? current.description, status: patch.status ?? current.status, token: current.token, questions: patch.questions ?? current.questions, responses: current.responses };
+  const row = unwrap(await getSupabase().from("knowledge_docs").update({ title: `${SURVEY_PREFIX}${current.projectId}:${payload.title}`, content: JSON.stringify(payload), updated_at: nowIso() }).eq("id", id).select().maybeSingle());
+  return row ? mapSurvey(row as KnowledgeDocRow) ?? undefined : undefined;
+}
+
+export async function deleteSurvey(id: string): Promise<boolean> {
+  const survey = await getSurvey(id);
+  return survey ? deleteKnowledgeDoc(id) : false;
+}
+
+export async function submitSurveyResponse(token: string, input: { respondentName?: string; answers: SurveyAnswer[] }): Promise<{ survey: Survey; score?: number } | undefined> {
+  const current = await getSurveyByToken(token);
+  if (!current || current.status !== "published") return undefined;
+  const now = nowIso();
+  const response = { id: newId(), respondentName: input.respondentName?.trim() || undefined, answers: input.answers, createdAt: now };
+  const payload: SurveyPayload = { ...current, responses: [...current.responses, response] };
+  const row = unwrap(await getSupabase().from("knowledge_docs").update({ content: JSON.stringify(payload), updated_at: now }).eq("id", current.id).select().maybeSingle());
+  const survey = row ? mapSurvey(row as KnowledgeDocRow) ?? undefined : undefined;
+  if (!survey) return undefined;
+  const npsIds = new Set(current.questions.filter((question: SurveyQuestion) => question.type === "nps").map((question) => question.id));
+  const score = input.answers.find((answer) => npsIds.has(answer.questionId) && typeof answer.value === "number")?.value as number | undefined;
+  if (score !== undefined) await addSatisfactionScore({ projectId: current.projectId, score });
+  return { survey, score };
 }
 
 // ---------- Conversas do assistente (chat em tela cheia) ----------

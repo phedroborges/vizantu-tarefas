@@ -5,10 +5,11 @@ import Link from "next/link";
 import { useRef, useState } from "react";
 import { useConfirm } from "@/components/confirm-dialog";
 import { networkError, responseError } from "@/lib/request-error";
-import { CREDENTIAL_KINDS, type Project, type ProjectCredential, type ProjectProfile } from "@/lib/types";
+import { CREDENTIAL_KINDS, type Plan, type Project, type ProjectCredential, type ProjectProfile, type Survey } from "@/lib/types";
 import type { ClientSatisfactionScore, Member, Tag as TaskTag, Task } from "@/lib/types";
 import { Avatar } from "@/components/avatar";
 import { ProjectTaskHub } from "@/components/project-task-hub";
+import { SurveyManager } from "@/components/survey-manager";
 import { Button, Card, EmptyState, Field, Input, Progress, Tag, Textarea } from "@/components/vz";
 
 const AUTOSAVE_MS = 700;
@@ -44,6 +45,8 @@ export function ProjectProfileView({
   formatTags,
   channelTags,
   members,
+  initialPlans,
+  initialSurveys,
 }: {
   project: Project;
   initialProfile: ProjectProfile | null;
@@ -56,6 +59,8 @@ export function ProjectProfileView({
   formatTags: TaskTag[];
   channelTags: TaskTag[];
   members: Member[];
+  initialPlans: Plan[];
+  initialSurveys: Survey[];
 }) {
   const [profile, setProfile] = useState<Partial<ProjectProfile>>(initialProfile ?? {});
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -64,6 +69,7 @@ export function ProjectProfileView({
   const [isAdding, setIsAdding] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { confirm, ConfirmDialog } = useConfirm();
+  const [tab, setTab] = useState<"informacoes" | "calendario" | "planos" | "pesquisas" | "acessos">("informacoes");
   const done = initialTasks.filter((task) => task.status === "finalizado").length;
   const overdue = initialTasks.filter((task) => task.dueDate && task.dueDate < new Date().toISOString().slice(0, 10) && task.status !== "finalizado").length;
   const completion = initialTasks.length ? Math.round(done / initialTasks.length * 100) : 0;
@@ -121,14 +127,17 @@ export function ProjectProfileView({
 
         {error ? <div className="form-message">{error}</div> : null}
 
+        <nav className="project-profile-tabs" aria-label="Seções do projeto">
+          {([["informacoes", "Informações"], ["calendario", "Calendário"], ["planos", "Planos"], ["pesquisas", "Pesquisas"], ["acessos", "Acessos"]] as const).map(([value, label]) => <button className={tab === value ? "active" : ""} key={value} onClick={() => setTab(value)}>{label}{value === "pesquisas" && initialSurveys.length ? <span>{initialSurveys.length}</span> : null}</button>)}
+        </nav>
+
+        {tab === "informacoes" ? <>
         <div className="project-metrics">
           <Card><div className="vz-metric"><div className="vz-metric__top"><span className="vz-metric__icon"><BarChart3 size={18} /></span><div><strong className="vz-metric__value">{initialTasks.length}</strong><span className="vz-metric__label">Tarefas totais</span></div></div></div></Card>
           <Card><div className="vz-metric"><div className="vz-metric__top"><span className="vz-metric__icon vz-metric__icon--green"><CheckCircle2 size={18} /></span><div><strong className="vz-metric__value">{completion}%</strong><span className="vz-metric__label">Conclusão</span></div></div><Progress value={completion} thin tone="green" /></div></Card>
           <Card><div className="vz-metric"><div className="vz-metric__top"><span className="vz-metric__icon vz-metric__icon--red"><Clock3 size={18} /></span><div><strong className="vz-metric__value">{overdue}</strong><span className="vz-metric__label">Tarefas atrasadas</span></div></div></div></Card>
           <Card><div className="vz-metric"><div className="vz-metric__top"><span className="vz-metric__icon vz-metric__icon--blue"><Target size={18} /></span><div><strong className="vz-metric__value">{nps === null ? "—" : nps > 0 ? `+${nps}` : nps}</strong><span className="vz-metric__label">NPS · {satisfactionScores.length} resposta{satisfactionScores.length === 1 ? "" : "s"}</span></div></div></div></Card>
         </div>
-
-        <ProjectTaskHub tasks={initialTasks} formatTags={formatTags} channelTags={channelTags} members={members} canEdit={canEditProfile} />
 
         <div className="project-profile-grid">
           <Card className="project-context-card">
@@ -158,7 +167,11 @@ export function ProjectProfileView({
               ))}
             </div>
           </Card>
-
+        </div></> : null}
+        {tab === "calendario" ? <ProjectTaskHub tasks={initialTasks} formatTags={formatTags} channelTags={channelTags} members={members} canEdit={canEditProfile} initialView="calendario" /> : null}
+        {tab === "planos" ? <Card><div className="project-section-head"><div><span className="vz-eyebrow">Planejamento</span><h2 className="vz-h2">Planos do cliente</h2><p>{initialPlans.length} plano{initialPlans.length === 1 ? "" : "s"}</p></div><Link className="vz-button vz-button--primary" href={`/planos?projectId=${project.id}`}><Plus size={14} /> Novo plano</Link></div><div className="project-plan-list">{initialPlans.map((plan) => <Link href={`/planos/${plan.id}`} key={plan.id}><strong>{plan.title}</strong><span>{plan.kind === "content" ? "Conteúdo" : plan.kind === "brand" ? "Marca" : plan.kind === "process" ? "Processo" : "Apresentação"} · {plan.status}</span></Link>)}</div>{!initialPlans.length ? <EmptyState icon={<BarChart3 size={24} />} title="Nenhum plano" description="Os planos criados para este cliente aparecerão aqui." /> : null}</Card> : null}
+        {tab === "pesquisas" ? <SurveyManager initialSurveys={initialSurveys} projects={[project]} lockedProjectId={project.id} /> : null}
+        {tab === "acessos" ? <div className="project-profile-grid project-profile-grid--single">
           <Card className="project-credentials-card">
             <div className="project-section-head">
               <div>
@@ -210,7 +223,7 @@ export function ProjectProfileView({
               </div>
             )}
           </Card>
-        </div>
+        </div> : null}
       </main>
       {ConfirmDialog}
     </>
