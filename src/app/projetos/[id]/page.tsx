@@ -4,7 +4,7 @@ import { ProjectProfileView } from "@/components/project-profile-view";
 import { getCurrentUser } from "@/lib/current-user";
 import { filterTasksByListAccess } from "@/lib/authz";
 import { secretsAvailable } from "@/lib/crypto-secrets";
-import { getProject, getProjectProfile, listMembers, listPlans, listProjectCredentials, listSatisfactionScores, listSurveys, listTags, listTasks } from "@/lib/storage";
+import { getProject, getProjectProfile, listContracts, listMembers, listPlans, listProjectCredentials, listSatisfactionScores, listSurveys, listTags, listTasks } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +19,7 @@ export default async function ProjetoPage({ params }: { params: Promise<{ id: st
   // Credencial é do dono. Quem não é dono recebe a lista vazia do servidor —
   // não é a tela que esconde, é o dado que não sai daqui.
   const isOwner = user.role === "dono";
-  const [profile, credentials, allTasks, satisfactionScores, formatTags, channelTags, members, plans, surveys] = await Promise.all([
+  const [profile, credentials, allTasks, satisfactionScores, formatTags, channelTags, members, plans, surveys, allContracts] = await Promise.all([
     getProjectProfile(id),
     isOwner ? listProjectCredentials(id) : Promise.resolve([]),
     listTasks(),
@@ -29,6 +29,7 @@ export default async function ProjetoPage({ params }: { params: Promise<{ id: st
     listMembers(),
     listPlans(id),
     listSurveys(id),
+    listContracts(),
   ]);
 
   return (
@@ -47,6 +48,7 @@ export default async function ProjetoPage({ params }: { params: Promise<{ id: st
         members={members}
         initialPlans={plans}
         initialSurveys={surveys}
+        initialContracts={allContracts.filter((contract) => contract.projectId === id)}
       />
     </AdminShell>
   );
