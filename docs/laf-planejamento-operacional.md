@@ -2,39 +2,41 @@
 
 ## Visão geral
 
-A LAF será realizada em seis dias de jogos no Centro Esportivo de Mineiros. As atividades começam às 19h e normalmente seguem até aproximadamente 21h, com pelo menos três jogos por dia.
+A LAF será realizada em seis dias de jogos no Centro Esportivo de Mineiros. As atividades começam às 16h e normalmente seguem até aproximadamente 21h, com pelo menos três jogos por dia.
 
-A edição seguirá com a marca atual da LAF, sem alterações de identidade visual.
+A marca da LAF passará por um ajuste antes desta edição. A marca atual é antiga e será refinada sem perder o reconhecimento, e as peças do evento usam a versão ajustada.
 
 ## Calendário oficial
 
 | Dia | Data | Observação |
 | --- | --- | --- |
-| 1 | 12 de setembro | Jogos a partir das 19h |
-| 2 | 19 de setembro | Jogos a partir das 19h |
-| 3 | 26 de setembro | Jogos a partir das 19h |
-| 4 | 14 de outubro | Quarta-feira; jogos a partir das 19h |
-| 5 | 17 de outubro | Jogos a partir das 19h |
-| 6 | 24 de outubro | Jogos a partir das 19h |
+| 1 | 12 de setembro | Jogos a partir das 16h |
+| 2 | 19 de setembro | Jogos a partir das 16h |
+| 3 | 26 de setembro | Jogos a partir das 16h |
+| 4 | 14 de outubro | Quarta-feira; jogos a partir das 16h |
+| 5 | 17 de outubro | Jogos a partir das 16h |
+| 6 | 24 de outubro | Jogos a partir das 16h |
 
 > O ano das datas deve ser confirmado nos materiais públicos antes da divulgação.
 
 ## Local e horários
 
 - Local: Centro Esportivo de Mineiros.
-- Início das atividades: 19h.
+- Início das atividades: 16h.
 - Encerramento habitual: aproximadamente 21h.
 - Programação mínima: três jogos por dia.
 - Total: seis dias de jogos.
 
 ## Chaves
 
+As dez atléticas do regulamento formam oito equipes, porque algumas se juntaram. A Betabólica é a junção da Betoneira (Engenharia Civil Fimes) com a Metabólica (Unificada/FAMP).
+
 ### Chave A
 
 - Mercenária
 - Supinada
 - Milionária
-- Betobólica
+- Betabólica
 
 ### Chave B
 
@@ -130,9 +132,11 @@ Fotógrafos da região serão convidados a participar do evento e poderão comer
 
 ## Marca e identidade visual
 
-A LAF continuará usando sua marca e identidade visual atuais. Não está previsto nenhum processo de rebranding ou alteração da marca para esta edição.
+A marca da LAF será ajustada antes do evento. Não é um rebranding: a marca atual é antiga e recebe um refino de traço, proporção e cor, mantendo o reconhecimento que ela já tem. O ajuste precisa sair antes das peças, porque todas dependem dele.
 
-Todas as peças do evento deverão respeitar a identidade existente, incluindo:
+A entrega do ajuste inclui versão principal, versão reduzida, versão monocromática e arquivo aberto.
+
+Todas as peças do evento deverão respeitar a marca ajustada, incluindo:
 
 - materiais de divulgação;
 - sinalização do local;
@@ -153,7 +157,8 @@ Esse documento deve ser considerado a referência para regras esportivas, crité
 ## Pendências de confirmação
 
 - Confirmar o ano oficial das seis datas nos materiais públicos.
-- Confirmar se o encerramento às 21h será divulgado como horário oficial ou apenas como previsão.
+- Revisar o horário de encerramento: as 21h vinham do planejamento com início às 19h e provavelmente não valem mais com início às 16h. Definir também se o encerramento entra na divulgação como horário oficial ou como previsão.
+- Confirmar se a rodada tem três ou quatro jogos por dia (o regulamento fala em quatro).
 - Definir o entrevistador: apresentadora da rádio ou Leonardo Rimolo.
 - Definir quais espaços e materiais receberão os logotipos da cota Básica.
 - Definir os quatro patrocinadores que ocuparão os stands.
