@@ -662,6 +662,7 @@ export function TaskModal({
                       className="desc-block-text"
                       value={sections.livre}
                       disabled={!canEdit}
+                      alwaysEditing
                       onChange={(value) => updateSection("livre", value)}
                       onError={setError}
                     />
@@ -674,6 +675,9 @@ export function TaskModal({
                       className="desc-block-text"
                       value={sections[section.key]}
                       disabled={!canEdit}
+                      // Texto de trabalho já abre pronto para digitar ou copiar.
+                      // A referência conserva a prévia clicável do endereço.
+                      alwaysEditing={section.key !== "referencia"}
                       onChange={(value) => updateSection(section.key, value)}
                       onError={setError}
                       placeholder={section.placeholder}

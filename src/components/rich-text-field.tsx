@@ -31,6 +31,7 @@ export function RichTextField({
   className,
   maxLength,
   renderView,
+  alwaysEditing = false,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -40,6 +41,8 @@ export function RichTextField({
   className?: string;
   maxLength?: number;
   renderView?: (value: string) => ReactNode | null;
+  /** Mantém o textarea exposto, sem exigir um clique para começar a editar. */
+  alwaysEditing?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -116,7 +119,7 @@ export function RichTextField({
   const stateClass = `${isDragging ? " is-drop-target" : ""}${isUploading ? " is-uploading" : ""}`;
   const isInteractiveChild = (target: EventTarget | null) => target instanceof Element && Boolean(target.closest("a, button, input, select, textarea"));
 
-  if (editing && !disabled) {
+  if ((editing || alwaysEditing) && !disabled) {
     return (
       <AutoTextarea
         ref={ref}
@@ -128,7 +131,7 @@ export function RichTextField({
         onPaste={onPaste}
         // Sair do campo enquanto a imagem sobe desmontaria o textarea no meio
         // do caminho e o cursor se perderia — o blur espera o upload acabar.
-        onBlur={() => { if (!isUploading) setEditing(false); }}
+        onBlur={() => { if (!alwaysEditing && !isUploading) setEditing(false); }}
         {...dropProps}
       />
     );

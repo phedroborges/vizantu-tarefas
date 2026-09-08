@@ -31,4 +31,15 @@ describe("RichTextField em modo de leitura", () => {
     act(() => (host.querySelector(".rich-text-view") as HTMLElement).click());
     expect(host.querySelector("textarea")).not.toBeNull();
   });
+
+  it("pode abrir diretamente como textarea e continuar editável após o blur", () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    root = createRoot(host);
+    act(() => root!.render(<RichTextField value="Texto pronto para editar" alwaysEditing onChange={() => {}} />));
+    const textarea = host.querySelector("textarea") as HTMLTextAreaElement;
+    expect(textarea.value).toBe("Texto pronto para editar");
+    act(() => textarea.dispatchEvent(new FocusEvent("blur", { bubbles: true })));
+    expect(host.querySelector("textarea")).not.toBeNull();
+  });
 });
