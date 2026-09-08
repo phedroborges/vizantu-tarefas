@@ -1001,6 +1001,13 @@ a.upcoming-item { color: inherit; text-decoration: none; }
 .desc-block-text:focus { outline: none; }
 .desc-block-text::placeholder { color: var(--vz-line-contrast); }
 .desc-block-text:disabled { color: var(--muted-text); }
+.live-markdown-editor { min-height: calc(1.65em * 2); white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; }
+.live-markdown-editor:focus { outline: none; }
+.live-markdown-editor.is-empty::before { content: attr(data-placeholder); color: var(--vz-line-contrast); pointer-events: none; }
+.live-markdown-editor.is-empty > div { display: none; }
+.live-markdown-editor .live-markdown-heading { margin: 10px 0 3px; font-size: 15px; line-height: 1.35; font-weight: 750; color: var(--dark); }
+.live-markdown-editor .live-markdown-heading:first-child { margin-top: 0; }
+.live-markdown-editor strong { font-weight: 700; color: var(--dark); }
 
 /* Bloco que a tarefa não mostra por padrão (roteiro/legenda numa marca). Fica
    como um botão discreto no fim do documento, não como uma seção vazia: quem

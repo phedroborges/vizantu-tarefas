@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AutoTextarea } from "@/components/auto-textarea";
+import { LiveMarkdownEditor } from "@/components/live-markdown-editor";
 import { renderMarkdownLite } from "@/components/markdown-lite";
 import { imageMarkdown, imagesFromTransfer, uploadImageFile } from "@/lib/upload-image";
 
@@ -119,7 +120,17 @@ export function RichTextField({
   const stateClass = `${isDragging ? " is-drop-target" : ""}${isUploading ? " is-uploading" : ""}`;
   const isInteractiveChild = (target: EventTarget | null) => target instanceof Element && Boolean(target.closest("a, button, input, select, textarea"));
 
-  if ((editing || alwaysEditing) && !disabled) {
+  if (alwaysEditing && !disabled) {
+    return <LiveMarkdownEditor
+      className={className}
+      value={value}
+      onChange={onChange}
+      placeholder={placeholder}
+      onFiles={(files) => insertImages(files, value.length, value.length)}
+    />;
+  }
+
+  if (editing && !disabled) {
     return (
       <AutoTextarea
         ref={ref}
