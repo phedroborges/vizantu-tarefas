@@ -566,6 +566,7 @@ a.upcoming-item { color: inherit; text-decoration: none; }
 .project-team-list strong { font-size:12px; }
 .project-team-list small { color:var(--vz-text-faint); font-size:10px; }
 .project-team-list :has(> input:checked) { border-color:var(--vz-brand-line); background:var(--vz-brand-softer); }
+.meta-select.is-cargo-antigo { border-color:var(--vz-amber-line) !important; background:var(--vz-amber-bg); color:var(--vz-amber-ink); font-weight:650; }
 .survey-layout { position:relative; display:grid; grid-template-columns:300px minmax(0,1fr); gap:16px; align-items:start; }
 .survey-list { position:sticky; top:20px; overflow:hidden; }
 .survey-section-head,.survey-builder__head,.survey-builder__toolbar,.survey-builder__actions { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:18px 20px; }

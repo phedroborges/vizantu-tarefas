@@ -7,6 +7,8 @@ import { veTodosOsProjetos } from "@/lib/permissions";
 import { TASK_LIST_KINDS, USER_ROLES } from "@/lib/types";
 import type { Member, Project, TaskListKind, UserRole } from "@/lib/types";
 
+const cargoConhecido = (role: string) => USER_ROLES.some((item) => item.value === role);
+
 export function MembrosView({
   initialMembers,
   projects,
@@ -166,11 +168,16 @@ export function MembrosView({
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
                       <select
-                        className="meta-select"
+                        className={`meta-select${cargoConhecido(member.role) ? "" : " is-cargo-antigo"}`}
                         style={{ border: "1px solid var(--line)", height: 32, padding: "0 8px" }}
                         value={member.role}
                         onChange={(e) => patchMember(member.id, { role: e.target.value as UserRole })}
                       >
+                        {/* Um <select> cujo value não bate com nenhuma <option> exibe a
+                            PRIMEIRA da lista. Sem esta opção, quem estivesse gravado com
+                            um cargo antigo aparecia como "Dono" — a tela dizendo o
+                            contrário do banco, justo na tela que define permissão. */}
+                        {cargoConhecido(member.role) ? null : <option value={member.role}>Cargo antigo — escolha um</option>}
                         {USER_ROLES.map((item) => <option value={item.value} key={item.value} title={item.description}>{item.label}</option>)}
                       </select>
                       {!veTodosOsProjetos(member.role) ? (
