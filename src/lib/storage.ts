@@ -5,6 +5,7 @@ import { inheritsCaptureEditor } from "./assignee-inheritance";
 import { parseDescription } from "./description-sections";
 import { getSupabase } from "./supabase-client";
 import { activityEventsFromComments, createActivityComments } from "./task-activity";
+import { questionsForTemplate, type SurveyTemplate } from "./survey-templates";
 import { BRAND_STAGES, DEFAULT_STATUS_COLORS, TASK_STATUSES } from "./types";
 import type {
   Announcement,
@@ -1604,57 +1605,9 @@ export async function getSurveyByToken(token: string): Promise<Survey | undefine
   return (await listSurveys()).find((survey) => survey.token === token);
 }
 
-export async function createSurvey(input: { projectId: string; title: string; description?: string; template?: "blank" | "brand_onboarding" | "satisfaction" }): Promise<Survey> {
+export async function createSurvey(input: { projectId: string; title: string; description?: string; template?: SurveyTemplate }): Promise<Survey> {
   const now = nowIso();
-  const q = (title: string, type: SurveyQuestion["type"] = "long_text", options?: string[], required = true, description?: string): SurveyQuestion => ({ id: newId(), title, type, required, options, description });
-  const questions = input.template === "brand_onboarding" ? [
-    q("Quem participa do projeto e qual é o papel de cada pessoa nas decisões da marca?"),
-    q("Conte a história da marca e o momento atual do negócio."),
-    q("Qual é o propósito da marca? Por que ela existe?"),
-    q("Como a empresa ganha dinheiro hoje? Descreva o modelo de negócio e as principais fontes de receita."),
-    q("Qual é a faixa de faturamento médio mensal atual?", "single_choice", ["Até R$ 20 mil", "De R$ 20 mil a R$ 50 mil", "De R$ 50 mil a R$ 100 mil", "De R$ 100 mil a R$ 300 mil", "De R$ 300 mil a R$ 1 milhão", "Acima de R$ 1 milhão", "Prefiro informar na reunião"], false),
-    q("Qual é o ticket médio e como ele varia entre produtos ou serviços?", "long_text", undefined, false),
-    q("Existe sazonalidade no faturamento? Quais são os melhores e os piores períodos do ano?", "long_text", undefined, false),
-    q("Quais produtos ou serviços são prioritários hoje? Informe também os mais rentáveis e os que precisam ganhar demanda."),
-    q("Quem é o público que a marca precisa alcançar?"),
-    q("Quais regiões, cidades ou mercados são prioritários?"),
-    q("Como acontece a jornada desde o primeiro contato até a compra?"),
-    q("Quais diferenciais fazem o cliente escolher vocês?"),
-    q("Quem são os principais concorrentes e referências?"),
-    q("Em quais canais a marca está presente atualmente?", "multiple_choice", ["Instagram", "Facebook", "TikTok", "LinkedIn", "YouTube", "Pinterest", "Google / site", "WhatsApp", "E-mail", "Mídia offline", "Nenhum canal estruturado", "Outro"]),
-    q("Quais canais trazem mais resultado hoje e quais precisam ser desenvolvidos?"),
-    q("Qual é o papel esperado de cada canal: autoridade, relacionamento, geração de leads, venda, suporte ou comunidade?"),
-    q("Quais números atuais precisamos usar como linha de base?", "long_text", undefined, false, "Ex.: seguidores, alcance, engajamento, visitas ao site, leads, vendas e taxa de conversão."),
-    q("Quais métricas a empresa acompanha hoje e com que frequência?"),
-    q("Quais ferramentas são usadas para medir resultados?", "multiple_choice", ["Instagram Insights", "Meta Business Suite", "Google Analytics", "Google Ads", "Meta Ads", "CRM", "Planilhas", "Relatórios de vendas", "Ainda não medimos", "Outra"], false),
-    q("Quanto a empresa investe por mês em marketing e comunicação atualmente?", "single_choice", ["Ainda não investe", "Até R$ 1 mil", "De R$ 1 mil a R$ 3 mil", "De R$ 3 mil a R$ 10 mil", "De R$ 10 mil a R$ 30 mil", "Acima de R$ 30 mil", "Prefiro informar na reunião"], false),
-    q("Desse valor, quanto vai para mídia paga e quanto vai para produção, equipe, ferramentas ou fornecedores?", "long_text", undefined, false),
-    q("Quais investimentos anteriores em marketing deram resultado? E quais não deram?", "long_text", undefined, false),
-    q("A empresa conhece custo por lead, custo de aquisição, retorno sobre investimento ou taxa de conversão? Compartilhe os números disponíveis.", "long_text", undefined, false),
-    q("Como funciona hoje o dia a dia da criação de conteúdo, da ideia até a publicação?"),
-    q("Com que frequência a marca publica e quais formatos já fazem parte da rotina?", "multiple_choice", ["Reels / vídeos curtos", "Stories", "Carrosséis", "Posts estáticos", "Lives", "Vídeos longos", "Artigos", "E-mail", "Materiais comerciais", "Não existe frequência definida", "Outro"]),
-    q("Quem hoje planeja, escreve, aprova, grava, fotografa, edita e publica os conteúdos?"),
-    q("Quanto tempo a equipe ou os porta-vozes conseguem reservar para produção e gravações?"),
-    q("Qual estrutura de equipe está disponível para o projeto?", "multiple_choice", ["Marketing interno", "Social media", "Designer", "Redator", "Fotógrafo", "Videomaker", "Tráfego pago", "Comercial / vendas", "Atendimento", "Nenhuma equipe dedicada", "Outro"]),
-    q("Quais equipamentos estão disponíveis hoje?", "multiple_choice", ["Celular com boa câmera", "Câmera profissional", "Microfone", "Iluminação", "Tripé / estabilizador", "Computador para edição", "Estúdio ou espaço preparado", "Nenhum equipamento", "Outro"], false),
-    q("Quais locais, pessoas, produtos e situações podem ser usados nas gravações e sessões de foto?"),
-    q("A marca já possui banco de fotos, vídeos, identidade visual, apresentações ou outros materiais? Onde estão armazenados?"),
-    q("Quais são hoje os maiores gargalos para produzir e publicar conteúdo com consistência?"),
-    q("Como a marca deve ser percebida? Escolha até cinco características."),
-    q("Como deve ser o tom de voz? Existe alguma expressão, vocabulário ou jeito de falar característico?"),
-    q("Quais objetivos a gestão de marca precisa alcançar nos próximos 12 meses?"),
-    q("Quais resultados fariam você considerar este projeto bem-sucedido em 3, 6 e 12 meses?"),
-    q("Quais indicadores devem determinar se a estratégia está funcionando?"),
-    q("Quais datas, lançamentos, eventos, campanhas ou momentos comerciais já estão previstos?"),
-    q("Existe algo que a comunicação nunca deve fazer ou dizer?"),
-    q("Há restrições jurídicas, regulatórias, técnicas ou comerciais que precisamos respeitar?", "long_text", undefined, false),
-    q("Como funciona a aprovação e quem toma a decisão final?"),
-    q("Qual é o prazo ideal para aprovação e por qual canal devemos solicitar retornos?"),
-  ] : input.template === "satisfaction" ? [
-    q("De 0 a 10, o quanto você indicaria a Vizantu para outra empresa?", "nps"),
-    q("Qual foi o principal motivo da sua nota?"),
-    { ...q("O que podemos melhorar na próxima entrega?"), required: false },
-  ] : [];
+  const questions = questionsForTemplate(input.template, newId);
   const payload: SurveyPayload = { projectId: input.projectId, title: input.title.trim(), description: input.description?.trim() || "", status: "draft", token: newId(), questions, responses: [] };
   const row = unwrap(await getSupabase().from("knowledge_docs").insert({ id: newId(), title: `${SURVEY_PREFIX}${input.projectId}:${payload.title}`, content: JSON.stringify(payload), created_at: now, updated_at: now }).select().single());
   return mapSurvey(row as KnowledgeDocRow)!;

@@ -6,12 +6,17 @@
 // as props aqui e a tela renderiza igualzinho à de produção.
 
 import type {
-  Contract, KnowledgeDoc, Member, Plan, PlanCaptacao, PlanItemApproval, Project, StatusColor, Tag, Task,
+  Contract, KnowledgeDoc, Member, Plan, PlanCaptacao, PlanItemApproval, Project, StatusColor, Survey, Tag, Task,
 } from "@/lib/types";
+import { questionsForTemplate } from "@/lib/survey-templates";
 import { DEFAULT_STATUS_COLORS, TASK_STATUSES } from "@/lib/types";
 import type { Comment, StatusHistoryEntry, TaskStatus } from "@/lib/types";
 
 export const AGORA = "2026-09-04T12:00:00.000Z";
+
+// Ids estáveis: o mock é renderizado no servidor e no cliente, e um
+// crypto.randomUUID() daria chaves diferentes nos dois lados.
+let contadorDePerguntas = 1;
 
 export const PROJETO: Project = {
   id: "proj-1", name: "TerraNet", client: "TerraNet Telecom", clientRole: "Provedor de internet",
@@ -219,3 +224,18 @@ export const DOCUMENTOS: KnowledgeDoc[] = [
 export const ACESSO_PROJETOS: Record<string, string[]> = { m1: ["proj-1"], m2: ["proj-1", "proj-2"] };
 export const ACESSO_LISTAS: Record<string, ("estrategica" | "criativa")[]> = { m1: ["criativa"], m2: ["criativa", "estrategica"] };
 
+
+// Uma pesquisa de diagnóstico pronta, para dar pra OLHAR o formulário que o
+// cliente recebe sem precisar criar e publicar uma de verdade no banco.
+export const PESQUISA_DIAGNOSTICO: Survey = {
+  id: "pesquisa-1",
+  projectId: PROJETO.id,
+  title: "Diagnóstico de marca",
+  description: "Responda com calma. O que você escrever fica guardado neste navegador, então dá para parar e voltar depois.",
+  status: "published",
+  token: "previa-diagnostico",
+  questions: questionsForTemplate("brand_diagnosis", () => `previa-${contadorDePerguntas++}`),
+  responses: [],
+  createdAt: AGORA,
+  updatedAt: AGORA,
+};

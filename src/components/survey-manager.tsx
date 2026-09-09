@@ -3,6 +3,7 @@
 import { ArrowDown, ArrowUp, BarChart3, Check, ClipboardCopy, ExternalLink, FileQuestion, GripVertical, Plus, Send, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Button, Card, EmptyState, Field, Input, Tag, Textarea } from "@/components/vz";
+import { SURVEY_TEMPLATES, type SurveyTemplate } from "@/lib/survey-templates";
 import type { Project, Survey, SurveyQuestion, SurveyQuestionType } from "@/lib/types";
 
 const TYPES: { value: SurveyQuestionType; label: string }[] = [
@@ -20,7 +21,7 @@ export function SurveyManager({ initialSurveys, projects, lockedProjectId }: { i
   const [creating, setCreating] = useState(false);
   const [projectId, setProjectId] = useState(lockedProjectId || visibleProjects[0]?.id || "");
   const [newTitle, setNewTitle] = useState("");
-  const [template, setTemplate] = useState<"blank" | "brand_onboarding" | "satisfaction">("brand_onboarding");
+  const [template, setTemplate] = useState<SurveyTemplate>("brand_diagnosis");
   const [draft, setDraft] = useState<Survey | null>(selected || null);
   const [message, setMessage] = useState("");
   const projectById = useMemo(() => new Map(projects.map((project) => [project.id, project.name])), [projects]);
@@ -69,11 +70,15 @@ export function SurveyManager({ initialSurveys, projects, lockedProjectId }: { i
 
   return <div className="survey-layout">
     <Card className="survey-list">
-      <div className="survey-section-head"><div><span className="vz-eyebrow">Formulários</span><h2 className="vz-h2">Pesquisas</h2><p className="vz-caption">{surveys.length} formulário{surveys.length === 1 ? "" : "s"}</p></div><Button variant="secondary" onClick={() => { setCreating(true); setTemplate("brand_onboarding"); setNewTitle("Onboarding de gestão de marca"); }}><Plus size={14} /> Nova</Button></div>
+      <div className="survey-section-head"><div><span className="vz-eyebrow">Formulários</span><h2 className="vz-h2">Pesquisas</h2><p className="vz-caption">{surveys.length} formulário{surveys.length === 1 ? "" : "s"}</p></div><Button variant="secondary" onClick={() => { setCreating(true); setTemplate("brand_diagnosis"); setNewTitle("Diagnóstico de marca"); }}><Plus size={14} /> Nova</Button></div>
       {creating ? <div className="survey-create">
         {!lockedProjectId ? <Field label="Projeto"><select value={projectId} onChange={(event) => setProjectId(event.target.value)}>{visibleProjects.map((project) => <option value={project.id} key={project.id}>{project.name}</option>)}</select></Field> : null}
-        <Field label="Modelo"><select value={template} onChange={(event) => { const value = event.target.value as typeof template; setTemplate(value); if (!newTitle) setNewTitle(value === "brand_onboarding" ? "Onboarding de gestão de marca" : value === "satisfaction" ? "Pesquisa de satisfação" : ""); }}><option value="brand_onboarding">Onboarding de gestão de marca</option><option value="satisfaction">Pesquisa de satisfação + NPS</option><option value="blank">Em branco</option></select></Field>
-        <Field label="Nome"><Input value={newTitle} onChange={(event) => setNewTitle(event.target.value)} placeholder="Ex.: Onboarding de gestão de marca" /></Field>
+        <Field label="Modelo" hint={SURVEY_TEMPLATES.find((item) => item.value === template)?.hint}>
+          <select value={template} onChange={(event) => { const value = event.target.value as SurveyTemplate; setTemplate(value); const modelo = SURVEY_TEMPLATES.find((item) => item.value === value); if (modelo && (!newTitle || SURVEY_TEMPLATES.some((item) => item.defaultTitle === newTitle))) setNewTitle(modelo.defaultTitle); }}>
+            {SURVEY_TEMPLATES.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}
+          </select>
+        </Field>
+        <Field label="Nome"><Input value={newTitle} onChange={(event) => setNewTitle(event.target.value)} placeholder="Ex.: Diagnóstico de marca" /></Field>
         <div><Button onClick={create}>Criar pesquisa</Button><Button variant="ghost" onClick={() => setCreating(false)}>Cancelar</Button></div>
       </div> : null}
       <div className="survey-list__items">{surveys.map((survey) => <button className={survey.id === selectedId ? "active" : ""} key={survey.id} onClick={() => select(survey)}>
@@ -90,11 +95,12 @@ export function SurveyManager({ initialSurveys, projects, lockedProjectId }: { i
           <Button onClick={() => save({ ...draft, status: draft.status === "published" ? "closed" : "published" })}><Send size={14} />{draft.status === "published" ? "Encerrar" : "Publicar"}</Button>
         </div></div>
         <Textarea rows={3} value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder="Explique ao cliente o objetivo deste formulário." />
-        <div className="survey-builder__toolbar"><div><strong>Perguntas</strong><span>Arraste a lógica com os controles de ordem.</span></div><Button variant="secondary" onClick={addQuestion}><Plus size={14} /> Adicionar pergunta</Button></div>
+        <div className="survey-builder__toolbar"><div><strong>Perguntas</strong><span>O bloco agrupa a pergunta numa etapa do formulário. Perguntas do mesmo bloco aparecem juntas.</span></div><Button variant="secondary" onClick={addQuestion}><Plus size={14} /> Adicionar pergunta</Button></div>
+        <datalist id="survey-secoes">{[...new Set(draft.questions.map((item) => item.section).filter(Boolean))].map((nome) => <option value={nome} key={nome} />)}</datalist>
         <div className="survey-questions">{draft.questions.map((question, index) => <div className="survey-question" key={question.id}>
           <div className="survey-question__order"><GripVertical size={16} /><b>{String(index + 1).padStart(2, "0")}</b><button onClick={() => moveQuestion(index, -1)} aria-label="Mover para cima"><ArrowUp size={13} /></button><button onClick={() => moveQuestion(index, 1)} aria-label="Mover para baixo"><ArrowDown size={13} /></button></div>
           <div className="survey-question__body"><Input value={question.title} onChange={(event) => updateQuestion(question.id, { title: event.target.value })} />
-            <div className="survey-question__settings"><select value={question.type} onChange={(event) => updateQuestion(question.id, { type: event.target.value as SurveyQuestionType, options: needsOptions(event.target.value as SurveyQuestionType) ? question.options || ["Opção 1", "Opção 2"] : undefined })}>{TYPES.map((type) => <option value={type.value} key={type.value}>{type.label}</option>)}</select><label><input type="checkbox" checked={question.required} onChange={(event) => updateQuestion(question.id, { required: event.target.checked })} /> Obrigatória</label></div>
+            <div className="survey-question__settings"><select value={question.type} onChange={(event) => updateQuestion(question.id, { type: event.target.value as SurveyQuestionType, options: needsOptions(event.target.value as SurveyQuestionType) ? question.options || ["Opção 1", "Opção 2"] : undefined })}>{TYPES.map((type) => <option value={type.value} key={type.value}>{type.label}</option>)}</select><Input value={question.section || ""} onChange={(event) => updateQuestion(question.id, { section: event.target.value })} placeholder="Bloco (ex.: Quem compra)" list="survey-secoes" /><label><input type="checkbox" checked={question.required} onChange={(event) => updateQuestion(question.id, { required: event.target.checked })} /> Obrigatória</label></div>
             {needsOptions(question.type) ? <Textarea rows={3} value={(question.options || []).join("\n")} onChange={(event) => updateQuestion(question.id, { options: event.target.value.split("\n").filter(Boolean) })} placeholder="Uma opção por linha" /> : null}
           </div><button className="survey-question__delete" onClick={() => setDraft({ ...draft, questions: draft.questions.filter((item) => item.id !== question.id) })} aria-label="Excluir pergunta"><Trash2 size={15} /></button>
         </div>)}</div>

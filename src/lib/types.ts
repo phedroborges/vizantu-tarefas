@@ -381,7 +381,10 @@ export type ClientSatisfactionScore = {
 };
 
 export type SurveyQuestionType = "short_text" | "long_text" | "single_choice" | "multiple_choice" | "scale" | "nps";
-export type SurveyQuestion = { id: string; title: string; description?: string; type: SurveyQuestionType; required: boolean; options?: string[] };
+// `section` agrupa a pergunta num bloco temático. É opcional porque as
+// pesquisas antigas foram gravadas sem ele — quem não tem seção cai num bloco
+// único, e o formulário se comporta como antes.
+export type SurveyQuestion = { id: string; title: string; description?: string; type: SurveyQuestionType; required: boolean; options?: string[]; section?: string };
 export type SurveyAnswer = { questionId: string; value: string | string[] | number };
 export type SurveyResponse = { id: string; respondentName?: string; answers: SurveyAnswer[]; createdAt: string };
 export type SurveyStatus = "draft" | "published" | "closed";

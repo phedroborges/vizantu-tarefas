@@ -10,12 +10,13 @@ import { MembrosView } from "@/components/membros-view";
 import { PacoteDetailView } from "@/components/pacote-detail-view";
 import { PlanoDetailView } from "@/components/plano-detail-view";
 import { ProjetosView } from "@/components/projetos-view";
+import { PublicSurvey } from "@/components/public-survey";
 import { TarefasView } from "@/components/tarefas-view";
 import { defaultPreferences } from "@/lib/preferences";
 import { parseDescription } from "@/lib/description-sections";
 import {
   ACESSO_LISTAS, ACESSO_PROJETOS, AGORA, APROVACOES, CANAIS, CAPTACOES, CATEGORIAS, CONTAGEM_MARCAS,
-  CONTRATOS, CORES_STATUS, DOCUMENTOS, FORMATOS, MARCAS, MEMBROS, PLANO, PROJETO,
+  CONTRATOS, CORES_STATUS, DOCUMENTOS, FORMATOS, MARCAS, MEMBROS, PESQUISA_DIAGNOSTICO, PLANO, PROJETO,
   PROJETOS, TAREFAS, TAREFAS_DO_PLANO, USUARIO,
 } from "./mock";
 
@@ -30,12 +31,13 @@ import {
 // tela escondida, é uma tela que não atende.
 export const dynamic = "force-dynamic";
 
-const TELAS = ["dashboard", "tarefas", "plano", "pacote", "cliente", "projetos", "marcas", "membros", "contratos", "conhecimento"] as const;
+const TELAS = ["dashboard", "tarefas", "plano", "pacote", "cliente", "projetos", "marcas", "membros", "contratos", "conhecimento", "formulario"] as const;
 type Tela = (typeof TELAS)[number];
 
 const ATIVO: Record<Tela, AdminShellActive> = {
   dashboard: "dashboard", tarefas: "tarefas", plano: "planos", pacote: "planos", projetos: "projetos",
   cliente: "planos", marcas: "marcas", membros: "membros", contratos: "contratos", conhecimento: "conhecimento",
+  formulario: "pesquisas",
 };
 
 export default async function PreviaPage({ searchParams }: { searchParams: Promise<{ tela?: string; cargo?: string }> }) {
@@ -47,6 +49,16 @@ export default async function PreviaPage({ searchParams }: { searchParams: Promi
   // se resolve olhando.
   const cargo: UserRole = USER_ROLES.some((papel) => papel.value === cargoPedido) ? (cargoPedido as UserRole) : "dono";
   const usuario = { ...USUARIO, role: cargo };
+
+  // O formulário do cliente não mora dentro do painel — ele é a página pública
+  // que a pessoa da empresa abre pelo link. Mostrar dentro do AdminShell daria
+  // uma impressão errada de como ele aparece.
+  if (tela === "formulario") {
+    return <>
+      <BarraDeTelas atual={tela} cargo={cargo} />
+      <PublicSurvey survey={PESQUISA_DIAGNOSTICO} projectName={PROJETO.name} />
+    </>;
+  }
 
   return (
     <AdminShell active={ATIVO[tela]} user={usuario}>
