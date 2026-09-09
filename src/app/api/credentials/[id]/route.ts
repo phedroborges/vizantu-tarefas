@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiFailure } from "@/lib/api-error";
 import { isResponse, requireUser } from "@/lib/authz";
+import { ROLES_QUE_GERENCIAM_CREDENCIAIS } from "@/lib/permissions";
 import { encryptSecret, MissingSecretKeyError } from "@/lib/crypto-secrets";
 import { deleteProjectCredential, updateProjectCredential } from "@/lib/storage";
 import { CREDENTIAL_KINDS } from "@/lib/types";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireUser(["dono"]);
+  const auth = await requireUser(ROLES_QUE_GERENCIAM_CREDENCIAIS);
   if (isResponse(auth)) return auth;
   const { id } = await params;
   const body = await request.json();
@@ -29,7 +30,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 }
 
 export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireUser(["dono"]);
+  const auth = await requireUser(ROLES_QUE_GERENCIAM_CREDENCIAIS);
   if (isResponse(auth)) return auth;
   const { id } = await params;
   try {

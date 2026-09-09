@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiFailure } from "@/lib/api-error";
-import { isResponse, requireUser } from "@/lib/authz";
+import { isResponse, podeAbrirProjeto, requireUser } from "@/lib/authz";
+import { ROLES_QUE_VEEM_CREDENCIAIS } from "@/lib/permissions";
 import { decryptSecret, MissingSecretKeyError } from "@/lib/crypto-secrets";
 import { readCredentialSecret } from "@/lib/storage";
 
@@ -10,12 +11,17 @@ import { readCredentialSecret } from "@/lib/storage";
 // navegador, em log de acesso por URL nem em prefetch. E fica sendo uma
 // AÇÃO, não uma leitura que acontece de passagem ao abrir a página.
 export async function POST(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireUser(["dono"]);
+  const auth = await requireUser(ROLES_QUE_VEEM_CREDENCIAIS);
   if (isResponse(auth)) return auth;
   const { id } = await params;
   try {
     const found = await readCredentialSecret(id);
     if (!found) return NextResponse.json({ error: "Credencial não encontrada." }, { status: 404 });
+    // A rota recebe o id da credencial, não o do cliente — sem esta checagem,
+    // quem tivesse um id na mão abriria a senha de um cliente que não é dele.
+    if (!podeAbrirProjeto(auth, found.projectId)) {
+      return NextResponse.json({ error: "Você não trabalha neste cliente." }, { status: 403 });
+    }
     if (!found.secret) return NextResponse.json({ secret: "" });
     console.info(`[credenciais] ${auth.email} revelou a credencial ${id}`);
     return NextResponse.json({ secret: decryptSecret(found.secret) });

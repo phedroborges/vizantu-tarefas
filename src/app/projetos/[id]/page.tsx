@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { AdminShell } from "@/components/admin-shell";
 import { ProjectProfileView } from "@/components/project-profile-view";
 import { requirePageAccess } from "@/lib/page-guard";
-import { abasDoProjeto, podePlanejar, podeVerCredenciais } from "@/lib/permissions";
+import { abasDoProjeto, podeGerenciarCredenciais, podePlanejar, podeVerCredenciais } from "@/lib/permissions";
 import { filterTasksByListAccess } from "@/lib/authz";
 import { secretsAvailable } from "@/lib/crypto-secrets";
 import { getProject, getProjectProfile, listContracts, listMembers, listPlans, listProjectCredentials, listProjectTeam, listSatisfactionScores, listSurveys, listTags, listTasks } from "@/lib/storage";
@@ -16,15 +16,14 @@ export default async function ProjetoPage({ params }: { params: Promise<{ id: st
   if (!project) notFound();
   if (user.accessibleProjectIds !== "all" && !user.accessibleProjectIds.includes(id)) notFound();
 
-  // Credencial é do dono. Quem não é dono recebe a lista vazia do servidor —
-  // não é a tela que esconde, é o dado que não sai daqui. O mesmo vale para o
-  // contrato, que agora só sai daqui para quem gerencia.
+  // Quem não pode ver recebe a lista VAZIA do servidor — não é a tela que
+  // esconde, é o dado que não sai daqui. O mesmo vale para o contrato.
   const abas = abasDoProjeto(user.role);
-  const isOwner = podeVerCredenciais(user.role);
+  const veCredenciais = podeVerCredenciais(user.role);
   const veContratos = abas.includes("documentos");
   const [profile, credentials, allTasks, satisfactionScores, formatTags, channelTags, members, plans, surveys, team, allContracts] = await Promise.all([
     getProjectProfile(id),
-    isOwner ? listProjectCredentials(id) : Promise.resolve([]),
+    veCredenciais ? listProjectCredentials(id) : Promise.resolve([]),
     listTasks(),
     listSatisfactionScores(id),
     listTags("formato"),
@@ -42,7 +41,8 @@ export default async function ProjetoPage({ params }: { params: Promise<{ id: st
         project={project}
         initialProfile={profile ?? null}
         initialCredentials={credentials}
-        canManageCredentials={isOwner}
+        canViewCredentials={veCredenciais}
+        canManageCredentials={podeGerenciarCredenciais(user.role)}
         secretsConfigured={secretsAvailable()}
         initialTasks={filterTasksByListAccess(allTasks.filter((task) => task.projectId === id), user.accessibleListKinds)}
         satisfactionScores={satisfactionScores}

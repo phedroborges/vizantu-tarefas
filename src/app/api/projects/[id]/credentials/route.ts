@@ -1,22 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiFailure } from "@/lib/api-error";
-import { isResponse, requireUser } from "@/lib/authz";
+import { isResponse, podeAbrirProjeto, requireUser } from "@/lib/authz";
+import { ROLES_QUE_GERENCIAM_CREDENCIAIS, ROLES_QUE_VEEM_CREDENCIAIS } from "@/lib/permissions";
 import { encryptSecret, MissingSecretKeyError } from "@/lib/crypto-secrets";
 import { createProjectCredential, listProjectCredentials } from "@/lib/storage";
 import { CREDENTIAL_KINDS } from "@/lib/types";
 
-// Credencial de cliente é acesso à casa dele. Fica com o dono, e só.
-const ROLES = ["dono"] as const;
-
+// Credencial de cliente é acesso à casa dele: quem publica precisa entrar na
+// conta, então lê; cadastrar e apagar continua sendo do dono.
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireUser([...ROLES]);
+  const auth = await requireUser(ROLES_QUE_VEEM_CREDENCIAIS);
   if (isResponse(auth)) return auth;
   const { id } = await params;
+  if (!podeAbrirProjeto(auth, id)) return NextResponse.json({ error: "Você não trabalha neste cliente." }, { status: 403 });
   return NextResponse.json({ credentials: await listProjectCredentials(id) });
 }
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireUser([...ROLES]);
+  const auth = await requireUser(ROLES_QUE_GERENCIAM_CREDENCIAIS);
   if (isResponse(auth)) return auth;
   const { id } = await params;
   const body = await request.json();

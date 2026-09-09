@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   ROLES_DE_GESTAO, ROLES_DO_TIME, ROLES_QUE_PLANEJAM,
-  abasDoProjeto, podePlanejar, podeVer, podeVerCredenciais, podeGerenciarMembros,
+  abasDoProjeto, podePlanejar, podeVer, podeVerCredenciais, podeGerenciarCredenciais, podeGerenciarMembros,
   projetosDoMembro, rolesQueVeem, telaInicial, veTodosOsProjetos,
   type AppArea,
 } from "../src/lib/permissions";
+import { podeAbrirProjeto } from "../src/lib/authz";
+import type { CurrentUser } from "../src/lib/current-user";
 import { USER_ROLES, type UserRole } from "../src/lib/types";
 
 const CARGOS = USER_ROLES.map((papel) => papel.value);
@@ -42,11 +44,19 @@ describe("o que cada cargo enxerga", () => {
     }
   });
 
-  it("membros, base de conhecimento e credenciais não saem do dono", () => {
+  it("membros e base de conhecimento não saem do dono", () => {
     expect(rolesQueVeem("membros")).toEqual(["dono"]);
     expect(rolesQueVeem("conhecimento")).toEqual(["dono"]);
-    expect(CARGOS.filter(podeVerCredenciais)).toEqual(["dono"]);
     expect(CARGOS.filter(podeGerenciarMembros)).toEqual(["dono"]);
+  });
+
+  // Quem publica precisa entrar na conta do cliente. O diretor criativo produz
+  // o material mas não sobe nada, então fica de fora — e cadastrar ou apagar
+  // senha continua sendo só do dono.
+  it("a senha do cliente abre para quem publica, mas só o dono cadastra", () => {
+    expect(CARGOS.filter(podeVerCredenciais)).toEqual(["dono", "gestor", "social_media"]);
+    expect(CARGOS.filter(podeGerenciarCredenciais)).toEqual(["dono"]);
+    expect(podeVerCredenciais("diretor_criativo")).toBe(false);
   });
 
   it("painel e contrato são de quem gerencia", () => {
@@ -82,30 +92,54 @@ describe("o que cada cargo pode fazer", () => {
 
   it("as abas do cliente seguem as mesmas regras do menu", () => {
     expect(abasDoProjeto("dono")).toEqual(["informacoes", "calendario", "planos", "pesquisas", "documentos", "acessos", "equipe"]);
-    expect(abasDoProjeto("gestor")).toEqual(["informacoes", "calendario", "planos", "pesquisas", "documentos", "equipe"]);
-    expect(abasDoProjeto("social_media")).toEqual(["informacoes", "calendario", "planos", "pesquisas"]);
+    expect(abasDoProjeto("gestor")).toEqual(["informacoes", "calendario", "planos", "pesquisas", "documentos", "acessos", "equipe"]);
+    expect(abasDoProjeto("social_media")).toEqual(["informacoes", "calendario", "planos", "pesquisas", "acessos"]);
     expect(abasDoProjeto("diretor_criativo")).toEqual(["informacoes", "calendario", "planos"]);
-    // Contrato e senha de cliente não aparecem para quem não os vê no menu.
+    // Contrato não aparece para quem não o vê no menu; senha, só para quem publica.
     for (const cargo of ["social_media", "diretor_criativo"] as UserRole[]) {
-      expect(abasDoProjeto(cargo)).not.toContain("documentos");
-      expect(abasDoProjeto(cargo)).not.toContain("acessos");
+      expect(abasDoProjeto(cargo), cargo).not.toContain("documentos");
+      expect(abasDoProjeto(cargo), cargo).not.toContain("equipe");
     }
+    expect(abasDoProjeto("diretor_criativo")).not.toContain("acessos");
   });
 });
 
-// O código chega ao servidor antes da migração rodar, e nesse intervalo existe
-// gente gravada como "editor". Sem isso, a primeira página que consultasse o
-// perfil dela quebraria.
-describe("cargo desconhecido não derruba a tela", () => {
+// Um valor de cargo que o código não conhece não pode derrubar a página nem
+// virar porta aberta — cai no mais restrito dos quatro.
+describe("cargo desconhecido não derruba a tela nem abre portas", () => {
   const antigo = "editor" as unknown as UserRole;
 
-  it("cai no cargo mais restrito de quem trabalha, que é para onde a migração leva", () => {
+  it("trabalha as tarefas e nada além disso", () => {
     expect(podeVer(antigo, "tarefas")).toBe(true);
     expect(podeVer(antigo, "planos")).toBe(true);
-    expect(podeVer(antigo, "dashboard")).toBe(false);
-    expect(podeVer(antigo, "membros")).toBe(false);
+    expect(telaInicial(antigo)).toBe("/tarefas");
+    for (const area of ["dashboard", "membros", "conhecimento", "contratos", "pesquisas"] as AppArea[]) {
+      expect(podeVer(antigo, area), area).toBe(false);
+    }
     expect(podeVerCredenciais(antigo)).toBe(false);
-    expect(telaInicial(antigo)).toBe("/planos");
+    expect(podePlanejar(antigo)).toBe(false);
+    expect(veTodosOsProjetos(antigo)).toBe(false);
+  });
+});
+
+// A rota de revelar senha recebe o id da CREDENCIAL, não o do cliente. Enquanto
+// só o dono lia, o cargo bastava como resposta; com o social media entrando,
+// não basta mais.
+describe("senha só sai para quem trabalha naquele cliente", () => {
+  const social = (projetos: string[] | "all"): CurrentUser => ({
+    id: "m1", name: "Cyntthia", email: "sm@teste.com", role: "social_media",
+    aiEnabled: false, active: true, accessibleProjectIds: projetos, accessibleListKinds: "all",
+  });
+
+  it("dono e gestor passam por qualquer cliente", () => {
+    expect(podeAbrirProjeto({ ...social("all"), role: "dono" }, "qualquer")).toBe(true);
+    expect(podeAbrirProjeto({ ...social("all"), role: "gestor" }, "qualquer")).toBe(true);
+  });
+
+  it("quem tem escopo só abre o cliente de que faz parte", () => {
+    expect(podeAbrirProjeto(social(["p1", "p2"]), "p1")).toBe(true);
+    expect(podeAbrirProjeto(social(["p1", "p2"]), "p3")).toBe(false);
+    expect(podeAbrirProjeto(social([]), "p1")).toBe(false);
   });
 });
 

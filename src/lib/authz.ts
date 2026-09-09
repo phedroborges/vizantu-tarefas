@@ -18,6 +18,14 @@ export function isResponse(value: unknown): value is NextResponse {
   return value instanceof NextResponse;
 }
 
+// Enquanto só o dono lia credencial, nenhuma rota precisava perguntar de QUAL
+// cliente ela era — ele vê todos. Com o social media entrando, o cargo deixou
+// de ser resposta suficiente: ele só pode abrir a senha de um cliente de que
+// faz parte.
+export function podeAbrirProjeto(user: CurrentUser, projectId: string): boolean {
+  return user.accessibleProjectIds === "all" || user.accessibleProjectIds.includes(projectId);
+}
+
 // Usado pelas rotas de listagem (tasks/projects) — filtra pelos clientes de
 // que a pessoa faz parte; dono e gestor recebem "all" e passam direto.
 export function filterByAccess<T extends { id: string }>(items: T[], accessibleProjectIds: string[] | "all"): T[] {

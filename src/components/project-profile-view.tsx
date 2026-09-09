@@ -45,6 +45,7 @@ export function ProjectProfileView({
   initialProfile,
   initialCredentials,
   canManageCredentials,
+  canViewCredentials,
   secretsConfigured,
   initialTasks,
   satisfactionScores,
@@ -63,6 +64,7 @@ export function ProjectProfileView({
   initialProfile: ProjectProfile | null;
   initialCredentials: ProjectCredential[];
   canManageCredentials: boolean;
+  canViewCredentials: boolean;
   secretsConfigured: boolean;
   initialTasks: Task[];
   satisfactionScores: ClientSatisfactionScore[];
@@ -241,11 +243,11 @@ export function ProjectProfileView({
               ) : null}
             </div>
 
-            {!canManageCredentials ? (
-              <EmptyState icon={<ShieldAlert size={24} />} title="Acessos são do dono" description="Senha de cliente é acesso à casa dele. Só o dono da conta vê e edita." />
+            {!canViewCredentials ? (
+              <EmptyState icon={<ShieldAlert size={24} />} title="Acessos não são do seu cargo" description="Senha de cliente abre a casa dele. Fica com quem precisa publicar e com o dono da conta." />
             ) : (
               <div className="project-credentials-body">
-                {!secretsConfigured ? (
+                {!secretsConfigured && canManageCredentials ? (
                   <p className="contrato-pendencias">
                     O cofre seguro não está disponível neste servidor. Configure CREDENTIALS_KEY ou SUPABASE_SERVICE_ROLE_KEY para guardar senhas.
                   </p>
@@ -270,13 +272,14 @@ export function ProjectProfileView({
                       <CredentialRow
                         key={credential.id}
                         credential={credential}
+                        canManage={canManageCredentials}
                         onRemove={() => removerCredencial(credential)}
                         onError={setError}
                       />
                     ))}
                   </ul>
                 ) : !isAdding ? (
-                  <EmptyState icon={<KeyRound size={24} />} title="Nenhum acesso ainda" description="Instagram, Meta, Google, hospedagem ou chave de API — seguros e disponíveis para o time autorizado." />
+                  <EmptyState icon={<KeyRound size={24} />} title="Nenhum acesso ainda" description={canManageCredentials ? "Instagram, Meta, Google, hospedagem ou chave de API — seguros e disponíveis para quem publica." : "Nenhuma senha foi guardada para este cliente. Peça ao dono da conta para cadastrar."} />
                 ) : null}
               </div>
             )}
@@ -292,10 +295,12 @@ export function ProjectProfileView({
 // pede, e some da tela quando a linha é fechada.
 function CredentialRow({
   credential,
+  canManage,
   onRemove,
   onError,
 }: {
   credential: ProjectCredential;
+  canManage: boolean;
   onRemove: () => void;
   onError: (message: string) => void;
 }) {
@@ -331,7 +336,7 @@ function CredentialRow({
               {isLoading ? <Loader2 size={13} className="ai-spin" /> : secret === null ? <Eye size={13} /> : <EyeOff size={13} />}
             </button>
           ) : null}
-          <button type="button" className="icon-button" onClick={onRemove} title="Excluir acesso"><Trash2 size={13} /></button>
+          {canManage ? <button type="button" className="icon-button" onClick={onRemove} title="Excluir acesso"><Trash2 size={13} /></button> : null}
         </div>
       </div>
       {secret !== null ? <code className="credencial-secret">{secret || "sem senha guardada"}</code> : null}

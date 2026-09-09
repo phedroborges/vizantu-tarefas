@@ -18,8 +18,10 @@ type RoleProfile = {
   gerenciaEquipe: boolean;
   /** Criar pessoa, trocar cargo, ligar a IA de alguém. */
   gerenciaMembros: boolean;
-  /** Senha de cliente é acesso à casa dele. */
+  /** Ver e revelar os logins do cliente. Quem publica precisa entrar na conta. */
   veCredenciais: boolean;
+  /** Cadastrar, alterar e apagar esses logins. */
+  gerenciaCredenciais: boolean;
   /** Enxerga todos os clientes, sem depender da equipe do projeto. */
   veTodosOsProjetos: boolean;
   /** Onde a pessoa cai ao entrar no app. */
@@ -35,25 +37,27 @@ export const ROLE_PROFILES: Record<UserRole, RoleProfile> = {
   dono: {
     areas: TODAS_AS_AREAS,
     planeja: true, gerenciaEquipe: true, gerenciaMembros: true, veCredenciais: true,
-    veTodosOsProjetos: true, inicio: "/",
+    gerenciaCredenciais: true, veTodosOsProjetos: true, inicio: "/",
   },
   gestor: {
     // Vê o que o social media vê, mais o painel e os contratos. Membros e base
     // de conhecimento continuam fora: ele gerencia entrega, não o time nem a
     // documentação interna.
     areas: ["dashboard", "projetos", "tarefas", "notificacoes", "planos", "pesquisas", "contratos", "assistente"],
-    planeja: true, gerenciaEquipe: true, gerenciaMembros: false, veCredenciais: false,
-    veTodosOsProjetos: true, inicio: "/",
+    planeja: true, gerenciaEquipe: true, gerenciaMembros: false, veCredenciais: true,
+    gerenciaCredenciais: false, veTodosOsProjetos: true, inicio: "/",
   },
   social_media: {
     areas: ["projetos", "tarefas", "notificacoes", "planos", "pesquisas", "assistente"],
-    planeja: true, gerenciaEquipe: false, gerenciaMembros: false, veCredenciais: false,
-    veTodosOsProjetos: false, inicio: "/planos",
+    // Quem publica precisa da senha do Instagram do cliente. Cadastrar e apagar
+    // esses acessos continua sendo do dono.
+    planeja: true, gerenciaEquipe: false, gerenciaMembros: false, veCredenciais: true,
+    gerenciaCredenciais: false, veTodosOsProjetos: false, inicio: "/planos",
   },
   diretor_criativo: {
     areas: ["projetos", "tarefas", "notificacoes", "planos", "marcas", "assistente"],
     planeja: false, gerenciaEquipe: false, gerenciaMembros: false, veCredenciais: false,
-    veTodosOsProjetos: false, inicio: "/tarefas",
+    gerenciaCredenciais: false, veTodosOsProjetos: false, inicio: "/tarefas",
   },
 };
 
@@ -73,12 +77,12 @@ export function projetosDoMembro(
   return todosOsProjetos.filter((id) => !comEquipe.has(id) || minhas.has(id));
 }
 
-// O código sobe antes da migração do banco rodar, e nesse intervalo existe
-// gente gravada com um cargo que não existe mais. Cair no cargo mais restrito
-// dos que trabalham é melhor que quebrar a página inteira com um perfil
-// indefinido — e é para onde a própria migração leva essas linhas.
+// Um cargo que o código não conhece não deveria derrubar a página inteira com
+// um perfil indefinido, mas também não pode virar uma porta aberta. Cai no mais
+// restrito dos quatro: trabalha as tarefas e nada além disso — sem painel, sem
+// contrato, sem senha de cliente, sem planejar.
 function perfilDe(role: UserRole) {
-  return ROLE_PROFILES[role] ?? ROLE_PROFILES.social_media;
+  return ROLE_PROFILES[role] ?? ROLE_PROFILES.diretor_criativo;
 }
 
 export function podeVer(role: UserRole, area: AppArea): boolean {
@@ -103,6 +107,10 @@ export function podeGerenciarMembros(role: UserRole): boolean {
 
 export function podeVerCredenciais(role: UserRole): boolean {
   return perfilDe(role).veCredenciais;
+}
+
+export function podeGerenciarCredenciais(role: UserRole): boolean {
+  return perfilDe(role).gerenciaCredenciais;
 }
 
 export function veTodosOsProjetos(role: UserRole): boolean {
@@ -141,3 +149,8 @@ export const ROLES_QUE_PLANEJAM: UserRole[] = TODOS_OS_ROLES.filter(podePlanejar
 
 /** Quem gerencia a operação: painel, contratos, equipe de cliente, aviso ao time. */
 export const ROLES_DE_GESTAO: UserRole[] = TODOS_OS_ROLES.filter(podeGerenciarEquipe);
+
+/** Quem abre a senha do cliente. Ver não é o mesmo que cadastrar: alterar e
+ * apagar continua só com o dono (ROLES_QUE_GERENCIAM_CREDENCIAIS). */
+export const ROLES_QUE_VEEM_CREDENCIAIS: UserRole[] = TODOS_OS_ROLES.filter(podeVerCredenciais);
+export const ROLES_QUE_GERENCIAM_CREDENCIAIS: UserRole[] = TODOS_OS_ROLES.filter(podeGerenciarCredenciais);
