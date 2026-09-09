@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, AlignLeft, CalendarDays, Check, Copy, ExternalLink, Folder, ImagePlus, Link2, Loader2, Lock, Package, Plus, Share2, Trash2, TriangleAlert, User, X } from "lucide-react";
+import { Activity, AlignLeft, CalendarDays, Check, Copy, ExternalLink, Folder, ImagePlus, Link2, Loader2, Lock, MessageCircle, Package, Plus, Share2, Trash2, TriangleAlert, User, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -20,6 +20,7 @@ import { celebrateFrom } from "@/lib/celebrate";
 import { MentionCommentForm } from "@/components/mention-comment-form";
 import { DatePicker } from "@/components/vz/date-picker";
 import { isUserComment } from "@/lib/task-activity";
+import { Avatar } from "@/components/avatar";
 
 type Draft = {
   projectId: string;
@@ -400,6 +401,11 @@ export function TaskModal({
     return text.length > 70 ? `${text.slice(0, 67)}…` : text;
   }
 
+  const timeline = useMemo(() => [
+    ...activity.map((event) => ({ kind: "activity" as const, id: `activity-${event.id}`, createdAt: event.createdAt, event })),
+    ...comments.map((comment) => ({ kind: "comment" as const, id: `comment-${comment.id}`, createdAt: comment.createdAt, comment })),
+  ].toSorted((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [activity, comments]);
+
   return (
     <>
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -430,7 +436,7 @@ export function TaskModal({
             </button>
           ) : null}
         </DialogHeader>
-        <div className="modal-body">
+        <div className="modal-body task-modal-body">
           {error ? <div className="form-message">{error}</div> : null}
           <div className="task-modal-split">
             <div className="task-modal-pane-meta meta-rows">
@@ -706,36 +712,23 @@ export function TaskModal({
               </div>
             </div>
             {isEditing ? <aside className="task-activity-pane">
-              <div className="task-activity-head"><Activity size={14} /><div><strong>Histórico</strong><span>Alterações na tarefa</span></div></div>
-              <div className="task-activity-list">
-                {activity.length ? activity.map((event) => <article key={event.id} className="task-activity-item">
-                  <i />
-                  <div><strong>{event.actorName}</strong><p>alterou <b>{ACTIVITY_LABELS[event.fieldKey] || event.fieldKey}</b></p><span className="task-activity-change"><del>{activityValue(event.fieldKey, event.oldValue)}</del><em>→</em><ins>{activityValue(event.fieldKey, event.newValue)}</ins></span><small>{formatDateTime(event.createdAt)}</small></div>
-                </article>) : <p className="task-activity-empty">Nenhuma alteração registrada ainda. As próximas mudanças aparecerão aqui.</p>}
+              <div className="task-activity-head"><Activity size={15} /><div><strong>Atividade</strong><span>Histórico e comentários da tarefa</span></div></div>
+              <div className="task-activity-list" aria-live="polite">
+                {timeline.length ? timeline.map((item) => item.kind === "activity" ? (
+                  <article key={item.id} className="task-activity-item">
+                    <i />
+                    <div><strong>{item.event.actorName}</strong><p>alterou <b>{ACTIVITY_LABELS[item.event.fieldKey] || item.event.fieldKey}</b></p><span className="task-activity-change"><del>{activityValue(item.event.fieldKey, item.event.oldValue)}</del><em>→</em><ins>{activityValue(item.event.fieldKey, item.event.newValue)}</ins></span><small>{formatDateTime(item.event.createdAt)}</small></div>
+                  </article>
+                ) : (
+                  <article key={item.id} className="task-comment-event">
+                    <Avatar name={item.comment.author} imageUrl={members.find((member) => member.id === item.comment.authorMemberId)?.avatarUrl} size={27} />
+                    <div><span><strong>{item.comment.author}</strong><small>{formatDateTime(item.comment.createdAt)}</small></span><p>{renderCommentText(item.comment.text, members)}</p></div>
+                  </article>
+                )) : <p className="task-activity-empty">A atividade desta tarefa aparecerá aqui.</p>}
               </div>
+              {canEdit ? <div className="task-activity-composer"><div><MessageCircle size={13} /><strong>Novo comentário</strong></div><MentionCommentForm value={commentText} onChange={setCommentText} members={members} disabled={isSendingComment} onSubmit={sendComment} /></div> : null}
             </aside> : null}
           </div>
-
-          {isEditing ? (
-            <div className="field">
-              <label>Comentários</label>
-              {comments.length ? (
-                <ul className="comment-list">
-                  {comments.map((comment) => (
-                    <li className="comment-item" key={comment.id}>
-                      <div><strong>{comment.author}</strong><small>{formatDateTime(comment.createdAt)}</small></div>
-                      <p>{renderCommentText(comment.text, members)}</p>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p style={{ margin: 0, color: "var(--muted-text)", fontSize: 11 }}>Nenhum comentário ainda.</p>
-              )}
-              {canEdit ? (
-                <MentionCommentForm value={commentText} onChange={setCommentText} members={members} disabled={isSendingComment} onSubmit={sendComment} />
-              ) : null}
-            </div>
-          ) : null}
         </div>
         <footer className="modal-actions">
           {isEditing && canEdit && allowDeleteAndDuplicate ? (
