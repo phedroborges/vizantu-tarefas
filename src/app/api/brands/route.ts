@@ -3,7 +3,7 @@ import { isResponse, requireUser } from "@/lib/authz";
 import { createBrandWorkflow } from "@/lib/storage";
 
 export async function POST(request: NextRequest) {
-  const auth = await requireUser(["dono", "editor"]);
+  const auth = await requireUser(["dono"]);
   if (isResponse(auth)) return auth;
   const body = await request.json();
   if (!body?.title || typeof body.title !== "string" || !body.title.trim()) return NextResponse.json({ error: "Informe o nome da marca." }, { status: 400 });

@@ -26,9 +26,9 @@ export const PROJETOS: Project[] = [
 ];
 
 export const MEMBROS: Member[] = [
-  { id: "m1", name: "Cynthia Almeida", email: "cynthia@vizantu.com.br", role: "editor", aiEnabled: true, active: true, avatarUrl: "/demo/avatares/cynthia.svg", createdAt: AGORA, updatedAt: AGORA },
-  { id: "m2", name: "Erika Iorrana", email: "erika@vizantu.com.br", role: "editor", aiEnabled: true, active: true, avatarUrl: "/demo/avatares/erika.svg", createdAt: AGORA, updatedAt: AGORA },
-  { id: "m3", name: "Luis Fontes", email: "luis@vizantu.com.br", role: "editor", aiEnabled: false, active: true, avatarUrl: "/demo/avatares/luis.svg", createdAt: AGORA, updatedAt: AGORA },
+  { id: "m1", name: "Cynthia Almeida", email: "cynthia@vizantu.com.br", role: "social_media", aiEnabled: true, active: true, avatarUrl: "/demo/avatares/cynthia.svg", createdAt: AGORA, updatedAt: AGORA },
+  { id: "m2", name: "Erika Iorrana", email: "erika@vizantu.com.br", role: "diretor_criativo", aiEnabled: true, active: true, avatarUrl: "/demo/avatares/erika.svg", createdAt: AGORA, updatedAt: AGORA },
+  { id: "m3", name: "Luis Fontes", email: "luis@vizantu.com.br", role: "gestor", aiEnabled: false, active: true, avatarUrl: "/demo/avatares/luis.svg", createdAt: AGORA, updatedAt: AGORA },
   { id: "m4", name: "Phedro Borges", email: "phedro@vizantu.com.br", role: "dono", aiEnabled: true, active: true, avatarUrl: "/demo/avatares/phedro.svg", createdAt: AGORA, updatedAt: AGORA },
 ];
 

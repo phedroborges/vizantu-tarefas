@@ -1,25 +1,28 @@
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { AdminShell } from "@/components/admin-shell";
 import { ProjectProfileView } from "@/components/project-profile-view";
-import { getCurrentUser } from "@/lib/current-user";
+import { requirePageAccess } from "@/lib/page-guard";
+import { abasDoProjeto, podePlanejar, podeVerCredenciais } from "@/lib/permissions";
 import { filterTasksByListAccess } from "@/lib/authz";
 import { secretsAvailable } from "@/lib/crypto-secrets";
-import { getProject, getProjectProfile, listContracts, listMembers, listPlans, listProjectCredentials, listSatisfactionScores, listSurveys, listTags, listTasks } from "@/lib/storage";
+import { getProject, getProjectProfile, listContracts, listMembers, listPlans, listProjectCredentials, listProjectTeam, listSatisfactionScores, listSurveys, listTags, listTasks } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProjetoPage({ params }: { params: Promise<{ id: string }> }) {
-  const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  const user = await requirePageAccess("projetos");
   const { id } = await params;
   const project = await getProject(id);
   if (!project) notFound();
   if (user.accessibleProjectIds !== "all" && !user.accessibleProjectIds.includes(id)) notFound();
 
   // Credencial é do dono. Quem não é dono recebe a lista vazia do servidor —
-  // não é a tela que esconde, é o dado que não sai daqui.
-  const isOwner = user.role === "dono";
-  const [profile, credentials, allTasks, satisfactionScores, formatTags, channelTags, members, plans, surveys, allContracts] = await Promise.all([
+  // não é a tela que esconde, é o dado que não sai daqui. O mesmo vale para o
+  // contrato, que agora só sai daqui para quem gerencia.
+  const abas = abasDoProjeto(user.role);
+  const isOwner = podeVerCredenciais(user.role);
+  const veContratos = abas.includes("documentos");
+  const [profile, credentials, allTasks, satisfactionScores, formatTags, channelTags, members, plans, surveys, team, allContracts] = await Promise.all([
     getProjectProfile(id),
     isOwner ? listProjectCredentials(id) : Promise.resolve([]),
     listTasks(),
@@ -29,7 +32,8 @@ export default async function ProjetoPage({ params }: { params: Promise<{ id: st
     listMembers(),
     listPlans(id),
     listSurveys(id),
-    listContracts(),
+    abas.includes("equipe") ? listProjectTeam(id) : Promise.resolve([]),
+    veContratos ? listContracts() : Promise.resolve([]),
   ]);
 
   return (
@@ -42,7 +46,10 @@ export default async function ProjetoPage({ params }: { params: Promise<{ id: st
         secretsConfigured={secretsAvailable()}
         initialTasks={filterTasksByListAccess(allTasks.filter((task) => task.projectId === id), user.accessibleListKinds)}
         satisfactionScores={satisfactionScores}
-        canEditProfile={user.role !== "visualizador"}
+        canEditProfile={podePlanejar(user.role)}
+        canEditTasks
+        abas={abas}
+        initialTeam={team}
         formatTags={formatTags}
         channelTags={channelTags}
         members={members}

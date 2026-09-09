@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isResponse, requireUser } from "@/lib/authz";
+import { ROLES_DO_TIME } from "@/lib/permissions";
 import { createTag, listTags } from "@/lib/storage";
 import type { TagKind } from "@/lib/types";
 
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireUser(["dono", "editor"]);
+  const auth = await requireUser(ROLES_DO_TIME);
   if (isResponse(auth)) return auth;
   const body = await request.json();
   if (!VALID_KINDS.includes(body?.kind)) {

@@ -3,6 +3,7 @@ import OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { ASSISTANT_TOOLS, PendingDeleteConfirmation, executeTool } from "@/lib/assistant-tools";
 import { isResponse, requireUser } from "@/lib/authz";
+import { ROLES_QUE_PLANEJAM } from "@/lib/permissions";
 import { todayIso } from "@/lib/dates";
 import { appendAssistantMessages, deleteTask, getAssistantConversation, listKnowledgeDocs } from "@/lib/storage";
 import { buildMessageContent } from "@/lib/vision-content";
@@ -78,10 +79,11 @@ export async function POST(request: NextRequest) {
   }
 
   // Atalho de confirmação de exclusão — não passa pela OpenAI, custo zero.
-  // Ainda assim é uma mutação: visualizador não pode confirmar.
+  // Ainda assim apaga tarefa, então respeita a mesma regra da rota: quem não
+  // planeja não desmonta o planejamento pela conversa.
   if (body.confirmDeleteTaskId) {
-    if (auth.role === "visualizador") {
-      return NextResponse.json({ error: "Seu acesso é somente leitura." }, { status: 403 });
+    if (!ROLES_QUE_PLANEJAM.includes(auth.role)) {
+      return NextResponse.json({ error: "Só quem planeja pode apagar tarefa. Peça ao gestor ou ao social media." }, { status: 403 });
     }
     const removed = await deleteTask(body.confirmDeleteTaskId);
     return finish(removed ? "Tarefa excluída." : "Não encontrei essa tarefa — talvez já tenha sido excluída.");

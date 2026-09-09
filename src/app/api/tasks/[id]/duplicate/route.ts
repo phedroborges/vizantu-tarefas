@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiFailure } from "@/lib/api-error";
 import { isResponse, requireUser } from "@/lib/authz";
+import { ROLES_DO_TIME } from "@/lib/permissions";
 import { duplicateTask } from "@/lib/storage";
 
 export async function POST(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireUser(["dono", "editor"]);
+  const auth = await requireUser(ROLES_DO_TIME);
   if (isResponse(auth)) return auth;
   const { id } = await params;
   try {

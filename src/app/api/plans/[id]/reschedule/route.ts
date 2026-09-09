@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiFailure } from "@/lib/api-error";
 import { isResponse, requireUser } from "@/lib/authz";
+import { ROLES_QUE_PLANEJAM } from "@/lib/permissions";
 import { todayIso } from "@/lib/dates";
 import { addDays, reschedulePlan, weeklyDiagnosis, type ScheduleItem } from "@/lib/plan-schedule";
 import { getPlan, listPlanTasks, listTags, updateTask } from "@/lib/storage";
@@ -28,7 +29,7 @@ async function carregar(planId: string) {
 }
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireUser(["dono", "editor"]);
+  const auth = await requireUser(ROLES_QUE_PLANEJAM);
   if (isResponse(auth)) return auth;
   const { id } = await params;
   try {
@@ -46,7 +47,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 }
 
 export async function POST(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireUser(["dono", "editor"]);
+  const auth = await requireUser(ROLES_QUE_PLANEJAM);
   if (isResponse(auth)) return auth;
   const { id } = await params;
   try {

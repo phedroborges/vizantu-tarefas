@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { createClient } from "./supabase/server-client";
 import { getSupabase } from "./supabase-client";
+import { projetosDoMembro, veTodosOsProjetos } from "./permissions";
 import type { TaskListKind, UserRole } from "./types";
 
 export type CurrentUser = {
@@ -29,22 +30,30 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   const { data: member } = await db.from("members").select("id, name, email, role, active, ai_enabled").eq("id", user.id).maybeSingle();
   if (!member || !member.active) return null; // conta desativada = tratada como deslogada
 
+  const role = member.role as UserRole;
   let accessibleProjectIds: string[] | "all" = "all";
   let accessibleListKinds: TaskListKind[] | "all" = "all";
-  if (member.role === "visualizador") {
-    const [{ data: projectGrants }, { data: listGrants }] = await Promise.all([
-      db.from("project_access").select("project_id").eq("member_id", user.id),
+  if (!veTodosOsProjetos(role)) {
+    const [{ data: equipes }, { data: projetos }, { data: listGrants }] = await Promise.all([
+      db.from("project_access").select("project_id, member_id"),
+      db.from("projects").select("id"),
       db.from("member_list_access").select("list_kind").eq("member_id", user.id),
     ]);
-    accessibleProjectIds = (projectGrants ?? []).map((g) => g.project_id);
-    accessibleListKinds = (listGrants ?? []).map((g) => g.list_kind as TaskListKind);
+    accessibleProjectIds = projetosDoMembro(
+      user.id,
+      (equipes ?? []).map((linha) => ({ projectId: linha.project_id, memberId: linha.member_id })),
+      (projetos ?? []).map((projeto) => projeto.id),
+    );
+    // Mesma lógica para as listas: sem restrição gravada, enxerga as duas.
+    const listas = (listGrants ?? []).map((g) => g.list_kind as TaskListKind);
+    accessibleListKinds = listas.length ? listas : "all";
   }
 
   return {
     id: member.id,
     name: member.name,
     email: member.email ?? user.email ?? "",
-    role: member.role as UserRole,
+    role,
     aiEnabled: member.ai_enabled,
     active: member.active,
     accessibleProjectIds,

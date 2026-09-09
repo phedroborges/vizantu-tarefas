@@ -8,7 +8,7 @@ dotenv.config({ path: path.resolve(__dirname, "../.env.local") });
 export const FIXTURE_PATH = path.resolve(__dirname, ".fixtures.json");
 export const TEST_PASSWORD = "TesteVizantu#2026";
 export const TEST_EMAIL = "e2e-teste@vizantu.com.br";
-export const TEST_VIEWER_EMAIL = "e2e-visualizador@vizantu.com.br";
+export const TEST_CRIATIVO_EMAIL = "e2e-criativo@vizantu.com.br";
 
 async function createTestMember(db: SupabaseClient, email: string, name: string, role: string) {
   const { data: existingUsers } = await db.auth.admin.listUsers();
@@ -35,7 +35,9 @@ export default async function globalSetup() {
   const db = createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
 
   const memberId = await createTestMember(db, TEST_EMAIL, "E2E Teste (dono)", "dono");
-  const viewerId = await createTestMember(db, TEST_VIEWER_EMAIL, "E2E Teste (visualizador)", "visualizador");
+  // A segunda conta é o cargo mais restrito de quem trabalha — é contra ela que
+  // se testa o que um acesso limitado NÃO deveria conseguir.
+  const viewerId = await createTestMember(db, TEST_CRIATIVO_EMAIL, "E2E Teste (diretor criativo)", "diretor_criativo");
 
   const now = new Date().toISOString();
   const { data: project } = await db

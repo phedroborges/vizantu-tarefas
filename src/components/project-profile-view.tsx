@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRef, useState } from "react";
 import { useConfirm } from "@/components/confirm-dialog";
 import { networkError, responseError } from "@/lib/request-error";
+import type { ProjectTab } from "@/lib/permissions";
 import { CREDENTIAL_KINDS, type Contract, type Plan, type Project, type ProjectCredential, type ProjectProfile, type Survey } from "@/lib/types";
 import type { ClientSatisfactionScore, Member, Tag as TaskTag, Task } from "@/lib/types";
 import { Avatar } from "@/components/avatar";
@@ -14,6 +15,11 @@ import { ProjectDocuments } from "@/components/project-documents";
 import { Button, Card, EmptyState, Field, Input, Progress, Tag, Textarea } from "@/components/vz";
 
 const AUTOSAVE_MS = 700;
+
+const ROTULO_DA_ABA: Record<ProjectTab, string> = {
+  informacoes: "Informações", calendario: "Calendário", planos: "Planos",
+  pesquisas: "Pesquisas", documentos: "Documentos", acessos: "Acessos", equipe: "Equipe",
+};
 
 const CAMPOS: { key: keyof ProjectProfile; label: string; hint?: string; longo?: boolean }[] = [
   { key: "razaoSocial", label: "Razão social" },
@@ -43,6 +49,9 @@ export function ProjectProfileView({
   initialTasks,
   satisfactionScores,
   canEditProfile,
+  canEditTasks,
+  abas,
+  initialTeam,
   formatTags,
   channelTags,
   members,
@@ -58,6 +67,9 @@ export function ProjectProfileView({
   initialTasks: Task[];
   satisfactionScores: ClientSatisfactionScore[];
   canEditProfile: boolean;
+  canEditTasks: boolean;
+  abas: ProjectTab[];
+  initialTeam: string[];
   formatTags: TaskTag[];
   channelTags: TaskTag[];
   members: Member[];
@@ -70,9 +82,28 @@ export function ProjectProfileView({
   const [credentials, setCredentials] = useState(initialCredentials);
   const [error, setError] = useState("");
   const [isAdding, setIsAdding] = useState(false);
+  const [equipe, setEquipe] = useState<string[]>(initialTeam);
+  const [equipeState, setEquipeState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+
+  // Marcar e desmarcar salva na hora: uma lista de gente com botão "salvar" no
+  // fim é o tipo de tela em que se esquece de clicar e a permissão fica errada.
+  async function salvarEquipe(memberIds: string[]) {
+    setEquipe(memberIds);
+    setEquipeState("saving");
+    try {
+      const response = await fetch(`/api/projects/${project.id}/team`, {
+        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ memberIds }),
+      });
+      if (!response.ok) throw new Error(await responseError(response, "salvar a equipe"));
+      setEquipeState("saved");
+    } catch {
+      setError(networkError("salvar a equipe"));
+      setEquipeState("error");
+    }
+  }
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { confirm, ConfirmDialog } = useConfirm();
-  const [tab, setTab] = useState<"informacoes" | "calendario" | "planos" | "pesquisas" | "documentos" | "acessos">("informacoes");
+  const [tab, setTab] = useState<ProjectTab>("informacoes");
   const done = initialTasks.filter((task) => task.status === "finalizado").length;
   const overdue = initialTasks.filter((task) => task.dueDate && task.dueDate < new Date().toISOString().slice(0, 10) && task.status !== "finalizado").length;
   const completion = initialTasks.length ? Math.round(done / initialTasks.length * 100) : 0;
@@ -131,7 +162,7 @@ export function ProjectProfileView({
         {error ? <div className="form-message">{error}</div> : null}
 
         <nav className="project-profile-tabs" aria-label="Seções do projeto">
-          {([["informacoes", "Informações"], ["calendario", "Calendário"], ["planos", "Planos"], ["pesquisas", "Pesquisas"], ["documentos", "Documentos"], ["acessos", "Acessos"]] as const).map(([value, label]) => <button className={tab === value ? "active" : ""} key={value} onClick={() => setTab(value)}>{label}{value === "pesquisas" && initialSurveys.length ? <span>{initialSurveys.length}</span> : value === "documentos" && initialContracts.length ? <span>{initialContracts.length}</span> : null}</button>)}
+          {abas.map((value) => <button className={tab === value ? "active" : ""} key={value} onClick={() => setTab(value)}>{ROTULO_DA_ABA[value]}{value === "pesquisas" && initialSurveys.length ? <span>{initialSurveys.length}</span> : value === "documentos" && initialContracts.length ? <span>{initialContracts.length}</span> : value === "equipe" && equipe.length ? <span>{equipe.length}</span> : null}</button>)}
         </nav>
 
         {tab === "informacoes" ? <>
@@ -171,10 +202,33 @@ export function ProjectProfileView({
             </div>
           </Card>
         </div></> : null}
-        {tab === "calendario" ? <ProjectTaskHub tasks={initialTasks} formatTags={formatTags} channelTags={channelTags} members={members} canEdit={canEditProfile} initialView="calendario" /> : null}
+        {tab === "calendario" ? <ProjectTaskHub tasks={initialTasks} formatTags={formatTags} channelTags={channelTags} members={members} canEdit={canEditTasks} initialView="calendario" /> : null}
         {tab === "planos" ? <Card><div className="project-section-head"><div><span className="vz-eyebrow">Planejamento</span><h2 className="vz-h2">Planos do cliente</h2><p>{initialPlans.length} plano{initialPlans.length === 1 ? "" : "s"}</p></div><Link className="vz-button vz-button--primary" href={`/planos?projectId=${project.id}`}><Plus size={14} /> Novo plano</Link></div><div className="project-plan-list">{initialPlans.map((plan) => <Link href={`/planos/${plan.id}`} key={plan.id}><strong>{plan.title}</strong><span>{plan.kind === "content" ? "Conteúdo" : plan.kind === "brand" ? "Marca" : plan.kind === "process" ? "Processo" : "Apresentação"} · {plan.status}</span></Link>)}</div>{!initialPlans.length ? <EmptyState icon={<BarChart3 size={24} />} title="Nenhum plano" description="Os planos criados para este cliente aparecerão aqui." /> : null}</Card> : null}
         {tab === "pesquisas" ? <ProjectSurveyResults surveys={initialSurveys} /> : null}
         {tab === "documentos" ? <ProjectDocuments contracts={initialContracts} /> : null}
+        {tab === "equipe" ? <Card>
+          <div className="project-section-head">
+            <div>
+              <span className="vz-eyebrow">Time</span>
+              <h2 className="vz-h2">Quem trabalha neste cliente</h2>
+              <p>{equipe.length ? `${equipe.length} ${equipe.length === 1 ? "pessoa marcada" : "pessoas marcadas"}` : "Sem equipe marcada, o cliente fica aberto para o time inteiro."}</p>
+            </div>
+            <span className="task-save-status" aria-live="polite">{equipeState === "saving" ? "Salvando..." : equipeState === "saved" ? "Salvo" : equipeState === "error" ? "Erro ao salvar" : ""}</span>
+          </div>
+          <ul className="project-team-list">
+            {members.filter((member) => member.active).map((member) => {
+              const dentro = equipe.includes(member.id);
+              return <li key={member.id}>
+                <label>
+                  <input type="checkbox" checked={dentro} onChange={() => salvarEquipe(dentro ? equipe.filter((id) => id !== member.id) : [...equipe, member.id])} />
+                  <Avatar name={member.name} imageUrl={member.avatarUrl} size={30} />
+                  <span><strong>{member.name}</strong><small>{member.email}</small></span>
+                </label>
+              </li>;
+            })}
+          </ul>
+          <p className="dash-footnote">Enquanto ninguém estiver marcado, todo mundo do time enxerga este cliente. Ao marcar a primeira pessoa, ele passa a aparecer só para quem está nesta lista — o dono e o gestor continuam vendo todos.</p>
+        </Card> : null}
         {tab === "acessos" ? <div className="project-profile-grid project-profile-grid--single">
           <Card className="project-credentials-card">
             <div className="project-section-head">

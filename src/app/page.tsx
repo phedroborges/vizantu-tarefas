@@ -1,15 +1,13 @@
-import { redirect } from "next/navigation";
 import { AdminShell } from "@/components/admin-shell";
 import { DashboardView } from "@/components/dashboard-view";
 import { filterTasksByAccess, filterTasksByListAccess } from "@/lib/authz";
-import { getCurrentUser } from "@/lib/current-user";
+import { requirePageAccess } from "@/lib/page-guard";
 import { listMembers, listProjects, listTags, listTasks } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  const user = await requirePageAccess("dashboard");
 
   const [allTasks, allProjects, members, tags] = await Promise.all([listTasks(), listProjects(), listMembers(), listTags()]);
   const tasks = filterTasksByListAccess(filterTasksByAccess(allTasks, user.accessibleProjectIds), user.accessibleListKinds);

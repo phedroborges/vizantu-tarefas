@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiFailure } from "@/lib/api-error";
 import { isResponse, requireUser } from "@/lib/authz";
+import { ROLES_DO_TIME, ROLES_QUE_PLANEJAM } from "@/lib/permissions";
 import { deleteTask, getTask, listTaskActivity, notifyTaskAssigned, updateTask } from "@/lib/storage";
 import { TASK_KINDS, TASK_STATUSES } from "@/lib/types";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireUser(["dono", "editor"]);
+  const auth = await requireUser(ROLES_DO_TIME);
   if (isResponse(auth)) return auth;
   const { id } = await params;
   const body = await request.json();
@@ -59,8 +60,10 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   }
 }
 
+// Criar e finalizar é do time inteiro; apagar não. O diretor criativo produz
+// em cima do que o social media montou — desmontar é decisão de quem planejou.
 export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireUser(["dono", "editor"]);
+  const auth = await requireUser(ROLES_QUE_PLANEJAM);
   if (isResponse(auth)) return auth;
   const { id } = await params;
   try {

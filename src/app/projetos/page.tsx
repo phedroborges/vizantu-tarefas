@@ -1,15 +1,14 @@
-import { redirect } from "next/navigation";
 import { AdminShell } from "@/components/admin-shell";
 import { ProjetosView } from "@/components/projetos-view";
+import { podePlanejar } from "@/lib/permissions";
 import { filterTasksByAccess, filterTasksByListAccess } from "@/lib/authz";
-import { getCurrentUser } from "@/lib/current-user";
+import { requirePageAccess } from "@/lib/page-guard";
 import { listProjects, listTasks } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProjetosPage() {
-  const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  const user = await requirePageAccess("projetos");
 
   const [projects, tasks] = await Promise.all([listProjects(), listTasks()]);
   const visibleProjects = user.accessibleProjectIds === "all" ? projects : projects.filter((p) => user.accessibleProjectIds.includes(p.id));
@@ -17,7 +16,7 @@ export default async function ProjetosPage() {
 
   return (
     <AdminShell active="projetos" user={user}>
-      <ProjetosView initialProjects={visibleProjects} initialTasks={visibleTasks} canEdit={user.role !== "visualizador"} />
+      <ProjetosView initialProjects={visibleProjects} initialTasks={visibleTasks} canEdit={podePlanejar(user.role)} />
     </AdminShell>
   );
 }

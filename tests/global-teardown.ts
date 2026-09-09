@@ -21,6 +21,7 @@ export default async function globalTeardown() {
   for (const id of [memberId, viewerId].filter(Boolean)) {
     await db.from("announcements").delete().eq("created_by", id);
     await db.from("member_list_access").delete().eq("member_id", id);
+    await db.from("project_access").delete().eq("member_id", id);
     await db.auth.admin.deleteUser(id).catch(() => {});
   }
 

@@ -114,6 +114,7 @@ export function TaskModal({
   defaultProjectId,
   canEdit = true,
   allowDeleteAndDuplicate = true,
+  canDelete = true,
   currentUserId,
   onClose,
   onSaved,
@@ -132,6 +133,7 @@ export function TaskModal({
   defaultProjectId: string;
   canEdit?: boolean;
   allowDeleteAndDuplicate?: boolean;
+  canDelete?: boolean;
   currentUserId: string;
   onClose: () => void;
   onSaved: (task: Task) => void;
@@ -758,7 +760,7 @@ export function TaskModal({
         <footer className="modal-actions">
           {isEditing && canEdit && allowDeleteAndDuplicate ? (
             <div style={{ display: "flex", gap: 8 }}>
-              <button type="button" className="danger-button" onClick={remove}><Trash2 size={13} /> Excluir</button>
+              {canDelete ? <button type="button" className="danger-button" onClick={remove}><Trash2 size={13} /> Excluir</button> : null}
               <button type="button" className="secondary-button" onClick={duplicate} disabled={isDuplicating}>
                 <Copy size={13} /> {isDuplicating ? "Duplicando..." : "Duplicar"}
               </button>

@@ -95,8 +95,8 @@ create table if not exists assistant_conversations (
 
 alter table members
   add column if not exists email text,
-  add column if not exists role text not null default 'editor'
-    check (role in ('dono', 'editor', 'visualizador')),
+  add column if not exists role text not null default 'social_media'
+    check (role in ('dono', 'gestor', 'social_media', 'diretor_criativo')),
   add column if not exists ai_enabled boolean not null default false;
 
 create unique index if not exists members_email_idx on members (lower(email)) where email is not null;
@@ -317,7 +317,9 @@ create table if not exists announcements (
   body text not null,
   created_by uuid references members(id) on delete set null,
   scope text not null check (scope in ('all', 'role', 'member')),
-  scope_role text check (scope_role in ('dono', 'editor', 'visualizador')),
+  -- 'visualizador' segue aceito só por causa de avisos antigos (ver migration
+  -- 20260909120000): é um cargo que não existe mais e não alcança ninguém.
+  scope_role text check (scope_role in ('dono', 'gestor', 'social_media', 'diretor_criativo', 'visualizador')),
   scope_member_id uuid references members(id) on delete cascade,
   active boolean not null default true,
   expires_at timestamptz,

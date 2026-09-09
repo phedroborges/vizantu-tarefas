@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isResponse, requireUser } from "@/lib/authz";
+import { ROLES_QUE_PLANEJAM } from "@/lib/permissions";
 import { deletePlan, getPlan, listPlanCaptacoes, listPlanTasks, updatePlan } from "@/lib/storage";
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -13,7 +14,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireUser(["dono", "editor"]);
+  const auth = await requireUser(ROLES_QUE_PLANEJAM);
   if (isResponse(auth)) return auth;
   const { id } = await params;
   const body = await request.json();
@@ -28,7 +29,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 }
 
 export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireUser(["dono", "editor"]);
+  const auth = await requireUser(ROLES_QUE_PLANEJAM);
   if (isResponse(auth)) return auth;
   const { id } = await params;
   const removed = await deletePlan(id);

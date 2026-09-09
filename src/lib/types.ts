@@ -27,12 +27,17 @@ export const PROJECT_STATUSES: { value: ProjectStatus; label: string }[] = [
 
 // ---------- Membros (= usuários com login) ----------
 
-export type UserRole = "dono" | "editor" | "visualizador";
+// Os cargos são os da operação, não graus genéricos de permissão. "Editor" não
+// dizia nada sobre o que a pessoa faz aqui dentro — e por isso todo mundo que
+// não era dono acabava podendo tudo. Agora o nome do cargo é a descrição do
+// trabalho, e o que ele enxerga sai daí (ver lib/permissions.ts).
+export type UserRole = "dono" | "gestor" | "social_media" | "diretor_criativo";
 
-export const USER_ROLES: { value: UserRole; label: string }[] = [
-  { value: "dono", label: "Dono" },
-  { value: "editor", label: "Editor" },
-  { value: "visualizador", label: "Visualizador" },
+export const USER_ROLES: { value: UserRole; label: string; description: string }[] = [
+  { value: "dono", label: "Dono", description: "Acesso a tudo, sem exceção." },
+  { value: "gestor", label: "Gestor", description: "Gerencia entrega e resultado: painel, contratos e a equipe de cada cliente." },
+  { value: "social_media", label: "Social media", description: "Analisa, planeja e deixa tudo pronto para a criação." },
+  { value: "diretor_criativo", label: "Diretor criativo", description: "Pega o que está pronto, produz e finaliza." },
 ];
 
 export type Member = {

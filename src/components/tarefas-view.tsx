@@ -152,6 +152,7 @@ export function TarefasView({
   initialPreferences,
   hasSavedPreferences = false,
   canEdit = true,
+  canDelete = true,
   canEditStatusColors = false,
   currentUserId,
   initialTaskId,
@@ -165,6 +166,7 @@ export function TarefasView({
   initialPreferences: MemberPreferences;
   hasSavedPreferences?: boolean;
   canEdit?: boolean;
+  canDelete?: boolean;
   canEditStatusColors?: boolean;
   currentUserId: string;
   initialTaskId?: string;
@@ -636,6 +638,7 @@ export function TarefasView({
           statusColors={statusColors}
           defaultProjectId={projectFilter || initialProjects[0]?.id || ""}
           canEdit={canEdit}
+          canDelete={canDelete}
           currentUserId={currentUserId}
           onClose={() => setSelectedTask(null)}
           onSaved={handleSaved}

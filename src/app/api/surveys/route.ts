@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiFailure } from "@/lib/api-error";
 import { isResponse, requireUser } from "@/lib/authz";
+import { ROLES_QUE_PLANEJAM } from "@/lib/permissions";
 import { createSurvey, listSurveys } from "@/lib/storage";
 
 export async function GET(request: NextRequest) {
@@ -13,7 +14,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireUser(["dono", "editor"]);
+  const auth = await requireUser(ROLES_QUE_PLANEJAM);
   if (isResponse(auth)) return auth;
   const body = await request.json();
   if (!body.projectId || !body.title?.trim()) return NextResponse.json({ error: "Informe o projeto e o título." }, { status: 400 });

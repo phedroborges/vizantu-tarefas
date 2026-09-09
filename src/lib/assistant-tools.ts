@@ -25,6 +25,7 @@ import {
   updateTask,
 } from "./storage";
 import { isUserComment } from "./task-activity";
+import { ROLES_DE_GESTAO, ROLES_QUE_PLANEJAM } from "./permissions";
 import type { CurrentUser } from "./current-user";
 import {
   ANNOUNCEMENT_SCOPES,
@@ -37,6 +38,7 @@ import {
   type Project,
   type TagKind,
   type Task,
+  type UserRole,
   type TaskStatus,
 } from "./types";
 
@@ -101,8 +103,9 @@ function summarizeTask(task: Task, projectById: Map<string, Project>, memberById
   };
 }
 
-// Escopa tasks/projects pelo acesso do caller (dono/editor = "all", sem
-// filtro; visualizador = só os projetos liberados) — um só lugar pra isso,
+// Escopa tasks/projects pelo acesso do caller (dono e gestor = "all", sem
+// filtro; social media e diretor criativo = só os clientes de que fazem parte)
+// — um só lugar pra isso,
 // então list_tasks/create_task/update_task/get_deadlines_summary/list_projects
 // ganham escopo de graça só recebendo `caller`.
 async function loadContext(caller: CurrentUser) {
@@ -777,23 +780,31 @@ export const ASSISTANT_TOOLS: ChatCompletionTool[] = [
   },
 ];
 
-// Ferramentas que alteram dado — bloqueadas de vez pra "visualizador" antes
-// mesmo de decidir qual é (um guard só, não um if por função).
-const MUTATING_TOOLS = new Set([
-  "create_task",
-  "update_task",
-  "delete_task",
-  "add_comment",
-  "upsert_knowledge_doc",
-  "create_plan",
-  "add_plan_item",
-  "update_plan_item",
-  "create_announcement",
-]);
+// A conversa com a IA não pode ser a porta dos fundos da permissão: o que o
+// cargo não faz clicando também não faz pedindo. Ferramentas que só mexem em
+// tarefa ficam de fora da lista porque todo cargo com login edita tarefa.
+const FERRAMENTAS_RESTRITAS: { ferramentas: Set<string>; roles: UserRole[]; recado: string }[] = [
+  {
+    ferramentas: new Set(["upsert_knowledge_doc"]),
+    roles: ["dono"],
+    recado: "A base de conhecimento é do dono da conta.",
+  },
+  {
+    ferramentas: new Set(["create_announcement"]),
+    roles: ROLES_DE_GESTAO,
+    recado: "Mandar aviso para o time é do dono ou do gestor.",
+  },
+  {
+    ferramentas: new Set(["delete_task", "create_plan", "add_plan_item", "update_plan_item"]),
+    roles: ROLES_QUE_PLANEJAM,
+    recado: "Montar e desmontar planejamento é do dono, do gestor ou do social media.",
+  },
+];
 
 export async function executeTool(name: string, rawArgs: string, caller: CurrentUser): Promise<unknown> {
-  if (MUTATING_TOOLS.has(name) && caller.role === "visualizador") {
-    return { error: "Seu acesso é somente leitura — peça a um editor ou dono do time pra fazer essa alteração." };
+  const restricao = FERRAMENTAS_RESTRITAS.find((item) => item.ferramentas.has(name));
+  if (restricao && !restricao.roles.includes(caller.role)) {
+    return { error: `${restricao.recado} Peça a quem tem esse acesso.` };
   }
   const args = rawArgs ? JSON.parse(rawArgs) : {};
   switch (name) {

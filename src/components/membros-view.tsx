@@ -3,6 +3,7 @@
 import { Camera, Check, FolderLock, RotateCcw, Sparkles, UserX, Users, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { Avatar } from "@/components/avatar";
+import { veTodosOsProjetos } from "@/lib/permissions";
 import { TASK_LIST_KINDS, USER_ROLES } from "@/lib/types";
 import type { Member, Project, TaskListKind, UserRole } from "@/lib/types";
 
@@ -23,7 +24,7 @@ export function MembrosView({
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<UserRole>("editor");
+  const [role, setRole] = useState<UserRole>("social_media");
   const [aiEnabled, setAiEnabled] = useState(false);
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -41,7 +42,7 @@ export function MembrosView({
     setName("");
     setEmail("");
     setPassword("");
-    setRole("editor");
+    setRole("social_media");
     setAiEnabled(false);
     setError("");
   }
@@ -137,7 +138,7 @@ export function MembrosView({
               <div className="field">
                 <label htmlFor="member-role">Papel</label>
                 <select id="member-role" value={role} onChange={(e) => setRole(e.target.value as UserRole)}>
-                  {USER_ROLES.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}
+                  {USER_ROLES.map((item) => <option value={item.value} key={item.value} title={item.description}>{item.label}</option>)}
                 </select>
               </div>
               <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--dark)" }}>
@@ -170,10 +171,10 @@ export function MembrosView({
                         value={member.role}
                         onChange={(e) => patchMember(member.id, { role: e.target.value as UserRole })}
                       >
-                        {USER_ROLES.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}
+                        {USER_ROLES.map((item) => <option value={item.value} key={item.value} title={item.description}>{item.label}</option>)}
                       </select>
-                      {member.role === "visualizador" ? (
-                        <button className="icon-button" type="button" onClick={() => setManagingAccessFor(member.id)} title="Acessos (projetos e listas)" aria-label={`Acessos de ${member.name}`}>
+                      {!veTodosOsProjetos(member.role) ? (
+                        <button className="icon-button" type="button" onClick={() => setManagingAccessFor(member.id)} title="Clientes e listas que esta pessoa acessa" aria-label={`Acessos de ${member.name}`}>
                           <FolderLock size={14} />
                         </button>
                       ) : null}

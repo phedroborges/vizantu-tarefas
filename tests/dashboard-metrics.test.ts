@@ -4,7 +4,7 @@ import type { Member, Project, Tag, Task } from "../src/lib/types";
 
 const NOW = "2026-09-09T15:00:00.000Z";
 const members: Member[] = ["Ana", "Beto", "Clara"].map((name, index) => ({
-  id: `m${index + 1}`, name, email: `${name.toLowerCase()}@teste.com`, role: "editor",
+  id: `m${index + 1}`, name, email: `${name.toLowerCase()}@teste.com`, role: "social_media",
   aiEnabled: false, active: true, createdAt: NOW, updatedAt: NOW,
 }));
 const projects: Project[] = [{ id: "p1", name: "Cliente", status: "ativo", createdAt: NOW, updatedAt: NOW }];

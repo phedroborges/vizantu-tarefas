@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isResponse, requireUser } from "@/lib/authz";
+import { ROLES_DE_GESTAO } from "@/lib/permissions";
 import { createAnnouncement, createNotifications, listAnnouncements, listMembers, listPendingAnnouncementsForMember } from "@/lib/storage";
 import { ANNOUNCEMENT_SCOPES, USER_ROLES } from "@/lib/types";
 
@@ -14,7 +15,7 @@ export async function GET(request: NextRequest) {
     const announcements = await listPendingAnnouncementsForMember({ id: auth.id, role: auth.role });
     return NextResponse.json({ announcements });
   }
-  if (auth.role !== "dono" && auth.role !== "editor") {
+  if (!ROLES_DE_GESTAO.includes(auth.role)) {
     return NextResponse.json({ error: "Você não tem permissão para fazer isso." }, { status: 403 });
   }
   const announcements = await listAnnouncements();
@@ -22,7 +23,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireUser(["dono", "editor"]);
+  const auth = await requireUser(ROLES_DE_GESTAO);
   if (isResponse(auth)) return auth;
   const body = await request.json();
   if (!body?.body || typeof body.body !== "string" || !body.body.trim()) {

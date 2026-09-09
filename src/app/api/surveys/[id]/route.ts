@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiFailure } from "@/lib/api-error";
 import { isResponse, requireUser } from "@/lib/authz";
+import { ROLES_QUE_PLANEJAM } from "@/lib/permissions";
 import { deleteSurvey, getSurvey, updateSurvey } from "@/lib/storage";
 import type { SurveyQuestionType } from "@/lib/types";
 
@@ -13,7 +14,7 @@ async function allowed(id: string, auth: Awaited<ReturnType<typeof requireUser>>
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireUser(["dono", "editor"]);
+  const auth = await requireUser(ROLES_QUE_PLANEJAM);
   if (isResponse(auth)) return auth;
   const { id } = await params;
   if (!(await allowed(id, auth))) return NextResponse.json({ error: "Pesquisa não encontrada." }, { status: 404 });
@@ -26,7 +27,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 }
 
 export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireUser(["dono", "editor"]);
+  const auth = await requireUser(ROLES_QUE_PLANEJAM);
   if (isResponse(auth)) return auth;
   const { id } = await params;
   if (!(await allowed(id, auth))) return NextResponse.json({ error: "Pesquisa não encontrada." }, { status: 404 });

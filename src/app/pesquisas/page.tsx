@@ -1,12 +1,11 @@
-import { redirect } from "next/navigation";
 import { AdminShell } from "@/components/admin-shell";
 import { SurveyManager } from "@/components/survey-manager";
-import { getCurrentUser } from "@/lib/current-user";
+import { requirePageAccess } from "@/lib/page-guard";
 import { listProjects, listSurveys } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 export default async function PesquisasPage() {
-  const user = await getCurrentUser(); if (!user) redirect("/login");
+  const user = await requirePageAccess("pesquisas");
   const [projects, allSurveys] = await Promise.all([listProjects(), listSurveys()]);
   const allowedProjects = user.accessibleProjectIds === "all" ? projects : projects.filter((project) => user.accessibleProjectIds.includes(project.id));
   const surveys = user.accessibleProjectIds === "all" ? allSurveys : allSurveys.filter((survey) => user.accessibleProjectIds.includes(survey.projectId));

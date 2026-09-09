@@ -14,8 +14,29 @@ import { Logo } from "@/components/vz/logo";
 import type { CurrentUser } from "@/lib/current-user";
 import { PageContextProvider } from "@/lib/page-context";
 import { createClient } from "@/lib/supabase/browser-client";
+import { podeGerenciarEquipe, podeVer, type AppArea } from "@/lib/permissions";
+import { USER_ROLES, type UserRole } from "@/lib/types";
 
 export type AdminShellActive = "dashboard" | "projetos" | "tarefas" | "planos" | "pesquisas" | "marcas" | "contratos" | "membros" | "conhecimento" | "assistente" | "notificacoes";
+
+
+// A ordem aqui é a ordem do menu. A área de cada item é o que decide quem o
+// enxerga — nenhum `if` de cargo espalhado pelo JSX.
+const ITENS_DO_MENU: { area: AppArea; href: string; label: string; Icone: typeof BarChart3 }[] = [
+  { area: "dashboard", href: "/", label: "Dashboard", Icone: BarChart3 },
+  { area: "projetos", href: "/projetos", label: "Projetos", Icone: Folders },
+  { area: "tarefas", href: "/tarefas", label: "Tarefas", Icone: CheckSquare },
+  { area: "notificacoes", href: "/notificacoes", label: "Notificações", Icone: Bell },
+  { area: "planos", href: "/planos", label: "Planos", Icone: ClipboardList },
+  { area: "pesquisas", href: "/pesquisas", label: "Pesquisas", Icone: FileQuestion },
+  { area: "marcas", href: "/marcas", label: "Marcas", Icone: Palette },
+  { area: "contratos", href: "/contratos", label: "Contratos", Icone: FileText },
+  { area: "membros", href: "/membros", label: "Membros", Icone: Users },
+  { area: "conhecimento", href: "/conhecimento", label: "Base de conhecimento", Icone: BookOpen },
+  { area: "assistente", href: "/assistente", label: "Assistente", Icone: Sparkles },
+];
+
+const CARGO: Record<UserRole, string> = Object.fromEntries(USER_ROLES.map((papel) => [papel.value, papel.label])) as Record<UserRole, string>;
 
 const PAGE_LABELS: Record<AdminShellActive, string> = {
   dashboard: "Página atual: Dashboard (visão geral de métricas, prazos e ranking do time).",
@@ -68,65 +89,21 @@ export function AdminShell({
           <small>Projetos e demandas do time</small>
         </div>
         <nav className="admin-nav">
-          <Link className={active === "dashboard" ? "active" : ""} href="/" onClick={() => setMenuOpen(false)}>
-            <BarChart3 size={18} />
-            <span>Dashboard</span>
-          </Link>
-          <Link className={active === "projetos" ? "active" : ""} href="/projetos" onClick={() => setMenuOpen(false)}>
-            <Folders size={18} />
-            <span>Projetos</span>
-          </Link>
-          <Link className={active === "tarefas" ? "active" : ""} href="/tarefas" onClick={() => setMenuOpen(false)}>
-            <CheckSquare size={18} />
-            <span>Tarefas</span>
-          </Link>
-          <Link className={active === "notificacoes" ? "active" : ""} href="/notificacoes" onClick={() => setMenuOpen(false)}>
-            <Bell size={18} />
-            <span>Notificações</span>
-          </Link>
-          <Link className={active === "planos" ? "active" : ""} href="/planos" onClick={() => setMenuOpen(false)}>
-            <ClipboardList size={18} />
-            <span>Planos</span>
-          </Link>
-          <Link className={active === "pesquisas" ? "active" : ""} href="/pesquisas" onClick={() => setMenuOpen(false)}>
-            <FileQuestion size={18} />
-            <span>Pesquisas</span>
-          </Link>
-          <Link className={active === "marcas" ? "active" : ""} href="/marcas" onClick={() => setMenuOpen(false)}>
-            <Palette size={18} />
-            <span>Marcas</span>
-          </Link>
-          {user.role === "dono" ? (
-            <Link className={active === "contratos" ? "active" : ""} href="/contratos" onClick={() => setMenuOpen(false)}>
-              <FileText size={18} />
-              <span>Contratos</span>
-            </Link>
-          ) : null}
-          {user.role === "dono" ? (
-            <Link className={active === "membros" ? "active" : ""} href="/membros" onClick={() => setMenuOpen(false)}>
-              <Users size={18} />
-              <span>Membros</span>
-            </Link>
-          ) : null}
-          {user.role !== "visualizador" ? (
-            <Link className={active === "conhecimento" ? "active" : ""} href="/conhecimento" onClick={() => setMenuOpen(false)}>
-              <BookOpen size={18} />
-              <span>Base de conhecimento</span>
-            </Link>
-          ) : null}
-          {user.aiEnabled ? (
-            <Link className={active === "assistente" ? "active" : ""} href="/assistente" onClick={() => setMenuOpen(false)}>
-              <Sparkles size={18} />
-              <span>Assistente</span>
-            </Link>
-          ) : null}
+          {ITENS_DO_MENU.filter((item) => podeVer(user.role, item.area)).map((item) => (
+            item.area === "assistente" && !user.aiEnabled ? null : (
+              <Link className={active === item.area ? "active" : ""} href={item.href} key={item.area} onClick={() => setMenuOpen(false)}>
+                <item.Icone size={18} />
+                <span>{item.label}</span>
+              </Link>
+            )
+          ))}
         </nav>
         <ThemeSwitch />
         <div className="admin-user">
           <Avatar name={user.name} size={28} />
           <div>
             <strong>{user.name}</strong>
-            <small>{user.email}</small>
+            <small>{CARGO[user.role]}</small>
           </div>
           <button type="button" className="admin-user-signout" onClick={signOut} title="Sair" aria-label="Sair">
             <LogOut size={16} />
@@ -134,7 +111,7 @@ export function AdminShell({
         </div>
       </aside>
       <div className="admin-main">
-        <div className="admin-global-actions"><NotificationBell />{user.role !== "visualizador" ? <AnnouncementComposer currentUserRole={user.role} /> : null}</div>
+        <div className="admin-global-actions"><NotificationBell />{podeGerenciarEquipe(user.role) ? <AnnouncementComposer currentUserRole={user.role} /> : null}</div>
         {/* Enviar aviso é ação de qualquer lugar, não de uma tela específica. */}
         <header className="admin-mobile-bar">
           <button type="button" aria-label="Abrir menu" onClick={() => setMenuOpen(true)}><Menu size={21} /></button>

@@ -1,14 +1,14 @@
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { AdminShell } from "@/components/admin-shell";
 import { PacoteDetailView } from "@/components/pacote-detail-view";
-import { getCurrentUser } from "@/lib/current-user";
+import { podePlanejar } from "@/lib/permissions";
+import { requirePageAccess } from "@/lib/page-guard";
 import { getPlan, getProject, listMembers, listPlanCaptacoes, listPlanTasks, listStatusColors, listTags } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
 export default async function PacoteDetailPage({ params }: { params: Promise<{ id: string; pacoteId: string }> }) {
-  const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  const user = await requirePageAccess("planos");
   const { id, pacoteId } = await params;
 
   const plan = await getPlan(id);
@@ -46,7 +46,8 @@ export default async function PacoteDetailPage({ params }: { params: Promise<{ i
         categoryTags={categoryTags}
         statusColors={statusColors}
         currentUserId={user.id}
-        canEdit={user.role !== "visualizador"}
+        canEdit={podePlanejar(user.role)}
+        canEditTasks
       />
     </AdminShell>
   );

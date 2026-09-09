@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isResponse, requireUser } from "@/lib/authz";
+import { ROLES_QUE_PLANEJAM } from "@/lib/permissions";
 import { createBrandWorkflow, createPlan, listPlans } from "@/lib/storage";
 import { PLAN_KINDS } from "@/lib/types";
 
@@ -13,7 +14,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireUser(["dono", "editor"]);
+  const auth = await requireUser(ROLES_QUE_PLANEJAM);
   if (isResponse(auth)) return auth;
   const body = await request.json();
   if (!body?.title || typeof body.title !== "string" || !body.title.trim()) {

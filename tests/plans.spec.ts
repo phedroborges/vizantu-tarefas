@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { fixtures, loginAsTestDono, loginAsTestViewer } from "./helpers";
+import { fixtures, loginAsTestDono, loginAsTestCriativo } from "./helpers";
 
 test.describe("criação de Plano", () => {
   test("1. plano de conteúdo: captação + item guardam plan_id e captacao_id", async ({ page }) => {
@@ -53,8 +53,8 @@ test.describe("criação de Plano", () => {
     expect(patched.task.description).toContain("**Legenda**");
   });
 
-  test("4. visualizador não pode criar plano", async ({ page }) => {
-    await loginAsTestViewer(page);
+  test("4. diretor criativo não pode criar plano", async ({ page }) => {
+    await loginAsTestCriativo(page);
     const { projectId } = fixtures();
     const response = await page.request.post("/api/plans", { data: { projectId, title: "Não deveria criar", kind: "content" } });
     expect(response.status()).toBe(403);

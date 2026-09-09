@@ -3,7 +3,7 @@ import { isResponse, requireUser } from "@/lib/authz";
 import { deleteKnowledgeDoc, updateKnowledgeDoc } from "@/lib/storage";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireUser(["dono", "editor"]);
+  const auth = await requireUser(["dono"]);
   if (isResponse(auth)) return auth;
   const { id } = await params;
   const body = await request.json();
@@ -13,7 +13,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 }
 
 export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireUser(["dono", "editor"]);
+  const auth = await requireUser(["dono"]);
   if (isResponse(auth)) return auth;
   const { id } = await params;
   const removed = await deleteKnowledgeDoc(id);

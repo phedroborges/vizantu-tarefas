@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { MentionCommentForm } from "../src/components/mention-comment-form";
 import type { Member } from "../src/lib/types";
 
-const members: Member[] = [{ id: "erika", name: "Erika Iorrana", email: "erika@vizantu.com.br", role: "editor", aiEnabled: false, active: true, createdAt: "2026-01-01", updatedAt: "2026-01-01" }];
+const members: Member[] = [{ id: "erika", name: "Erika Iorrana", email: "erika@vizantu.com.br", role: "social_media", aiEnabled: false, active: true, createdAt: "2026-01-01", updatedAt: "2026-01-01" }];
 let root: ReturnType<typeof createRoot> | undefined;
 afterEach(() => { act(() => root?.unmount()); document.body.innerHTML = ""; });
 

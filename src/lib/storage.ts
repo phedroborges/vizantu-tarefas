@@ -216,7 +216,12 @@ export async function updateMember(
   return row ? mapMember(row as MemberRow) : undefined;
 }
 
-// ---------- Acesso por projeto (só relevante pro papel "visualizador") ----------
+// ---------- Equipe do projeto ----------
+//
+// A mesma tabela project_access, lida pelos dois lados: por pessoa (quais
+// clientes ela acessa, na tela de Membros) e por cliente (quem trabalha nele,
+// na aba Equipe). Pensar por cliente é o jeito que a operação usa — "quem cuida
+// da Casa Caramelo?" é a pergunta que se faz, não "em que a Erika mexe?".
 
 export async function listProjectAccess(memberId: string): Promise<string[]> {
   const rows = unwrap(await getSupabase().from("project_access").select("project_id").eq("member_id", memberId)) as { project_id: string }[];
@@ -237,6 +242,22 @@ export async function listAllProjectAccess(): Promise<Record<string, string[]>> 
 // Substitui todo o conjunto de acessos daquele membro — mais simples de
 // raciocinar que um diff incremental, e a tabela é pequena o bastante pra
 // apagar-e-reinserir não ser um problema de performance.
+export async function listProjectTeam(projectId: string): Promise<string[]> {
+  const rows = unwrap(await getSupabase().from("project_access").select("member_id").eq("project_id", projectId)) as { member_id: string }[];
+  return rows.map((r) => r.member_id);
+}
+
+// Equipe vazia não é um estado de erro: significa "cliente aberto para o time
+// inteiro". Ver a regra em lib/current-user.
+export async function setProjectTeam(projectId: string, memberIds: string[]): Promise<void> {
+  const db = getSupabase();
+  unwrap(await db.from("project_access").delete().eq("project_id", projectId));
+  const uniqueIds = Array.from(new Set(memberIds.filter(Boolean)));
+  if (uniqueIds.length) {
+    unwrap(await db.from("project_access").insert(uniqueIds.map((memberId) => ({ member_id: memberId, project_id: projectId }))));
+  }
+}
+
 export async function setProjectAccess(memberId: string, projectIds: string[]): Promise<void> {
   const db = getSupabase();
   unwrap(await db.from("project_access").delete().eq("member_id", memberId));

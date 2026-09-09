@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiFailure } from "@/lib/api-error";
 import { filterTasksByAccess, filterTasksByListAccess, isResponse, requireUser } from "@/lib/authz";
+import { ROLES_DO_TIME } from "@/lib/permissions";
 import { createTask, listTasks, notifyTaskAssigned } from "@/lib/storage";
 import { TASK_KINDS, TASK_STATUSES } from "@/lib/types";
 
@@ -13,7 +14,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireUser(["dono", "editor"]);
+  const auth = await requireUser(ROLES_DO_TIME);
   if (isResponse(auth)) return auth;
   const body = await request.json();
   if (!body?.name || typeof body.name !== "string" || !body.name.trim()) {

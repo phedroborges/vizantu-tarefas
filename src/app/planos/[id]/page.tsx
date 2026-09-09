@@ -1,14 +1,14 @@
 import { notFound, redirect } from "next/navigation";
 import { AdminShell } from "@/components/admin-shell";
 import { PlanoDetailView } from "@/components/plano-detail-view";
-import { getCurrentUser } from "@/lib/current-user";
+import { podePlanejar } from "@/lib/permissions";
+import { requirePageAccess } from "@/lib/page-guard";
 import { getPlan, getProject, listMembers, listPlanApprovalResponsesForTasks, listPlanCaptacoes, listPlanEvents, listPlanItemApprovals, listPlanTasks, listStatusColors, listTags } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
 export default async function PlanoDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  const user = await requirePageAccess("planos");
   const { id } = await params;
 
   const plan = await getPlan(id);
@@ -49,7 +49,8 @@ export default async function PlanoDetailPage({ params }: { params: Promise<{ id
         categoryTags={categoryTags}
         statusColors={statusColors}
         currentUserId={user.id}
-        canEdit={user.role !== "visualizador"}
+        canEdit={podePlanejar(user.role)}
+        canEditTasks
       />
     </AdminShell>
   );

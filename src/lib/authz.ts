@@ -18,8 +18,8 @@ export function isResponse(value: unknown): value is NextResponse {
   return value instanceof NextResponse;
 }
 
-// Usado pelas rotas de listagem (tasks/projects) — filtra pelo acesso do
-// usuário quando ele for "visualizador"; dono/editor recebem tudo.
+// Usado pelas rotas de listagem (tasks/projects) — filtra pelos clientes de
+// que a pessoa faz parte; dono e gestor recebem "all" e passam direto.
 export function filterByAccess<T extends { id: string }>(items: T[], accessibleProjectIds: string[] | "all"): T[] {
   if (accessibleProjectIds === "all") return items;
   const allowed = new Set(accessibleProjectIds);

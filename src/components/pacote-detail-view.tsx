@@ -35,6 +35,7 @@ export function PacoteDetailView({
   statusColors,
   currentUserId,
   canEdit = true,
+  canEditTasks = canEdit,
 }: {
   plan: Plan;
   project: Project;
@@ -48,6 +49,7 @@ export function PacoteDetailView({
   statusColors: StatusColor[];
   currentUserId: string;
   canEdit?: boolean;
+  canEditTasks?: boolean;
 }) {
   const [tasks, setTasks] = useState(initialTasks);
   const [editingTask, setEditingTask] = useState<Task | null | undefined>(undefined);
@@ -190,7 +192,7 @@ export function PacoteDetailView({
           statusColors={statusColors}
           captacoes={captacoes}
           defaultProjectId={plan.projectId}
-          canEdit={canEdit}
+          canEdit={canEditTasks}
           currentUserId={currentUserId}
           onClose={() => setEditingTask(undefined)}
           onSaved={onTaskSaved}

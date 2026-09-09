@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { AdminShell, type AdminShellActive } from "@/components/admin-shell";
+import { USER_ROLES, type UserRole } from "@/lib/types";
 import { BrandsView } from "@/components/brands-view";
 import { ContratosView } from "@/components/contratos-view";
 import { ClientDashboard } from "@/components/client-dashboard";
@@ -37,14 +38,19 @@ const ATIVO: Record<Tela, AdminShellActive> = {
   cliente: "planos", marcas: "marcas", membros: "membros", contratos: "contratos", conhecimento: "conhecimento",
 };
 
-export default async function PreviaPage({ searchParams }: { searchParams: Promise<{ tela?: string }> }) {
+export default async function PreviaPage({ searchParams }: { searchParams: Promise<{ tela?: string; cargo?: string }> }) {
   if (process.env.NODE_ENV === "production") notFound();
-  const { tela: pedida } = await searchParams;
+  const { tela: pedida, cargo: cargoPedido } = await searchParams;
   const tela: Tela = TELAS.includes(pedida as Tela) ? (pedida as Tela) : "dashboard";
+  // Trocar de cargo aqui mostra o menu que aquela pessoa realmente vê. Conferir
+  // hierarquia criando quatro contas de teste é caro demais para uma coisa que
+  // se resolve olhando.
+  const cargo: UserRole = USER_ROLES.some((papel) => papel.value === cargoPedido) ? (cargoPedido as UserRole) : "dono";
+  const usuario = { ...USUARIO, role: cargo };
 
   return (
-    <AdminShell active={ATIVO[tela]} user={USUARIO}>
-      <BarraDeTelas atual={tela} />
+    <AdminShell active={ATIVO[tela]} user={usuario}>
+      <BarraDeTelas atual={tela} cargo={cargo} />
       {tela === "dashboard" ? (
         <DashboardView
           tasks={TAREFAS}
@@ -145,15 +151,25 @@ export default async function PreviaPage({ searchParams }: { searchParams: Promi
 }
 
 // Só aparece na prévia: um atalho pra pular entre as telas sem editar a URL.
-function BarraDeTelas({ atual }: { atual: Tela }) {
+function BarraDeTelas({ atual, cargo }: { atual: Tela; cargo: UserRole }) {
   return (
-    <div className="previa-bar">
-      <strong>Prévia</strong>
-      {TELAS.map((tela) => (
-        <a key={tela} href={`/design-system/previa?tela=${tela}`} aria-current={tela === atual ? "page" : undefined}>
-          {tela}
-        </a>
-      ))}
-    </div>
+    <>
+      <div className="previa-bar">
+        <strong>Prévia</strong>
+        {TELAS.map((tela) => (
+          <a key={tela} href={`/design-system/previa?tela=${tela}&cargo=${cargo}`} aria-current={tela === atual ? "page" : undefined}>
+            {tela}
+          </a>
+        ))}
+      </div>
+      <div className="previa-bar">
+        <strong>Cargo</strong>
+        {USER_ROLES.map((papel) => (
+          <a key={papel.value} href={`/design-system/previa?tela=${atual}&cargo=${papel.value}`} aria-current={papel.value === cargo ? "page" : undefined} title={papel.description}>
+            {papel.label}
+          </a>
+        ))}
+      </div>
+    </>
   );
 }

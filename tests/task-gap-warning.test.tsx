@@ -11,7 +11,7 @@ import { DEFAULT_STATUS_COLORS, TASK_STATUSES, type Member, type Project, type S
 
 const NOW = "2026-09-09T12:00:00.000Z";
 const projects: Project[] = [{ id: "p1", name: "Cliente", status: "ativo", createdAt: NOW, updatedAt: NOW }];
-const members: Member[] = [{ id: "m1", name: "Ana", email: "ana@teste.com", role: "editor", aiEnabled: false, active: true, createdAt: NOW, updatedAt: NOW }];
+const members: Member[] = [{ id: "m1", name: "Ana", email: "ana@teste.com", role: "social_media", aiEnabled: false, active: true, createdAt: NOW, updatedAt: NOW }];
 const formatTags: Tag[] = [{ id: "f1", kind: "formato", label: "Reels", createdAt: NOW }];
 const channelTags: Tag[] = [{ id: "c1", kind: "canal", label: "Instagram", createdAt: NOW }];
 const statusColors: StatusColor[] = TASK_STATUSES.map(({ value }) => ({ status: value, color: DEFAULT_STATUS_COLORS[value] }));

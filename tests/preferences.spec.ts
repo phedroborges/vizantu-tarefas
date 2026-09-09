@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { expect, test } from "@playwright/test";
-import { fixtures, loginAsTestDono, loginAsTestViewer } from "./helpers";
+import { fixtures, loginAsTestDono, loginAsTestCriativo } from "./helpers";
 
 const db = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
 
@@ -48,7 +48,7 @@ test.describe("preferências de exibição", () => {
     await page.request.patch("/api/preferences", { data: { ...PADRAO, taskView: "calendario" } });
 
     await page.context().clearCookies();
-    await loginAsTestViewer(page);
+    await loginAsTestCriativo(page);
     await page.request.patch("/api/preferences", { data: PADRAO });
     const { preferences } = await (await page.request.get("/api/preferences")).json();
     expect(preferences.taskView).toBe("lista"); // padrão, não o do dono
@@ -57,11 +57,11 @@ test.describe("preferências de exibição", () => {
     await page.context().clearCookies();
     await loginAsTestDono(page);
     const dono = await (await page.request.get("/api/preferences")).json();
-    expect(dono.preferences.showFinalized).toBe(false); // o do visualizador não encostou aqui
+    expect(dono.preferences.showFinalized).toBe(false); // o do diretor criativo não encostou aqui
   });
 
-  test("4. cor de status é do time: visualizador não altera", async ({ page }) => {
-    await loginAsTestViewer(page);
+  test("4. cor de status é do time: diretor criativo não altera", async ({ page }) => {
+    await loginAsTestCriativo(page);
     const response = await page.request.post("/api/status-colors", { data: { colors: { finalizado: "#123456" } } });
     expect(response.status()).toBe(403);
   });
@@ -78,13 +78,13 @@ test.describe("preferências de exibição", () => {
     if (original) await page.request.post("/api/status-colors", { data: { colors: { finalizado: original } } });
   });
 
-  // O caso que de fato mudou: até aqui a rota aceitava ["dono", "editor"], e os
-  // três editores do time podiam repintar os status de todo mundo.
-  test("6. editor também não altera as cores do time", async ({ page }) => {
+  // Cor de status é do time inteiro, então repintá-la nunca foi trabalho de
+  // quem só opera — nem do gestor, que é o cargo mais alto abaixo do dono.
+  test("6. gestor também não altera as cores do time", async ({ page }) => {
     const { memberId } = fixtures();
-    await db.from("members").update({ role: "editor" }).eq("id", memberId);
+    await db.from("members").update({ role: "gestor" }).eq("id", memberId);
     try {
-      await loginAsTestDono(page); // mesma conta, agora com papel de editor
+      await loginAsTestDono(page); // mesma conta, agora com cargo de gestor
       const response = await page.request.post("/api/status-colors", { data: { colors: { finalizado: "#123456" } } });
       expect(response.status()).toBe(403);
 

@@ -1,17 +1,14 @@
-import { redirect } from "next/navigation";
 import { AdminShell } from "@/components/admin-shell";
 import { ContratosView } from "@/components/contratos-view";
-import { getCurrentUser } from "@/lib/current-user";
+import { requirePageAccess } from "@/lib/page-guard";
 import { listContracts, listProjects } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
 export default async function ContratosPage() {
-  const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  const user = await requirePageAccess("contratos");
   // Contrato tem valor, CNPJ e condição comercial — a tela é do dono, igual à
   // rota que serve os dados dela.
-  if (user.role !== "dono") redirect("/");
 
   const [contracts, projects] = await Promise.all([listContracts(), listProjects()]);
 

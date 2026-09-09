@@ -1,15 +1,12 @@
-import { redirect } from "next/navigation";
 import { AdminShell } from "@/components/admin-shell";
 import { MembrosView } from "@/components/membros-view";
-import { getCurrentUser } from "@/lib/current-user";
+import { requirePageAccess } from "@/lib/page-guard";
 import { listAllMemberListAccess, listAllProjectAccess, listMembers, listProjects } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
 export default async function MembrosPage() {
-  const user = await getCurrentUser();
-  if (!user) redirect("/login");
-  if (user.role !== "dono") redirect("/");
+  const user = await requirePageAccess("membros");
 
   const [members, projects, projectAccess, listAccess] = await Promise.all([
     listMembers(),

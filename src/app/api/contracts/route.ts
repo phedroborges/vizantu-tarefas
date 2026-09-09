@@ -1,23 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiFailure } from "@/lib/api-error";
 import { isResponse, requireUser } from "@/lib/authz";
+import { ROLES_DE_GESTAO } from "@/lib/permissions";
+import type { UserRole } from "@/lib/types";
 import { buildContractBody, defaultStructure, PAYMENT_STRUCTURES, type ContractTemplateId, type PaymentMode, type PaymentStructure } from "@/lib/contract-templates";
 import { createContract, listContracts } from "@/lib/storage";
 
 // Contrato tem valor, CNPJ e condição comercial. Fica com o dono, não com
 // todo mundo que edita tarefa.
-const ROLES = ["dono"] as const;
+// O gestor acompanha o que foi contratado; alterar contrato continua sendo
+// do dono.
+const ROLES_LEITURA = ROLES_DE_GESTAO;
+const ROLES_ESCRITA: UserRole[] = ["dono"];
 
 const TEMPLATES: ContractTemplateId[] = ["gestao_marca", "criacao_marca", "branco"];
 
 export async function GET() {
-  const auth = await requireUser([...ROLES]);
+  const auth = await requireUser(ROLES_LEITURA);
   if (isResponse(auth)) return auth;
   return NextResponse.json({ contracts: await listContracts() });
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireUser([...ROLES]);
+  const auth = await requireUser(ROLES_ESCRITA);
   if (isResponse(auth)) return auth;
   const body = await request.json();
 

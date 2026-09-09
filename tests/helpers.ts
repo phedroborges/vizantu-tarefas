@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import type { Page } from "@playwright/test";
-import { FIXTURE_PATH, TEST_EMAIL, TEST_PASSWORD, TEST_VIEWER_EMAIL } from "./global-setup";
+import { FIXTURE_PATH, TEST_CRIATIVO_EMAIL, TEST_EMAIL, TEST_PASSWORD } from "./global-setup";
 
 export function fixtures(): { memberId: string; viewerId: string; projectId: string } {
   return JSON.parse(readFileSync(FIXTURE_PATH, "utf-8"));
@@ -24,8 +24,8 @@ export async function loginAsTestDono(page: Page) {
   await login(page, TEST_EMAIL);
 }
 
-export async function loginAsTestViewer(page: Page) {
-  await login(page, TEST_VIEWER_EMAIL);
+export async function loginAsTestCriativo(page: Page) {
+  await login(page, TEST_CRIATIVO_EMAIL);
 }
 
 // Mesmo motivo do wait dentro de login(): sem isso, um `toBeHidden()` logo

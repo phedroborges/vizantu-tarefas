@@ -1,7 +1,7 @@
-import { redirect } from "next/navigation";
 import { AdminShell } from "@/components/admin-shell";
 import { TarefasView } from "@/components/tarefas-view";
-import { getCurrentUser } from "@/lib/current-user";
+import { podePlanejar } from "@/lib/permissions";
+import { requirePageAccess } from "@/lib/page-guard";
 import { readMemberPreferences } from "@/lib/storage";
 import { loadTarefasData } from "@/lib/tarefas-data";
 
@@ -9,8 +9,7 @@ export const dynamic = "force-dynamic";
 
 export default async function TarefaPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const user = await getCurrentUser();
-  if (!user) redirect(`/login?next=/tarefas/${id}`);
+  const user = await requirePageAccess("tarefas");
 
   const [{ tasks, projects, members, formatTags, channelTags, statusColors }, storedPreferences] = await Promise.all([
     loadTarefasData(user),
@@ -28,7 +27,8 @@ export default async function TarefaPage({ params }: { params: Promise<{ id: str
         initialStatusColors={statusColors}
         initialPreferences={storedPreferences.preferences}
         hasSavedPreferences={storedPreferences.saved}
-        canEdit={user.role !== "visualizador"}
+        canEdit
+        canDelete={podePlanejar(user.role)}
         canEditStatusColors={user.role === "dono"}
         currentUserId={user.id}
         initialTaskId={id}

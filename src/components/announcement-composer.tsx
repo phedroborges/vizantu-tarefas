@@ -15,7 +15,7 @@ export function AnnouncementComposer({ currentUserRole }: { currentUserRole: Use
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [scope, setScope] = useState<AnnouncementScope>(currentUserRole === "dono" ? "all" : "role");
-  const [scopeRole, setScopeRole] = useState<UserRole>("editor");
+  const [scopeRole, setScopeRole] = useState<UserRole>("social_media");
   const [scopeMemberId, setScopeMemberId] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState("");

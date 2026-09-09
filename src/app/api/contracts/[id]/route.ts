@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiFailure } from "@/lib/api-error";
 import { isResponse, requireUser } from "@/lib/authz";
+import type { UserRole } from "@/lib/types";
 import { buildPaymentClause, PAYMENT_STRUCTURES, replacePaymentClause, type ContractTemplateId, type PaymentMode, type PaymentStructure } from "@/lib/contract-templates";
 import { deleteContract, getContract, updateContract } from "@/lib/storage";
 import { CONTRACT_STATUSES } from "@/lib/types";
 
-const ROLES = ["dono"] as const;
+// Alterar contrato é do dono; o gestor só acompanha (ver o GET em ../route.ts).
+const ROLES_ESCRITA: UserRole[] = ["dono"];
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireUser([...ROLES]);
+  const auth = await requireUser(ROLES_ESCRITA);
   if (isResponse(auth)) return auth;
   const { id } = await params;
   const body = await request.json();
@@ -53,7 +55,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 }
 
 export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireUser([...ROLES]);
+  const auth = await requireUser(ROLES_ESCRITA);
   if (isResponse(auth)) return auth;
   const { id } = await params;
   try {

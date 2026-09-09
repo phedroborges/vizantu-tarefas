@@ -219,6 +219,7 @@ export function PlanoDetailView({
   statusColors,
   currentUserId,
   canEdit = true,
+  canEditTasks = canEdit,
 }: {
   plan: Plan;
   project: Project;
@@ -234,6 +235,7 @@ export function PlanoDetailView({
   statusColors: StatusColor[];
   currentUserId: string;
   canEdit?: boolean;
+  canEditTasks?: boolean;
 }) {
   const [captacoes, setCaptacoes] = useState(initialCaptacoes);
   const [suggestions, setSuggestions] = useState(captureSuggestions);
@@ -856,7 +858,7 @@ export function PlanoDetailView({
           statusColors={statusColors}
           captacoes={captacoes}
           defaultProjectId={plan.projectId}
-          canEdit={canEdit}
+          canEdit={canEditTasks}
           currentUserId={currentUserId}
           onClose={() => setEditingTask(undefined)}
           onSaved={onTaskSaved}

@@ -15,11 +15,9 @@ const EXTENSION_BY_MIME: Record<string, string> = {
 export async function POST(request: NextRequest) {
   const auth = await requireUser();
   if (isResponse(auth)) return auth;
-  // Usado tanto pelo chat da IA (exige aiEnabled) quanto pelas imagens da
-  // descrição da tarefa (exige poder editar tarefas) — libera se qualquer um
-  // dos dois valer.
-  const canUpload = auth.aiEnabled || auth.role === "dono" || auth.role === "editor";
-  if (!canUpload) return NextResponse.json({ error: "Você não tem permissão para enviar imagens." }, { status: 403 });
+  // Todo cargo com login edita tarefa, e imagem na descrição faz parte disso —
+  // a barreira que existia aqui separava editor de visualizador, papéis que não
+  // existem mais.
   const formData = await request.formData();
   const file = formData.get("file");
   if (!(file instanceof File)) {

@@ -28,7 +28,8 @@ const donoUser: CurrentUser = {
   accessibleProjectIds: "all",
   accessibleListKinds: "all",
 };
-const viewerUser: CurrentUser = { ...donoUser, role: "visualizador", accessibleProjectIds: "all", accessibleListKinds: "all" };
+const criativoUser: CurrentUser = { ...donoUser, role: "diretor_criativo", accessibleProjectIds: "all", accessibleListKinds: "all" };
+const socialUser: CurrentUser = { ...donoUser, role: "social_media", accessibleProjectIds: "all", accessibleListKinds: "all" };
 
 beforeAll(async () => {
   if (!hasDatabaseCredentials) return;
@@ -101,21 +102,30 @@ describe.skipIf(!hasDatabaseCredentials)("assistant-tools: planos e avisos", () 
     expect(row!.lists).toEqual(["criativa"]); // confirma que a automação também dispara vindo da IA
   });
 
-  it("4. visualizador é bloqueado nas tools mutantes de plano/aviso", async () => {
+  // A conversa com a IA não pode ser a porta dos fundos do cargo: o que o
+  // diretor criativo não faz clicando, também não faz pedindo.
+  it("4. diretor criativo é bloqueado nas tools de planejamento", async () => {
     const result = await executeTool(
       "create_plan",
       JSON.stringify({ title: "Não deveria criar", projectName: "[E2E] Vitest assistant-tools", kind: "content" }),
-      viewerUser,
+      criativoUser,
     );
-    expect(result).toMatchObject({ error: expect.stringContaining("somente leitura") });
+    expect(result).toMatchObject({ error: expect.stringContaining("Montar e desmontar planejamento") });
   });
 
-  it("5. create_announcement recusa escopo 'all' pra quem não é dono", async () => {
-    const editorUser: CurrentUser = { ...donoUser, role: "editor" };
+  it("5. aviso ao time é de quem gerencia, e escopo 'all' continua só do dono", async () => {
+    const semAcesso = (await executeTool(
+      "create_announcement",
+      JSON.stringify({ body: "[E2E] Aviso via IA", scope: "all" }),
+      socialUser,
+    )) as { error?: string };
+    expect(semAcesso.error).toContain("dono ou do gestor");
+
+    const gestorUser: CurrentUser = { ...donoUser, role: "gestor" };
     const result = (await executeTool(
       "create_announcement",
       JSON.stringify({ body: "[E2E] Aviso via IA", scope: "all" }),
-      editorUser,
+      gestorUser,
     )) as { error?: string; created?: { id: string } };
     expect(result.error).toContain("Só o dono");
 
