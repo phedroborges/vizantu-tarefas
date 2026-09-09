@@ -25,7 +25,7 @@ describe("menções no comentário", () => {
     const textarea = host.querySelector("textarea")!;
     textarea.focus();
     await act(async () => textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
-    await act(async () => new Promise((resolve) => requestAnimationFrame(resolve)));
+    await act(async () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
     expect(textarea.value).toBe("@Erika Iorrana ");
     expect(document.activeElement).toBe(textarea);
     expect(submit).not.toHaveBeenCalled();

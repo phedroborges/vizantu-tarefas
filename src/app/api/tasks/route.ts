@@ -31,6 +31,7 @@ export async function POST(request: NextRequest) {
   try {
     const task = await createTask({
       projectId: body.projectId,
+      createdBy: auth.id,
       name: body.name,
       kind: body.kind,
       dueDate: body.dueDate,

@@ -10,7 +10,12 @@ dotenv.config({ path: path.resolve(__dirname, "../.env.local") });
 // Testa a camada de tools da IA (planos/avisos) direto contra o banco real,
 // sem precisar da OPENAI_API_KEY — executeTool() já é só TypeScript puro
 // chamando storage.ts, o modelo da OpenAI nunca entra nesse caminho.
-const db = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+const hasDatabaseCredentials = Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
+const db = createClient(
+  process.env.SUPABASE_URL || "http://localhost:54321",
+  process.env.SUPABASE_SERVICE_ROLE_KEY || "integration-test-not-configured",
+  { auth: { persistSession: false } },
+);
 
 let projectId: string;
 const donoUser: CurrentUser = {
@@ -26,6 +31,7 @@ const donoUser: CurrentUser = {
 const viewerUser: CurrentUser = { ...donoUser, role: "visualizador", accessibleProjectIds: "all", accessibleListKinds: "all" };
 
 beforeAll(async () => {
+  if (!hasDatabaseCredentials) return;
   const now = new Date().toISOString();
   const { data: project } = await db
     .from("projects")
@@ -36,10 +42,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  if (!hasDatabaseCredentials) return;
   if (projectId) await db.from("projects").delete().eq("id", projectId);
 });
 
-describe("assistant-tools: planos e avisos", () => {
+describe.skipIf(!hasDatabaseCredentials)("assistant-tools: planos e avisos", () => {
   it("1. create_plan cria um plano de conteúdo vinculado ao projeto certo", async () => {
     const result = (await executeTool(
       "create_plan",

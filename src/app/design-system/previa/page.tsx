@@ -13,8 +13,8 @@ import { TarefasView } from "@/components/tarefas-view";
 import { defaultPreferences } from "@/lib/preferences";
 import { parseDescription } from "@/lib/description-sections";
 import {
-  ACESSO_LISTAS, ACESSO_PROJETOS, APROVACOES, CANAIS, CAPTACOES, CATEGORIAS, CONTAGEM_MARCAS,
-  CONTRATOS, CORES_STATUS, DASHBOARD, DOCUMENTOS, FORMATOS, MARCAS, MEMBROS, PLANO, PROJETO,
+  ACESSO_LISTAS, ACESSO_PROJETOS, AGORA, APROVACOES, CANAIS, CAPTACOES, CATEGORIAS, CONTAGEM_MARCAS,
+  CONTRATOS, CORES_STATUS, DOCUMENTOS, FORMATOS, MARCAS, MEMBROS, PLANO, PROJETO,
   PROJETOS, TAREFAS, TAREFAS_DO_PLANO, USUARIO,
 } from "./mock";
 
@@ -48,15 +48,10 @@ export default async function PreviaPage({ searchParams }: { searchParams: Promi
       {tela === "dashboard" ? (
         <DashboardView
           tasks={TAREFAS}
-          projectById={new Map(PROJETOS.map((p) => [p.id, p]))}
-          projectsCount={PROJETOS.length}
-          total={DASHBOARD.total}
-          done={DASHBOARD.done}
-          inProgress={DASHBOARD.inProgress}
-          overdue={DASHBOARD.overdue}
-          projectOverview={DASHBOARD.projectOverview}
-          ranking={DASHBOARD.ranking}
-          maxCount={DASHBOARD.ranking[0]?.count || 1}
+          projects={PROJETOS}
+          members={MEMBROS}
+          tags={[...FORMATOS, ...CANAIS, ...CATEGORIAS]}
+          nowIso={AGORA}
         />
       ) : null}
 

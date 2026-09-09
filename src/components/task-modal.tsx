@@ -44,7 +44,7 @@ const NO_ASSIGNEE = "none";
 const NO_CAPTACAO = "none";
 const NO_PROJECT = "none";
 const AUTOSAVE_DEBOUNCE_MS = 700;
-const ACTIVITY_LABELS: Record<string, string> = { name: "Título", projectId: "Projeto", assigneeId: "Responsável", status: "Status", dueDate: "Entrega", seasonal: "Data fixa", kind: "Tipo", description: "Descrição", driveLink: "Link do Drive", formatTagIds: "Formato", channelTagIds: "Canal", categoryTagIds: "Categoria", planId: "Plano", captacaoId: "Pacote", sequenceOrder: "Ordem", images: "Imagens" };
+const ACTIVITY_LABELS: Record<string, string> = { created: "Criação", name: "Título", projectId: "Projeto", assigneeId: "Responsável", status: "Status", dueDate: "Entrega", seasonal: "Data fixa", kind: "Tipo", description: "Descrição", driveLink: "Link do Drive", formatTagIds: "Formato", channelTagIds: "Canal", categoryTagIds: "Categoria", planId: "Plano", captacaoId: "Pacote", sequenceOrder: "Ordem", images: "Imagens" };
 
 function renderCommentText(text: string, members: Member[]) {
   const names = members.map((member) => member.name).toSorted((a, b) => b.length - a.length);

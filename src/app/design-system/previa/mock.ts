@@ -10,7 +10,7 @@ import type {
 } from "@/lib/types";
 import { DEFAULT_STATUS_COLORS, TASK_STATUSES } from "@/lib/types";
 
-const AGORA = "2026-09-04T12:00:00.000Z";
+export const AGORA = "2026-09-04T12:00:00.000Z";
 
 export const PROJETO: Project = {
   id: "proj-1", name: "TerraNet", client: "TerraNet Telecom", clientRole: "Provedor de internet",

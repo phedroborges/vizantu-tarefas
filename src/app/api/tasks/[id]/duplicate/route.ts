@@ -8,7 +8,7 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
   if (isResponse(auth)) return auth;
   const { id } = await params;
   try {
-    const task = await duplicateTask(id);
+    const task = await duplicateTask(id, auth.id);
     if (!task) return NextResponse.json({ error: "Tarefa não encontrada." }, { status: 404 });
     return NextResponse.json({ task }, { status: 201 });
   } catch (error) {

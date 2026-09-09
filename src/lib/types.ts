@@ -211,6 +211,10 @@ export const TASK_KINDS: { value: TaskKind; label: string }[] = [
 export type Task = {
   id: string;
   projectId: string;
+  /** Membro que criou a tarefa. Tarefas anteriores à adoção deste campo não
+      recebem autoria inferida: analytics precisa distinguir dado ausente de
+      uma ação realmente executada por alguém. */
+  createdBy?: string;
   name: string;
   kind: TaskKind;
   dueDate?: string;

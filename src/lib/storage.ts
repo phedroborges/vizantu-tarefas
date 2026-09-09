@@ -313,6 +313,7 @@ export async function createTag(input: { kind: TagKind; label: string }): Promis
 
 export type TaskInput = {
   projectId: string;
+  createdBy?: string;
   name: string;
   kind?: TaskKind;
   dueDate?: string;
@@ -358,9 +359,11 @@ type TaskRow = {
 };
 
 function mapTask(row: TaskRow): Task {
+  const comments = row.comments ?? [];
   return {
     id: row.id,
     projectId: row.project_id,
+    createdBy: comments.find((comment) => comment.kind === "activity" && comment.fieldKey === "created")?.authorMemberId,
     name: row.name,
     kind: row.kind ?? "tarefa",
     dueDate: row.due_date ?? undefined,
@@ -375,7 +378,7 @@ function mapTask(row: TaskRow): Task {
     lists: row.lists ?? [],
     status: row.status,
     statusHistory: row.status_history ?? [],
-    comments: row.comments ?? [],
+    comments,
     planId: row.plan_id ?? undefined,
     captacaoId: row.captacao_id ?? undefined,
     sequenceOrder: row.sequence_order ?? undefined,
@@ -478,7 +481,14 @@ export async function createTask(input: TaskInput): Promise<Task> {
         lists: deriveListsForStatus(status),
         status,
         status_history: openStatusHistory(status, now),
-        comments: [],
+        // A autoria mora no histórico da tarefa para manter a implantação
+        // retrocompatível com bancos que ainda não têm uma coluna dedicada.
+        // Também evita confundir a primeira edição com a criação real.
+        comments: input.createdBy ? [{
+          id: newId(), author: "Sistema", authorMemberId: input.createdBy,
+          text: "", createdAt: now, kind: "activity", fieldKey: "created",
+          oldValue: null, newValue: input.name.trim(),
+        }] : [],
         plan_id: input.planId || null,
         captacao_id: input.captacaoId || null,
         sequence_order: input.sequenceOrder ?? null,
@@ -497,11 +507,12 @@ export async function createTask(input: TaskInput): Promise<Task> {
 // Cria uma cópia independente da tarefa — mesmos dados, mas id, comentários e
 // histórico de status novos (a cópia começa a contar tempo do zero no status
 // atual, e não herda os comentários do original).
-export async function duplicateTask(id: string): Promise<Task | undefined> {
+export async function duplicateTask(id: string, createdBy?: string): Promise<Task | undefined> {
   const current = await getTask(id);
   if (!current) return undefined;
   return createTask({
     projectId: current.projectId,
+    createdBy,
     name: `${current.name} (cópia)`,
     kind: current.kind,
     dueDate: current.dueDate,
@@ -878,7 +889,7 @@ export async function createBrandWorkflow(input: { projectId: string; title: str
   try {
     const tasks: Task[] = [];
     for (const [sequenceOrder, name] of BRAND_STAGES.entries()) {
-      tasks.push(await createTask({ projectId: input.projectId, planId: plan.id, name, sequenceOrder }));
+      tasks.push(await createTask({ projectId: input.projectId, planId: plan.id, createdBy: input.createdBy, name, sequenceOrder }));
     }
     const activePlan = await updatePlan(plan.id, { status: "active" });
     return { plan: activePlan || plan, tasks };

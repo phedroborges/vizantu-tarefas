@@ -196,6 +196,7 @@ async function toolCreateTask(
   const task = await createTask({
     name: args.name,
     projectId,
+    createdBy: caller.id,
     kind,
     assigneeId,
     dueDate: args.dueDate,
@@ -443,6 +444,7 @@ async function toolAddPlanItem(
   const formatTagIds = await resolveTagIds(args.formatLabels, "formato");
   const task = await createTask({
     projectId: plan.projectId,
+    createdBy: caller.id,
     name: args.name,
     planId: plan.id,
     captacaoId,
