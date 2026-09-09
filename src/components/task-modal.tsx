@@ -20,6 +20,7 @@ import { celebrateFrom } from "@/lib/celebrate";
 import { MentionCommentForm } from "@/components/mention-comment-form";
 import { DatePicker } from "@/components/vz/date-picker";
 import { isUserComment } from "@/lib/task-activity";
+import { findTaskGaps } from "@/lib/task-readiness";
 import { Avatar } from "@/components/avatar";
 
 type Draft = {
@@ -401,6 +402,20 @@ export function TaskModal({
     return text.length > 70 ? `${text.slice(0, 67)}…` : text;
   }
 
+  // O mesmo critério do painel gerencial, mostrado para quem está com a tarefa
+  // na mão: o gestor não deveria descobrir amanhã, no dashboard, uma falta que
+  // dava pra resolver agora. Só numa tarefa que já existe — numa tarefa nova
+  // tudo ainda está em branco por natureza e o aviso seria só barulho.
+  const gaps = useMemo(() => isEditing ? findTaskGaps({
+    status: draft.status,
+    kind: draft.kind,
+    driveLink: draft.driveLink,
+    assigneeId: draft.assigneeId === NO_ASSIGNEE ? undefined : draft.assigneeId,
+    dueDate: draft.dueDate,
+    formatTagIds: draft.formatTagIds,
+    channelTagIds: draft.channelTagIds,
+  }, [...formatTags, ...channelTags]) : [], [isEditing, draft.status, draft.kind, draft.driveLink, draft.assigneeId, draft.dueDate, draft.formatTagIds, draft.channelTagIds, formatTags, channelTags]);
+
   const timeline = useMemo(() => [
     ...activity.map((event) => ({ kind: "activity" as const, id: `activity-${event.id}`, createdAt: event.createdAt, event })),
     ...comments.map((comment) => ({ kind: "comment" as const, id: `comment-${comment.id}`, createdAt: comment.createdAt, comment })),
@@ -438,6 +453,16 @@ export function TaskModal({
         </DialogHeader>
         <div className="modal-body task-modal-body">
           {error ? <div className="form-message">{error}</div> : null}
+          {gaps.length ? (
+            <div className="task-gaps" role="status">
+              {gaps.map((gap) => (
+                <p className={`task-gap${gap.critical ? " is-critical" : ""}`} key={gap.type}>
+                  <TriangleAlert size={13} strokeWidth={2.4} />
+                  <span><strong>{gap.label}.</strong> {gap.message}</span>
+                </p>
+              ))}
+            </div>
+          ) : null}
           <div className="task-modal-split">
             <div className="task-modal-pane-meta meta-rows">
               <MetaRow icon={<Folder size={13} />} label="Projeto">

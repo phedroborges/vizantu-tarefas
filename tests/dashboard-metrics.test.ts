@@ -84,6 +84,70 @@ describe("dashboard gerencial", () => {
     expect(metrics.delayBuckets.find((bucket) => bucket.label === "1 dia")?.count).toBe(1);
   });
 
+  it("separa o tempo produzindo do tempo esperando na fila", () => {
+    // t1 produz 5 dias (criação + duas voltas de ajuste + revisão) e t2 produz
+    // 7d22h; a espera é o "pronto para criação" e o tempo parado aguardando
+    // aprovação. Finalizado fica fora dos dois lados.
+    expect(metrics.flowEfficiency.workingMs).toBe(12 * 86_400_000 + 22 * 3_600_000);
+    expect(metrics.flowEfficiency.waitingMs).toBe(3 * 86_400_000 + 4 * 3_600_000);
+    expect(metrics.flowEfficiency.ratio).toBe(80);
+  });
+
+  it("mede o prazo real de fechamento com mediana, P85 e distribuição", () => {
+    expect(metrics.leadTime.samples).toBe(1);
+    expect(metrics.leadTime.p50Ms).toBe(7 * 86_400_000 + 23 * 3_600_000);
+    expect(metrics.leadTime.p85Ms).toBe(metrics.leadTime.p50Ms);
+    expect(metrics.leadTime.histogram.find((bucket) => bucket.label === "7–14d")?.count).toBe(1);
+    expect(metrics.leadTime.histogram.reduce((sum, bucket) => sum + bucket.count, 0)).toBe(1);
+  });
+
+  it("compara a entrega com a data prometida e com a data remarcada", () => {
+    expect(metrics.punctuality).toMatchObject({ delivered: 1, keptOriginal: 1, keptCurrent: 1, originalRate: 100, currentRate: 100, averageSlipDays: 0 });
+  });
+
+  it("penaliza a promessa original quando a entrega só coube depois de remarcar", () => {
+    const remarcada = task({
+      id: "remarcada", name: "Fechou depois de empurrar", status: "finalizado", dueDate: "2026-09-08",
+      statusHistory: [
+        { status: "em_criacao", enteredAt: "2026-09-01T12:00:00.000Z", exitedAt: "2026-09-08T12:00:00.000Z" },
+        { status: "finalizado", enteredAt: "2026-09-08T12:00:00.000Z", exitedAt: null },
+      ],
+      comments: [{ id: "r1", author: "Sistema", authorMemberId: "m1", text: "", kind: "activity", fieldKey: "dueDate", oldValue: "2026-09-04", newValue: "2026-09-08", createdAt: "2026-09-03T12:00:00.000Z" }],
+    });
+    const result = buildDashboardMetrics({ tasks: [remarcada], projects, members, tags, nowIso: NOW });
+    expect(result.punctuality).toMatchObject({ delivered: 1, keptCurrent: 1, keptOriginal: 0, currentRate: 100, originalRate: 0, averageSlipDays: 4 });
+  });
+
+  it("envelhece a tarefa aberta pelo tempo parado no status atual", () => {
+    expect(metrics.aging).toHaveLength(1);
+    expect(metrics.aging[0]).toMatchObject({ taskId: "t1", status: "para_aprovacao", days: 2.1, overdue: true, assigneeName: "Ana" });
+    // O limite saudável nasce do P85 do prazo real, não de um número escolhido.
+    expect(metrics.agingThresholdDays).toBe(8);
+  });
+
+  it("fotografa a distribuição entre fila, produção e entrega a cada semana", () => {
+    expect(metrics.cumulativeFlow).toHaveLength(8);
+    expect(metrics.cumulativeFlow.at(-1)).toMatchObject({ nao_iniciada: 0, em_andamento: 0, feita: 2, total: 2 });
+    const meioDaProducao = metrics.cumulativeFlow.find((point) => point.start === "2026-09-06");
+    expect(meioDaProducao).toMatchObject({ em_andamento: 2, feita: 0 });
+  });
+
+  it("resume a saúde de cada cliente pela carteira aberta", () => {
+    expect(metrics.projectHealth).toHaveLength(1);
+    expect(metrics.projectHealth[0]).toMatchObject({ id: "p1", total: 3, done: 1, open: 2, overdue: 1, rework: 1, progress: 33 });
+    expect(metrics.projectHealth[0].alerts).toBe(metrics.alerts.length);
+  });
+
+  it("aponta quem não registrou nenhuma ação e não tem carteira", () => {
+    expect(metrics.idleMembers.map((member) => member.memberId)).toEqual(["m3"]);
+  });
+
+  it("leva a instrução do aviso junto com o rótulo", () => {
+    const semLink = metrics.alerts.find((alert) => alert.id === "t1:link")!;
+    expect(semLink.message).toContain("Cole o link");
+    expect(metrics.alerts.filter((alert) => alert.taskId === "t3").map((alert) => alert.type)).toEqual(["responsavel", "prazo", "formato", "canal"]);
+  });
+
   it("atribui o tempo histórico à pessoa responsável naquele momento", () => {
     const reassigned = task({
       id: "troca", name: "Trocou de responsável", status: "revisao", assigneeId: "m2",

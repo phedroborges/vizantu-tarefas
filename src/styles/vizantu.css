@@ -57,6 +57,7 @@
   --vz-panel: #ffffff;
   --vz-panel-hover: #fafafc;
   --vz-panel-active: #f4f4f8;
+  --vz-panel-muted: #eceef4;
   --vz-overlay: rgba(18, 18, 28, 0.42);
 
   /* ---------- Traços ---------- */
@@ -171,6 +172,7 @@
   --vz-panel: #16171f;
   --vz-panel-hover: #1c1d27;
   --vz-panel-active: #22232e;
+  --vz-panel-muted: #2a2b38;
   --vz-overlay: rgba(0, 0, 0, 0.62);
 
   --vz-line: #23242f;

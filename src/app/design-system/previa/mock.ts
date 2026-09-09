@@ -9,6 +9,7 @@ import type {
   Contract, KnowledgeDoc, Member, Plan, PlanCaptacao, PlanItemApproval, Project, StatusColor, Tag, Task,
 } from "@/lib/types";
 import { DEFAULT_STATUS_COLORS, TASK_STATUSES } from "@/lib/types";
+import type { Comment, StatusHistoryEntry, TaskStatus } from "@/lib/types";
 
 export const AGORA = "2026-09-04T12:00:00.000Z";
 
@@ -58,14 +59,67 @@ const SEMENTES: Semente[] = [
   { nome: "O problema pode não ser a sua internet, pode ser o seu Wi-Fi", status: "revisao", dono: "m2", prazo: "2026-09-14", formato: "f2", captacao: "cap-3" },
   { nome: "Casa Conectada na Primavera", status: "para_aprovacao", dono: "m1", prazo: "2026-09-22", formato: "f3", captacao: "cap-4" },
   { nome: "7 de Setembro: Independência do Brasil", status: "aprovado", dono: "m3", prazo: "2026-09-07", formato: "f3", captacao: "cap-4" },
-  { nome: "Aproveitando seu colega de serviço", status: "aguardando_captacao", dono: "m1", prazo: "2026-09-17", formato: "f1", captacao: "cap-1" },
+  { nome: "Aproveitando seu colega de serviço", status: "aguardando_captacao", dono: "m1", prazo: "2026-09-03", atrasada: true, formato: "f1", captacao: "cap-1" },
   { nome: "A velocidade que realmente importa", status: "problema", dono: "m2", prazo: "2026-08-25", formato: "f1", captacao: "cap-2", atrasada: true },
   { nome: "Tentando explicar o que a TerraNet faz", status: "pronto_para_criacao", dono: "m3", prazo: "2026-09-24", formato: "f1", captacao: "cap-1" },
   { nome: "Quando a internet instável interfere na rotina", status: "ajuste", dono: "m2", prazo: "2026-09-28", formato: "f1", captacao: "cap-2" },
-  { nome: "Instalação de Antena no Prédio Savana", status: "rascunho", dono: "m2", prazo: "2026-09-08", formato: "f1", captacao: "cap-1" },
+  { nome: "Instalação de Antena no Prédio Savana", status: "rascunho", dono: "m2", prazo: "2026-08-31", atrasada: true, formato: "f1", captacao: "cap-1" },
+  { nome: "Bastidores da equipe de campo", status: "finalizado", dono: "m3", prazo: "2026-09-01", formato: "f1", captacao: "cap-1" },
+  { nome: "Depoimento do cliente do Setor Central", status: "finalizado", dono: "m2", prazo: "2026-08-28", formato: "f2", captacao: "cap-2", atrasada: true },
 ];
 
+const HORA = 3_600_000;
+const ORDEM = new Map(TASK_STATUSES.map(({ value }, posicao) => [value, posicao]));
+// Caminho comum de uma demanda de conteúdo. O status da semente entra junto
+// mesmo quando fica fora da trilha (ajuste, problema, aguardando captação).
+const TRILHA: TaskStatus[] = ["rascunho", "aprovacao_copy", "pronto_para_criacao", "em_criacao", "revisao", "para_aprovacao", "aprovado", "finalizado"];
+
+// Um histórico plano (tudo entrando agora) deixaria a prévia do dashboard com
+// todos os gráficos zerados — e é justamente o desenho deles que a página
+// existe para mostrar. Então cada tarefa recebe uma passagem plausível pelo
+// funil, com duração variando por índice e uma volta a mais em Ajuste em parte
+// delas, que é o que acontece na operação de verdade.
+function historico(status: TaskStatus, indice: number): StatusHistoryEntry[] {
+  const alvo = ORDEM.get(status)!;
+  const etapas = [...new Set([...TRILHA.filter((etapa) => ORDEM.get(etapa)! <= alvo), status])]
+    .sort((a, b) => ORDEM.get(a)! - ORDEM.get(b)!);
+  if (indice % 3 === 1 && alvo > ORDEM.get("revisao")!) etapas.splice(etapas.indexOf("revisao") + 1, 0, "ajuste", "revisao");
+  const duracoes = etapas.map((_, posicao) => (14 + ((indice * 11 + posicao * 17) % 76)) * HORA);
+  let instante = new Date(AGORA).getTime() - duracoes.reduce((soma, valor) => soma + valor, 0);
+  return etapas.map((etapa, posicao) => {
+    const entrada = instante;
+    instante += duracoes[posicao];
+    const ultima = posicao === etapas.length - 1;
+    return { status: etapa, enteredAt: new Date(entrada).toISOString(), exitedAt: ultima ? null : new Date(instante).toISOString() };
+  });
+}
+
+function conversa(semente: Semente, indice: number, criadoEm: string): Comment[] {
+  const comentarios: Comment[] = [];
+  for (let volta = 0; volta < indice % 4; volta += 1) {
+    comentarios.push({
+      id: `t${indice + 1}-c${volta + 1}`, author: MEMBROS[(indice + volta) % MEMBROS.length].name,
+      authorMemberId: MEMBROS[(indice + volta) % MEMBROS.length].id,
+      text: volta === 0 ? "Ajustei a legenda, dá uma olhada." : "Fechado, subindo a versão nova no Drive.",
+      createdAt: new Date(new Date(criadoEm).getTime() + (volta + 1) * 9 * HORA).toISOString(),
+    });
+  }
+  // Remarcação de prazo: é o registro que alimenta a tabela de datas
+  // reprogramadas e a comparação com a data prometida no início.
+  if (semente.atrasada || indice % 5 === 2) {
+    const anterior = new Date(new Date(`${semente.prazo}T12:00:00.000Z`).getTime() - 4 * 24 * HORA).toISOString().slice(0, 10);
+    comentarios.push({
+      id: `t${indice + 1}-remarcado`, author: "Sistema", authorMemberId: "m4", text: "", kind: "activity",
+      fieldKey: "dueDate", oldValue: anterior, newValue: semente.prazo,
+      createdAt: new Date(new Date(criadoEm).getTime() + 30 * HORA).toISOString(),
+    });
+  }
+  return comentarios;
+}
+
 function tarefa(semente: Semente, indice: number, comPlano: boolean): Task {
+  const linhaDoTempo = historico(semente.status, indice);
+  const criadoEm = linhaDoTempo[0]?.enteredAt || AGORA;
   return {
     id: `t${indice + 1}`,
     projectId: "proj-1",
@@ -81,14 +135,15 @@ function tarefa(semente: Semente, indice: number, comPlano: boolean): Task {
     categoryTagIds: [indice % 3 === 0 ? "k1" : "k2"],
     lists: ["criativa"],
     status: semente.status,
-    statusHistory: [{ status: semente.status, enteredAt: AGORA, exitedAt: null }],
-    comments: [],
+    statusHistory: linhaDoTempo,
+    comments: conversa(semente, indice, criadoEm),
+    createdBy: MEMBROS[indice % 2 === 0 ? 3 : indice % MEMBROS.length].id,
     planId: comPlano ? "plano-1" : undefined,
     planKind: comPlano ? "content" : undefined,
     captacaoId: comPlano ? semente.captacao : undefined,
     sequenceOrder: indice,
     seasonal: semente.nome.startsWith("7 de Setembro"),
-    createdAt: AGORA,
+    createdAt: criadoEm,
     updatedAt: AGORA,
   };
 }
@@ -164,21 +219,3 @@ export const DOCUMENTOS: KnowledgeDoc[] = [
 export const ACESSO_PROJETOS: Record<string, string[]> = { m1: ["proj-1"], m2: ["proj-1", "proj-2"] };
 export const ACESSO_LISTAS: Record<string, ("estrategica" | "criativa")[]> = { m1: ["criativa"], m2: ["criativa", "estrategica"] };
 
-// Números já calculados do dashboard — a página real calcula isto a partir do
-// banco; aqui eles vêm prontos porque quem estamos olhando é o desenho.
-export const DASHBOARD = {
-  total: TAREFAS.length,
-  done: TAREFAS.filter((t) => t.status === "finalizado").length,
-  inProgress: 4,
-  overdue: 1,
-  projectOverview: PROJETOS.map((project, i) => {
-    const total = [6, 3, 1][i] ?? 1;
-    const done = [4, 1, 0][i] ?? 0;
-    return { project, total, done, rate: Math.round((done / total) * 100) };
-  }),
-  ranking: [
-    { name: "Cynthia Almeida", count: 4 },
-    { name: "Erika Iorrana", count: 4 },
-    { name: "Luis Fontes", count: 2 },
-  ],
-};

@@ -8,6 +8,7 @@ import {
 } from "@/lib/dates";
 import { responseError } from "@/lib/request-error";
 import { useSetPageDetail } from "@/lib/page-context";
+import { findTaskGaps } from "@/lib/task-readiness";
 import { STATUS_GROUPS, TASK_COLUMNS, TASK_LIST_KINDS, TASK_STATUSES } from "@/lib/types";
 import type { Member, Project, StatusColor, Tag, Task, TaskColumnKey, TaskListKind, TaskStatus } from "@/lib/types";
 import { TaskModal } from "@/components/task-modal";
@@ -399,12 +400,18 @@ export function TarefasView({
         return <StatusTag status={task.status} colorByStatus={colorByStatus} />;
       case "lists":
         return task.lists.length ? task.lists.map((kind) => <span className="badge list" key={kind}>{LIST_LABELS[kind]}</span>) : "—";
-      case "driveLink":
-        return task.driveLink ? (
+      case "driveLink": {
+        if (task.driveLink) return (
           <a href={task.driveLink} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
             Abrir
           </a>
-        ) : "—";
+        );
+        // Um traço não cobra nada de ninguém. Quando a etapa já depende do
+        // material, a célula vazia vira aviso — é o mesmo critério que o
+        // dashboard usa para contar bloqueio.
+        const linkGap = findTaskGaps(task).find((gap) => gap.type === "link");
+        return linkGap ? <span className={`link-flag${linkGap.critical ? " is-critical" : ""}`} title={linkGap.message}>Falta link</span> : "—";
+      }
       default:
         return null;
     }
