@@ -1,10 +1,11 @@
 "use client";
 
 import { AlertCircle, CalendarClock, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Copy, ExternalLink, ImageIcon, Images, Link2, MessageCircleMore, Play, Sparkles, Video, X } from "lucide-react";
-import { useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { renderMarkdownLite } from "@/components/markdown-lite";
 import { Button, Count, IconButton, Tag } from "@/components/vz";
 import { DatePicker } from "@/components/vz/date-picker";
+import { canReviewItem } from "@/lib/approval-workflow";
 import { burst } from "@/lib/confetti";
 import { renderScriptView } from "@/components/script-table";
 import { descriptionHeadingKey, parseDescription } from "@/lib/description-sections";
@@ -96,6 +97,35 @@ export function ClientDashboard({
   initialScore: number | null;
 }) {
   const [items, setItems] = useState(initialItems);
+  const submission = useRef({ busy: false, generation: 0 });
+  useEffect(() => {
+    const controller = new AbortController();
+    let refreshing = false;
+    async function refreshItems() {
+      if (document.visibilityState !== "visible" || submission.current.busy || refreshing) return;
+      refreshing = true;
+      const generation = submission.current.generation;
+      try {
+        const response = await fetch("/api/c/items", { cache: "no-store", signal: controller.signal });
+        if (!response.ok) return;
+        const result = await response.json();
+        if (!controller.signal.aborted && !submission.current.busy && generation === submission.current.generation) setItems(result.items);
+      } catch {
+        // Uma falha de atualização não apaga o plano nem o texto em edição.
+      } finally {
+        refreshing = false;
+      }
+    }
+    const interval = window.setInterval(refreshItems, 15_000);
+    window.addEventListener("focus", refreshItems);
+    document.addEventListener("visibilitychange", refreshItems);
+    return () => {
+      controller.abort();
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshItems);
+      document.removeEventListener("visibilitychange", refreshItems);
+    };
+  }, []);
   const [score, setScore] = useState(initialScore);
   const [surveyOpen, setSurveyOpen] = useState(false);
   // Guarda só o id, não o objeto — assim o modal sempre reflete o item mais
@@ -139,7 +169,7 @@ export function ClientDashboard({
   const reviewedRate = items.length ? Math.round((reviewedCount / items.length) * 100) : 0;
   const approvalRate = items.length ? Math.round((approvedInStageCount / items.length) * 100) : 0;
   const adjustmentCount = items.filter((i) => i.approvalStatus === "changes_requested" || i.approvalStatus === "rejected").length;
-  const pendingCount = items.filter((i) => i.approvalStatus === "pending").length;
+  const pendingCount = items.filter(canReviewItem).length;
   const lastDeliveries = useMemo(
     () => [...items].filter((i) => isCreativeStage(i) && i.approvalStatus === "approved" && (i.status === "aprovado" || i.status === "finalizado")).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 3),
     [items],
@@ -165,23 +195,30 @@ export function ClientDashboard({
   }
 
   async function submitReview(item: DashboardItem, status: "approved" | "changes_requested" | "rejected", comment: string, buttonEl?: HTMLElement) {
-    const name = reviewerName.trim() || "Cliente";
-    window.localStorage.setItem(REVIEWER_KEY, name);
-    const response = await fetch("/api/c/approve", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ taskId: item.id, reviewerName: name, status, comment }),
-    });
-    if (!response.ok) return;
-    const result = await response.json();
-    updateItemLocal(item.id, { approvalStatus: result.status, reviewVersion: result.reviewVersion, status: result.taskStatus });
-    if (status === "approved" && buttonEl) {
-      const rect = buttonEl.getBoundingClientRect();
-      burst(rect.left + rect.width / 2, rect.top + rect.height / 2, 60);
+    if (submission.current.busy) return;
+    submission.current.busy = true;
+    submission.current.generation += 1;
+    try {
+      const name = reviewerName.trim() || "Cliente";
+      window.localStorage.setItem(REVIEWER_KEY, name);
+      const response = await fetch("/api/c/approve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId: item.id, reviewerName: name, status, comment, reviewVersion: item.reviewVersion }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Não foi possível enviar sua decisão. Tente novamente.");
+      updateItemLocal(item.id, { approvalStatus: result.status, reviewVersion: result.reviewVersion, status: result.taskStatus });
+      if (status === "approved" && buttonEl) {
+        const rect = buttonEl.getBoundingClientRect();
+        burst(rect.left + rect.width / 2, rect.top + rect.height / 2, 60);
+      }
+      const currentIndex = orderedItems.findIndex((entry) => entry.id === item.id);
+      const nextItem = orderedItems.slice(currentIndex + 1).find(canReviewItem) || orderedItems.slice(0, currentIndex).find(canReviewItem);
+      setTimeout(() => setActiveItemId(status === "approved" && nextItem ? nextItem.id : null), status === "approved" ? 650 : 150);
+    } finally {
+      submission.current.busy = false;
     }
-    const currentIndex = orderedItems.findIndex((entry) => entry.id === item.id);
-    const nextItem = orderedItems.slice(currentIndex + 1).find((entry) => entry.approvalStatus === "pending") || orderedItems.slice(0, currentIndex).find((entry) => entry.approvalStatus === "pending");
-    setTimeout(() => setActiveItemId(status === "approved" && nextItem ? nextItem.id : null), status === "approved" ? 650 : 150);
   }
 
   async function submitSurvey(newScore: number) {
@@ -346,6 +383,7 @@ export function ClientDashboard({
 
       {activeItem ? (
         <ApprovalModal
+          key={`${activeItem.id}:${activeItem.reviewVersion}`}
           item={activeItem}
           scheduleItems={orderedItems}
           reviewerName={reviewerName}
@@ -498,8 +536,22 @@ function ApprovalModal({
   reviewerName: string;
   onReviewerNameChange: (v: string) => void;
   onClose: () => void;
-  onSubmit: (item: DashboardItem, status: "approved" | "changes_requested" | "rejected", comment: string, buttonEl?: HTMLElement) => void;
+  onSubmit: (item: DashboardItem, status: "approved" | "changes_requested" | "rejected", comment: string, buttonEl?: HTMLElement) => Promise<void>;
 }) {
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+  async function decide(status: "approved" | "changes_requested" | "rejected", comment: string, buttonEl?: HTMLElement) {
+    if (sending) return;
+    setSending(true);
+    setError("");
+    try {
+      await onSubmit(item, status, comment, buttonEl);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Não foi possível enviar sua decisão. Tente novamente.");
+    } finally {
+      setSending(false);
+    }
+  }
   const [comment, setComment] = useState("");
   const [pendingAction, setPendingAction] = useState<"changes_requested" | "rejected" | null>(null);
   const [dateRequestOpen, setDateRequestOpen] = useState(false);
@@ -579,11 +631,17 @@ function ApprovalModal({
             {item.approvalStatus === "approved" ? <Check size={18} className="cd-celebrate-icon" /> : <X size={18} />}
             <span><strong>{item.approvalStatus === "approved" ? "Aprovado" : item.approvalStatus === "changes_requested" ? "Ajuste solicitado" : "Reprovado"}</strong>Sua decisão nesta rodada foi registrada. Uma nova resposta só será liberada quando a equipe abrir outra versão.</span>
           </div>
+        ) : !canReviewItem(item) ? (
+          <div className="cd-material-wait"><Clock3 size={15} />{creativeStage || item.status === "para_aprovacao" ? "A criação será liberada assim que a equipe disponibilizar o material para aprovação." : "Aguarde a equipe enviar este conteúdo para aprovação."}</div>
         ) : (
           <>
+            {error ? <p className="cd-reviewer-warning" role="alert">{error}</p> : null}
+            {sending ? <p role="status">Enviando sua decisão…</p> : null}
             {pendingAction ? (
               <textarea
                 autoFocus
+                required
+                aria-label={pendingAction === "rejected" ? "Motivo da reprovação (obrigatório)" : "Ajuste solicitado (obrigatório)"}
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 placeholder={pendingAction === "rejected" ? "Conta pra gente o motivo da reprovação" : "O que precisa ajustar?"}
@@ -595,24 +653,24 @@ function ApprovalModal({
                 ref={approveRef}
                 type="button"
                 className="cd-btn approve"
-                disabled={!reviewerName.trim()}
-                onClick={() => onSubmit(item, "approved", "", approveRef.current || undefined)}
+                disabled={sending || !reviewerName.trim()}
+                onClick={() => decide("approved", "", approveRef.current || undefined)}
               >
                 {creativeStage ? "Aprovar criação" : "Aprovar texto"}
               </button>
               {pendingAction === "changes_requested" ? (
-                <button type="button" className="cd-btn request" disabled={!comment.trim() || !reviewerName.trim()} onClick={() => onSubmit(item, "changes_requested", comment)}>
+                <button type="button" className="cd-btn request" disabled={sending || !comment.trim() || !reviewerName.trim()} onClick={() => decide("changes_requested", comment)}>
                   Enviar ajuste de {creativeStage ? "criação" : "texto"}
                 </button>
               ) : (
-                <button type="button" className="cd-btn request" onClick={() => setPendingAction("changes_requested")}>Pedir ajuste</button>
+                <button type="button" className="cd-btn request" disabled={sending} onClick={() => setPendingAction("changes_requested")}>Pedir ajuste</button>
               )}
               {pendingAction === "rejected" ? (
-                <button type="button" className="cd-btn reject" disabled={!comment.trim() || !reviewerName.trim()} onClick={() => onSubmit(item, "rejected", comment)}>
+                <button type="button" className="cd-btn reject" disabled={sending || !comment.trim() || !reviewerName.trim()} onClick={() => decide("rejected", comment)}>
                   Confirmar reprovação
                 </button>
               ) : (
-                <button type="button" className="cd-btn reject" onClick={() => setPendingAction("rejected")}>Reprovar</button>
+                <button type="button" className="cd-btn reject" disabled={sending} onClick={() => setPendingAction("rejected")}>Reprovar</button>
               )}
             </div>
           </>

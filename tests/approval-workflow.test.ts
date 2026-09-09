@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { approvalRound, approvalStage, derivePlanStage, formatRequiresCapture, nextApprovalReviewVersion, planStageLabel, summarizeApprovalRound, taskStatusAfterClientDecision } from "../src/lib/approval-workflow";
+import { canReviewItem, approvalRound, approvalStage, derivePlanStage, formatRequiresCapture, nextApprovalReviewVersion, planStageLabel, summarizeApprovalRound, taskStatusAfterClientDecision } from "../src/lib/approval-workflow";
 
 describe("fluxo de aprovação em duas etapas", () => {
   it("separa versões de texto e criativo em rodadas legíveis", () => {
@@ -50,14 +50,40 @@ describe("fluxo de aprovação em duas etapas", () => {
     expect(formatRequiresCapture(["Stories"])).toBe(false);
   });
 
+  it("abre a primeira rodada de texto ao enviar pelo status", () => {
+    expect(nextApprovalReviewVersion(undefined, "aprovacao_copy", false)).toBe(1);
+  });
+
   it("reabre uma nova rodada de texto após ajuste ou reprovação", () => {
-    expect(nextApprovalReviewVersion({ status: "changes_requested", reviewVersion: 1 }, "para_aprovacao", true)).toBe(2);
+    expect(nextApprovalReviewVersion({ status: "changes_requested", reviewVersion: 1 }, "aprovacao_copy", true)).toBe(2);
     expect(nextApprovalReviewVersion({ status: "rejected", reviewVersion: 2 }, "aprovacao_copy", false)).toBe(3);
   });
 
-  it("só inicia a criação depois do texto aprovado e com material anexado", () => {
+  it("só inicia a criação quando o status e o link estão prontos", () => {
     expect(nextApprovalReviewVersion({ status: "approved", reviewVersion: 1 }, "para_aprovacao", false)).toBeUndefined();
     expect(nextApprovalReviewVersion({ status: "approved", reviewVersion: 1 }, "para_aprovacao", true)).toBe(100);
+  });
+
+  it("libera cada criativo sem depender de uma decisão anterior de texto", () => {
+    for (const current of [undefined, ...(["pending", "approved", "changes_requested", "rejected"] as const).map((status) => ({ status, reviewVersion: 1 }))]) {
+      expect(nextApprovalReviewVersion(current, "para_aprovacao", true)).toBe(100);
+      expect(nextApprovalReviewVersion(current, "para_aprovacao", false)).toBeUndefined();
+      expect(nextApprovalReviewVersion(current, "pronto_para_criacao", true)).toBeUndefined();
+    }
+  });
+
+  it("não duplica uma rodada pendente quando o conteúdo é salvo novamente", () => {
+    expect(nextApprovalReviewVersion({ status: "pending", reviewVersion: 100 }, "para_aprovacao", true)).toBeUndefined();
+  });
+
+  it("só permite responder a etapa disponível e ainda não decidida", () => {
+    const item = { status: "para_aprovacao", materialLink: "https://example.com/creative", reviewVersion: 100, approvalStatus: "pending" as const };
+    expect(canReviewItem(item)).toBe(true);
+    expect(canReviewItem({ ...item, materialLink: "  " })).toBe(false);
+    expect(canReviewItem({ ...item, status: "ajuste" })).toBe(false);
+    expect(canReviewItem({ ...item, approvalStatus: "approved" })).toBe(false);
+    expect(canReviewItem({ ...item, reviewVersion: 1 })).toBe(false);
+    expect(canReviewItem({ ...item, reviewVersion: 1, status: "aprovacao_copy" })).toBe(true);
   });
 
   it("reabre uma nova rodada de criativo com o link do material", () => {

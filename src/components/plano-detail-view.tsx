@@ -283,18 +283,7 @@ export function PlanoDetailView({
   });
   const activeStage = hasCreativeRound ? "creative" as const : "copy" as const;
   const activeSummary = summarizeApprovalRound(activeStage === "creative" ? creativeApprovals : copyApprovals, activeStage);
-  const creativeBlockers = tasks.flatMap((task) => {
-    const approval = approvalByTask.get(task.id);
-    const blockers: string[] = [];
-    if (!approval || (approval.reviewVersion < 100 && approval.status !== "approved")) blockers.push(`${task.name}: texto ainda não aprovado`);
-    if (!task.driveLink?.trim()) blockers.push(`${task.name}: link do material não informado`);
-    return blockers;
-  });
-  const approvedTextCount = tasks.filter((task) => {
-    const approval = approvalByTask.get(task.id);
-    return Boolean(approval && (approval.reviewVersion >= 100 || approval.status === "approved"));
-  }).length;
-  const linkedMaterialCount = tasks.filter((task) => task.driveLink?.trim()).length;
+  const readyCreativeCount = tasks.filter((task) => task.status === "para_aprovacao" && task.driveLink?.trim()).length;
 
   function showToast(message: string) {
     setToast(message);
@@ -662,22 +651,14 @@ export function PlanoDetailView({
               <Tag tone="violet">{activeStage === "copy" ? "Aprovação de texto" : "Aprovação de criativos"}</Tag>
               <span className="vz-caption vz-plan-flow__count">{activeSummary.reviewed} de {activeSummary.total} revisados</span>
             </div>
-            <Progress value={activeSummary.reviewed} total={activeSummary.total} label="Textos aprovados pelo cliente" />
+            <Progress value={activeSummary.reviewed} total={activeSummary.total} label={activeStage === "creative" ? "Criativos revisados pelo cliente" : "Textos revisados pelo cliente"} />
             {workflowError ? <div className="form-message" role="alert">{workflowError}</div> : null}
             {canEdit ? (
               <div className="vz-plan-flow__actions">
                 <Button type="button" variant="success" size="sm" onClick={() => openApprovalRound("copy")}><Send size={14} /> Enviar textos pendentes</Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  disabled={creativeBlockers.length > 0}
-                  title={creativeBlockers.length ? "Resolva os requisitos indicados." : undefined}
-                  onClick={() => openApprovalRound("creative")}
-                ><Palette size={14} /> Enviar criativos</Button>
                 <span className="vz-caption">
-                  Textos aprovados {approvedTextCount}/{tasks.length} · links {linkedMaterialCount}/{tasks.length}
-                  {creativeBlockers.length ? ` · faltam ${creativeBlockers.length} para abrir os criativos` : " · pronto para os criativos"}
+                  {readyCreativeCount} criativo{readyCreativeCount === 1 ? "" : "s"} disponível{readyCreativeCount === 1 ? "" : "is"} para aprovação.
+                  {" "}Cada criativo é liberado automaticamente com o status “Para aprovação” e o link do material.
                 </span>
               </div>
             ) : null}

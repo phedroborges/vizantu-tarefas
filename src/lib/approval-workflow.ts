@@ -32,25 +32,32 @@ export function taskStatusAfterClientDecision(stage: ApprovalStage, status: Plan
   return stage === "creative" ? "para_aprovacao" : "aprovacao_copy";
 }
 
+export function canReviewItem(item: {
+  status: string;
+  approvalStatus: PlanApprovalStatus;
+  reviewVersion: number;
+  materialLink: string | null;
+}): boolean {
+  if (item.approvalStatus !== "pending") return false;
+  return item.reviewVersion >= 100
+    ? item.status === "para_aprovacao" && Boolean(item.materialLink?.trim())
+    : item.status === "aprovacao_copy";
+}
+
 export function nextApprovalReviewVersion(
   current: Pick<PlanItemApproval, "status" | "reviewVersion"> | undefined,
   taskStatus: TaskStatus,
   hasMaterialLink: boolean,
 ): number | undefined {
-  if (!current || current.status === "pending") return undefined;
-
-  if (taskStatus === "aprovacao_copy" && current.reviewVersion < 100) {
-    return current.reviewVersion + 1;
+  if (taskStatus === "para_aprovacao" && hasMaterialLink) {
+    if (!current || current.reviewVersion < 100) return 100;
+    return current.status === "pending" ? undefined : current.reviewVersion + 1;
   }
-
-  if (taskStatus !== "para_aprovacao") return undefined;
-
-  if (current.reviewVersion < 100) {
-    if (current.status !== "approved") return current.reviewVersion + 1;
-    return hasMaterialLink ? 100 : undefined;
+  if (taskStatus === "aprovacao_copy") {
+    if (!current) return 1;
+    if (current.reviewVersion < 100 && current.status !== "pending") return current.reviewVersion + 1;
   }
-
-  return hasMaterialLink ? current.reviewVersion + 1 : undefined;
+  return undefined;
 }
 
 export function summarizeApprovalRound(approvals: Pick<PlanItemApproval, "status" | "reviewVersion">[], stage: ApprovalStage) {
