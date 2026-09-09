@@ -21,7 +21,7 @@ export function SurveyManager({ initialSurveys, projects, lockedProjectId }: { i
   const [creating, setCreating] = useState(false);
   const [projectId, setProjectId] = useState(lockedProjectId || visibleProjects[0]?.id || "");
   const [newTitle, setNewTitle] = useState("");
-  const [template, setTemplate] = useState<SurveyTemplate>("brand_diagnosis");
+  const [template, setTemplate] = useState<SurveyTemplate>("business_extraction");
   const [draft, setDraft] = useState<Survey | null>(selected || null);
   const [message, setMessage] = useState("");
   const projectById = useMemo(() => new Map(projects.map((project) => [project.id, project.name])), [projects]);
@@ -70,7 +70,7 @@ export function SurveyManager({ initialSurveys, projects, lockedProjectId }: { i
 
   return <div className="survey-layout">
     <Card className="survey-list">
-      <div className="survey-section-head"><div><span className="vz-eyebrow">Formulários</span><h2 className="vz-h2">Pesquisas</h2><p className="vz-caption">{surveys.length} formulário{surveys.length === 1 ? "" : "s"}</p></div><Button variant="secondary" onClick={() => { setCreating(true); setTemplate("brand_diagnosis"); setNewTitle("Diagnóstico de marca"); }}><Plus size={14} /> Nova</Button></div>
+      <div className="survey-section-head"><div><span className="vz-eyebrow">Formulários</span><h2 className="vz-h2">Pesquisas</h2><p className="vz-caption">{surveys.length} formulário{surveys.length === 1 ? "" : "s"}</p></div><Button variant="secondary" onClick={() => { setCreating(true); setTemplate("business_extraction"); setNewTitle("Extrator de negócio"); }}><Plus size={14} /> Nova</Button></div>
       {creating ? <div className="survey-create">
         {!lockedProjectId ? <Field label="Projeto"><select value={projectId} onChange={(event) => setProjectId(event.target.value)}>{visibleProjects.map((project) => <option value={project.id} key={project.id}>{project.name}</option>)}</select></Field> : null}
         <Field label="Modelo" hint={SURVEY_TEMPLATES.find((item) => item.value === template)?.hint}>

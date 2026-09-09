@@ -1,8 +1,9 @@
 import type { SurveyQuestion } from "./types";
 
-export type SurveyTemplate = "blank" | "brand_onboarding" | "brand_diagnosis" | "satisfaction";
+export type SurveyTemplate = "blank" | "brand_onboarding" | "brand_diagnosis" | "business_extraction" | "satisfaction";
 
 export const SURVEY_TEMPLATES: { value: SurveyTemplate; label: string; defaultTitle: string; hint: string }[] = [
+  { value: "business_extraction", label: "Extrator de negócio", defaultTitle: "Extrator de negócio", hint: "História, estrutura, serviço, alcance e prova — os fatos que montam a apresentação da empresa. 30 perguntas." },
   { value: "brand_diagnosis", label: "Diagnóstico de marca", defaultTitle: "Diagnóstico de marca", hint: "História, produto, público e posicionamento — a matéria-prima de uma apresentação de marca." },
   { value: "brand_onboarding", label: "Onboarding de gestão de marca", defaultTitle: "Onboarding de gestão de marca", hint: "Números, verba, canais, equipe e fluxo de aprovação — o que a operação precisa para rodar." },
   { value: "satisfaction", label: "Satisfação + NPS", defaultTitle: "Pesquisa de satisfação", hint: "Três perguntas curtas para medir a percepção de quem já é cliente." },
@@ -166,6 +167,124 @@ function diagnosticoDeMarca(q: Construtor): SurveyQuestion[] {
   ];
 }
 
+// ---------- Extrator de negócio ----------
+//
+// Irmão do diagnóstico, com outro alvo. O diagnóstico existe para achar
+// posicionamento: pergunta contra quem se compete, como a marca deve soar, o
+// que se quer que digam da empresa daqui a três anos. Este aqui existe para
+// montar a apresentação institucional, e apresentação institucional se faz de
+// fato verificável, não de intenção: quantas pessoas, onde ficam, o que sai por
+// mês, o que o cliente recebe, que problema some da vida dele depois.
+//
+// Trinta perguntas é limite, não meta. Quarenta e cinco campos numa página só
+// não são respondidos — são abandonados, ou respondidos em uma linha cada, que
+// dá no mesmo. O corte veio de fundir o que se responde junto (estrutura e
+// capacidade viram uma pergunta; número e certificado viram outra) e de tirar o
+// que era diagnóstico de marca, não extração de negócio.
+//
+// O `description` continua sendo o que substitui a pessoa do outro lado da mesa
+// dizendo "não, me dá um exemplo concreto". Sem ele a resposta volta rasa.
+export const SECOES_EXTRATOR = [
+  "Origem",
+  "A empresa hoje",
+  "O que vocês fazem",
+  "Onde vocês atendem",
+  "Quem contrata e como é o atendimento",
+  "O que vocês resolvem",
+  "Material e uso da apresentação",
+] as const;
+
+function extratorDeNegocio(q: Construtor): SurveyQuestion[] {
+  const secao = (nome: string, perguntas: SurveyQuestion[]) => perguntas.map((item) => ({ ...item, section: nome }));
+
+  return [
+    ...secao("Origem", [
+      q("Quem fundou a empresa, em que ano, e o que essa pessoa fazia antes disso?", "long_text", undefined, true,
+        "O que a pessoa fazia antes costuma explicar o jeito da empresa até hoje."),
+      q("Como foi o começo: o que fez a empresa existir e como apareceu o primeiro cliente?", "long_text", undefined, true,
+        "Conte como um caso — onde funcionava, quantas pessoas eram, qual foi o primeiro trabalho entregue."),
+      q("O que a empresa fazia no primeiro ano que não faz mais hoje? E o que ela faz hoje que não imaginava fazer?", "long_text", undefined, true,
+        "A distância entre esses dois pontos é a história que a apresentação vai contar."),
+      q("Liste os marcos da empresa, com o ano de cada um.", "long_text", undefined, true,
+        "Mudança de sede, filial nova, primeira máquina grande, certificação, sócio que entrou ou saiu, serviço novo."),
+    ]),
+
+    ...secao("A empresa hoje", [
+      q("Nome fantasia, razão social, tempo de mercado e o endereço de cada unidade.", "long_text", undefined, true,
+        "Se houver mais de um endereço, diga o que funciona em cada um."),
+      q("Quantas pessoas trabalham na empresa hoje e como elas se dividem entre as áreas?", "long_text", undefined, true,
+        "Ex.: 40 no total — 22 na produção, 6 no comercial, 4 no administrativo, 8 na instalação."),
+      q("Quem são as pessoas-chave e o que cada uma faz de fato?", "long_text", undefined, true,
+        "Nome, cargo e a responsabilidade real. Diga também quem dá a palavra final na comunicação."),
+      q("Descreva a estrutura de vocês e quanto ela entrega hoje.", "long_text", undefined, true,
+        "Galpão, fábrica, escritório, frota, máquinas, laboratório, software — e o volume que sai por mês ou por ano."),
+    ]),
+
+    ...secao("O que vocês fazem", [
+      q("Explique o que a empresa faz como se estivesse falando com alguém de fora do ramo.", "long_text", undefined, true,
+        "Sem termo técnico. Se não der para explicar assim, a apresentação também não vai conseguir."),
+      q("Agora explique do jeito técnico, para quem é do ramo.", "long_text", undefined, true,
+        "Aqui pode e deve usar norma, medida, especificação e nomenclatura do setor."),
+      q("Liste tudo o que vocês vendem e o que está incluído em cada item.", "long_text", undefined, true,
+        "Produto, serviço, linha, plano. Em cada um, o que o cliente leva junto e o que é cobrado à parte."),
+      q("O que acontece do pedido até a entrega, e o que vem depois dela?", "long_text", undefined, true,
+        "Prazo, forma de entrega, instalação, treinamento, garantia, assistência, manutenção."),
+      q("O que vocês não fazem, mesmo quando pedem?", "long_text", undefined, true,
+        "Recusa é posicionamento. O que vocês mandam o cliente procurar em outro lugar?"),
+    ]),
+
+    ...secao("Onde vocês atendem", [
+      q("Em quais cidades, estados ou regiões vocês atendem hoje, para que tipo de empresa, e como chegam até lá?", "long_text", undefined, true,
+        "Equipe própria, representante, distribuidor, transportadora, atendimento remoto."),
+      q("Onde vocês querem crescer nos próximos 12 meses, e qual produto ou serviço deve puxar esse crescimento?", "long_text", undefined, true,
+        "E por quê: margem melhor, capacidade ociosa, mercado novo."),
+    ]),
+
+    ...secao("Quem contrata e como é o atendimento", [
+      q("Quem assina o contrato e quem usa o que vocês entregam no dia a dia? São a mesma pessoa?", "long_text", undefined, true,
+        "Em muitos negócios quem decide não é quem usa. Descreva os dois papéis, com cargo."),
+      q("O que acontece na vida do cliente logo antes de ele procurar vocês?", "long_text", undefined, true,
+        "O gatilho: quebrou algo, abriu obra, trocou de fornecedor, entrou norma nova, cresceu demais."),
+      q("Descreva o atendimento passo a passo, do primeiro contato até a entrega.", "long_text", undefined, true,
+        "Quem atende, por qual canal, em quanto tempo responde, como sai o orçamento, quem acompanha depois."),
+      q("Como o cliente chega até vocês hoje?", "multiple_choice",
+        ["Indicação", "Representante ou vendedor externo", "Distribuidor / revenda", "Instagram", "Google / site", "WhatsApp", "Feira ou evento do setor", "Catálogo / mala direta", "Cliente antigo que volta", "Não sabemos ao certo", "Outro"],
+        true),
+      q("Qual pergunta ou objeção aparece em toda negociação, e como vocês respondem hoje?", "long_text", undefined, true,
+        "Preço, prazo, desconfiança técnica, medo de trocar de fornecedor."),
+    ]),
+
+    ...secao("O que vocês resolvem", [
+      q("Cite três problemas concretos que vocês resolvem — e o que o cliente fazia antes de resolver com vocês.", "long_text", undefined, true,
+        "Um problema por parágrafo. O “antes” importa tanto quanto o “depois”."),
+      q("Conte o caso mais difícil que vocês já resolveram para um cliente.", "long_text", undefined, true,
+        "O problema, o que vocês fizeram e como terminou."),
+      q("O que acontece se o que vocês entregam falhar na mão do cliente?", "long_text", undefined, true,
+        "Prejuízo, parada de produção, risco de acidente, retrabalho. É o que mede o tamanho da responsabilidade."),
+      q("Quais números e comprovações vocês podem mostrar sem medo?", "long_text", undefined, true,
+        "Anos de operação, clientes ativos, obras entregues, peças produzidas, estados atendidos — e também certificação, norma, licença, laudo ou registro que vocês tenham."),
+      q("Quais clientes ou marcas vocês atendem e podem citar publicamente?", "long_text", undefined, false,
+        "Se houver contrato de sigilo, diga quais não podem aparecer."),
+      q("Escreva uma frase que um cliente realmente disse sobre vocês.", "long_text", undefined, true,
+        "Palavras dele, não as suas. Vale um trecho de WhatsApp, e-mail ou ligação."),
+    ]),
+
+    ...secao("Material e uso da apresentação", [
+      q("O que a empresa já tem pronto de material?", "multiple_choice",
+        ["Logo em arquivo vetorial", "Manual de marca", "Catálogo de produtos", "Fotos da operação", "Fotos de produto", "Vídeos", "Apresentação comercial", "Site", "Depoimentos de clientes", "Nada organizado", "Outro"],
+        true, "Marque tudo que existe, mesmo que esteja desatualizado."),
+      q("Que lugares, processos e pessoas podemos fotografar e gravar — e o que não pode ser mostrado?", "long_text", undefined, true,
+        "Chão de fábrica, montagem, teste, expedição, obra de cliente. Diga quem aparece e quem prefere não aparecer, e se há segredo industrial ou área de risco."),
+      q("Para quem essa apresentação vai ser mostrada, e o que precisa acontecer depois que ela terminar?", "long_text", undefined, true,
+        "Cliente novo em reunião, licitação, distribuidor, investidor, feira. E o que você quer que a pessoa faça em seguida."),
+      // Mesma pergunta que fecha o diagnóstico, e pela mesma razão: é a única
+      // que cobre o que o formulário não soube perguntar.
+      q("O que eu não perguntei e você acha que eu preciso saber sobre a empresa?", "long_text", undefined, true,
+        "Se houvesse só uma reunião de trinta minutos, o que você faria questão de dizer nela?"),
+    ]),
+  ];
+}
+
 // ---------- Onboarding de gestão de marca ----------
 // Mora aqui, e não em storage.ts, porque conteúdo de formulário é conteúdo:
 // muda com frequência, é lido e revisado por pessoa, e não tem nada a ver com
@@ -229,6 +348,7 @@ export function questionsForTemplate(template: SurveyTemplate | undefined, newId
   const q: Construtor = (title, type = "long_text", options, required = true, description) =>
     ({ id: newId(), title, type, required, options, description });
   if (template === "brand_diagnosis") return diagnosticoDeMarca(q);
+  if (template === "business_extraction") return extratorDeNegocio(q);
   if (template === "brand_onboarding") return onboardingDeMarca(q);
   if (template === "satisfaction") return satisfacao(q);
   return [];

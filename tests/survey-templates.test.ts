@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SECOES_DIAGNOSTICO, SURVEY_TEMPLATES, questionsForTemplate } from "../src/lib/survey-templates";
+import { SECOES_DIAGNOSTICO, SECOES_EXTRATOR, SURVEY_TEMPLATES, questionsForTemplate } from "../src/lib/survey-templates";
 
 let contador = 0;
 const id = () => `q${++contador}`;
@@ -35,6 +35,40 @@ describe("modelos de pesquisa", () => {
 
   it("termina perguntando o que não foi perguntado", () => {
     expect(diagnostico.at(-1)!.title).toContain("O que eu não perguntei");
+  });
+
+  // ---------- Extrator de negócio ----------
+  describe("extrator de negócio", () => {
+    const extrator = questionsForTemplate("business_extraction", id);
+
+    // Trinta é limite acordado, não detalhe de implementação: acima disso o
+    // formulário deixa de ser respondido e passa a ser abandonado.
+    it("nunca passa de trinta perguntas", () => {
+      expect(extrator.length).toBeLessThanOrEqual(30);
+    });
+
+    it("cobre todos os blocos, na ordem, e nenhuma pergunta fica solta", () => {
+      expect([...new Set(extrator.map((question) => question.section))]).toEqual([...SECOES_EXTRATOR]);
+      expect(extrator.filter((question) => !question.section)).toEqual([]);
+    });
+
+    it("toda pergunta aberta obrigatória explica que tipo de resposta se espera", () => {
+      const semDica = extrator.filter((question) => question.type === "long_text" && question.required && !question.description);
+      expect(semDica.map((question) => question.title)).toEqual([]);
+    });
+
+    // O extrator existe para montar a apresentação da empresa. Se ele parar de
+    // perguntar estrutura, alcance ou prova, virou outra coisa.
+    it("extrai os fatos que a apresentação precisa", () => {
+      const tudo = extrator.map((question) => question.title).join(" | ");
+      for (const assunto of ["fundou", "Quantas pessoas", "estrutura", "cidades, estados ou regiões", "atendimento passo a passo", "problemas concretos", "números e comprovações"]) {
+        expect(tudo, assunto).toContain(assunto);
+      }
+    });
+
+    it("termina perguntando o que não foi perguntado", () => {
+      expect(extrator.at(-1)!.title).toContain("O que eu não perguntei");
+    });
   });
 
   it("o onboarding antigo continua existindo e sem blocos", () => {
