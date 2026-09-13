@@ -1,3 +1,4 @@
+import { isClientBlocked } from "@/lib/client-access";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { ClientDashboard } from "@/components/client-dashboard";
@@ -11,6 +12,7 @@ export default async function ClientDashboardPage() {
   const cookieStore = await cookies();
   const projectId = verifyClientSession(cookieStore.get(CLIENT_SESSION_COOKIE)?.value);
   if (!projectId) redirect("/c/invalido");
+  if (await isClientBlocked(projectId)) redirect("/c/bloqueado");
 
   let project, items, events, scores;
   try {

@@ -113,6 +113,11 @@ export function ClientDashboard({
       const generation = submission.current.generation;
       try {
         const response = await fetch("/api/c/items", { cache: "no-store", signal: controller.signal });
+        if (response.status === 403) {
+          const error = await response.json();
+          if (error.code === "CLIENT_BLOCKED") { setItems([]); window.location.replace("/c/bloqueado"); }
+          return;
+        }
         if (!response.ok) return;
         const result = await response.json();
         if (!controller.signal.aborted && !submission.current.busy && generation === submission.current.generation) setItems(result.items);

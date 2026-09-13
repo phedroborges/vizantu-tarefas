@@ -11,3 +11,6 @@ public/uploads
 test-results
 playwright-report
 tests/.fixtures.json
+
+# Scratch da CLI do Supabase — versão baixada em cache, não é fonte.
+supabase/.temp/

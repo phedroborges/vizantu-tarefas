@@ -7,7 +7,7 @@ import type { UserRole } from "./types";
 
 export type AppArea =
   | "dashboard" | "projetos" | "tarefas" | "notificacoes" | "planos"
-  | "pesquisas" | "marcas" | "contratos" | "membros" | "conhecimento" | "assistente";
+  | "financeiro" | "pesquisas" | "marcas" | "contratos" | "membros" | "conhecimento" | "assistente";
 
 type RoleProfile = {
   areas: AppArea[];
@@ -30,7 +30,7 @@ type RoleProfile = {
 
 const TODAS_AS_AREAS: AppArea[] = [
   "dashboard", "projetos", "tarefas", "notificacoes", "planos",
-  "pesquisas", "marcas", "contratos", "membros", "conhecimento", "assistente",
+  "pesquisas", "marcas", "contratos", "membros", "conhecimento", "assistente", "financeiro",
 ];
 
 export const ROLE_PROFILES: Record<UserRole, RoleProfile> = {

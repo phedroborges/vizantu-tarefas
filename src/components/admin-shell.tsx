@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, Bell, BookOpen, CheckSquare, ClipboardList, FileQuestion, FileText, Folders, LogOut, Menu, Palette, Sparkles, Users, X } from "lucide-react";
+import { BarChart3, Bell, BookOpen, CheckSquare, ClipboardList, FileQuestion, FileText, Folders, LogOut, Menu, Palette, Sparkles, Users, Wallet, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -17,7 +17,7 @@ import { createClient } from "@/lib/supabase/browser-client";
 import { podeGerenciarEquipe, podeVer, type AppArea } from "@/lib/permissions";
 import { USER_ROLES, type UserRole } from "@/lib/types";
 
-export type AdminShellActive = "dashboard" | "projetos" | "tarefas" | "planos" | "pesquisas" | "marcas" | "contratos" | "membros" | "conhecimento" | "assistente" | "notificacoes";
+export type AdminShellActive = "financeiro" | "dashboard" | "projetos" | "tarefas" | "planos" | "pesquisas" | "marcas" | "contratos" | "membros" | "conhecimento" | "assistente" | "notificacoes";
 
 
 // A ordem aqui é a ordem do menu. A área de cada item é o que decide quem o
@@ -30,6 +30,7 @@ const ITENS_DO_MENU: { area: AppArea; href: string; label: string; Icone: typeof
   { area: "planos", href: "/planos", label: "Planos", Icone: ClipboardList },
   { area: "pesquisas", href: "/pesquisas", label: "Pesquisas", Icone: FileQuestion },
   { area: "marcas", href: "/marcas", label: "Marcas", Icone: Palette },
+  { area: "financeiro", href: "/financeiro", label: "Financeiro", Icone: Wallet },
   { area: "contratos", href: "/contratos", label: "Contratos", Icone: FileText },
   { area: "membros", href: "/membros", label: "Membros", Icone: Users },
   { area: "conhecimento", href: "/conhecimento", label: "Base de conhecimento", Icone: BookOpen },
@@ -39,6 +40,7 @@ const ITENS_DO_MENU: { area: AppArea; href: string; label: string; Icone: typeof
 const CARGO: Record<UserRole, string> = Object.fromEntries(USER_ROLES.map((papel) => [papel.value, papel.label])) as Record<UserRole, string>;
 
 const PAGE_LABELS: Record<AdminShellActive, string> = {
+  financeiro: "Página atual: Financeiro exclusivo do dono.",
   dashboard: "Página atual: Dashboard (visão geral de métricas, prazos e ranking do time).",
   projetos: "Página atual: Projetos.",
   tarefas: "Página atual: Tarefas.",

@@ -1,12 +1,10 @@
-import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
-import { CLIENT_SESSION_COOKIE, verifyClientSession } from "@/lib/client-session";
+import { requireClientAccess } from "@/lib/client-access";
 import { addSatisfactionScore } from "@/lib/storage";
 
 export async function POST(request: NextRequest) {
-  const cookieStore = await cookies();
-  const projectId = verifyClientSession(cookieStore.get(CLIENT_SESSION_COOKIE)?.value);
-  if (!projectId) return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
+  const projectId = await requireClientAccess();
+  if (projectId instanceof NextResponse) return projectId;
 
   const body = await request.json();
   const score = Number(body?.score);

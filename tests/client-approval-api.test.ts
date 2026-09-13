@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 const { submit, session } = vi.hoisted(() => ({ submit: vi.fn(), session: vi.fn((): string | null => "project-1") }));
+vi.mock("@/lib/supabase-client", () => ({ getSupabase: () => ({ from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }) }) }));
 vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => ({ value: "signed" }) }) }));
 vi.mock("@/lib/client-session", () => ({ CLIENT_SESSION_COOKIE: "client", verifyClientSession: session }));
 vi.mock("@/lib/storage", async (original) => ({ ...await original<typeof import("@/lib/storage")>(), submitPlanApprovalResponse: submit }));

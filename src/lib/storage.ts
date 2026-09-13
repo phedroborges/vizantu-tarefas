@@ -461,8 +461,17 @@ function transitionStatusHistory(history: StatusHistoryEntry[], next: TaskStatus
   return copy;
 }
 
-export async function listTasks(): Promise<Task[]> {
-  const rows = unwrap(await getSupabase().from("tasks").select("*")) as TaskRow[];
+export async function listTasks(options: { all?: boolean } = {}): Promise<Task[]> {
+  const rows: TaskRow[] = [];
+  if (options.all) {
+    for (let offset = 0; ; offset += 1000) {
+      const page = unwrap(await getSupabase().from("tasks").select("*").order("id").range(offset, offset + 999)) as TaskRow[];
+      rows.push(...page);
+      if (page.length < 1000) break;
+    }
+  } else {
+    rows.push(...unwrap(await getSupabase().from("tasks").select("*")) as TaskRow[]);
+  }
   const tasks = await attachPlanKind(rows.map(mapTask));
   return tasks.sort((a, b) => (a.dueDate || "9999-99-99").localeCompare(b.dueDate || "9999-99-99"));
 }

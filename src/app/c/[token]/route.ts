@@ -1,3 +1,4 @@
+import { isClientBlocked } from "@/lib/client-access";
 import { NextRequest, NextResponse } from "next/server";
 import { CLIENT_SESSION_COOKIE, signClientSession } from "@/lib/client-session";
 import { resolveClientLink } from "@/lib/storage";
@@ -24,6 +25,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   let project;
   try {
     project = await resolveClientLink(token);
+    if (project && await isClientBlocked(project.id)) return NextResponse.redirect(absoluteUrl(request, "/c/bloqueado"));
   } catch (err) {
     // Falha de configuração/infra (ex.: credenciais do Supabase inválidas)
     // não pode virar um 500 cru na cara do cliente — manda pra tela de erro

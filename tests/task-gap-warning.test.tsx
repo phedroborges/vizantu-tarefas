@@ -5,6 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TaskModal } from "../src/components/task-modal";
 import { DEFAULT_STATUS_COLORS, TASK_STATUSES, type Member, type Project, type StatusColor, type Tag, type Task, type TaskStatus } from "../src/lib/types";
 
+// A TaskModal monta o seletor de etiquetas, que desde o botão de excluir tag
+// chama useRouter. Sem o router do Next em volta, o hook estoura e derruba
+// este teste por um motivo que não tem nada a ver com o aviso que ele mede.
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {} }) }));
+
 // O aviso do dashboard só serve se ele também aparecer na frente de quem pode
 // resolver. Este teste trava a ponte: a mesma regra que conta bloqueio no
 // painel precisa virar recado dentro da tarefa.
