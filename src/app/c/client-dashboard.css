@@ -304,3 +304,13 @@
 }
 
 @media (prefers-reduced-motion: reduce) { .cd-approval-bar-fill, .cd-celebrate-icon { transition: none; animation: none; } }
+
+/* Pacotes em uma coluna preservam espaço para título, data e aprovação. */
+.cd-package-list { display: grid; gap: 16px; }
+.cd-package-date { margin: 5px 0 0; font-size: 12px; color: var(--cd-muted); }
+.cd-package-notices { padding: 8px 14px; background: var(--vz-bg-sunken); }
+.cd-package-notices p { margin: 4px 0; display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.cd-package-notices svg { flex-shrink: 0; }
+@media (max-width: 640px) {
+  .cd-package-list .cd-group-head { align-items: flex-start; flex-direction: column; }
+}

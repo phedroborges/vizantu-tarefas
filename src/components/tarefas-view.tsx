@@ -13,6 +13,7 @@ import { STATUS_GROUPS, TASK_COLUMNS, TASK_LIST_KINDS, TASK_STATUSES } from "@/l
 import type { Member, Project, StatusColor, Tag, Task, TaskColumnKey, TaskListKind, TaskStatus } from "@/lib/types";
 import { TaskModal } from "@/components/task-modal";
 import { QuickTaskModal } from "@/components/quick-task-modal";
+import { useVisibleTags } from "@/lib/tag-catalog";
 import { TagPickerPopover } from "@/components/tag-picker";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { usePreferences } from "@/lib/use-preferences";
@@ -172,8 +173,10 @@ export function TarefasView({
   initialTaskId?: string;
 }) {
   const [tasks, setTasks] = useState(initialTasks);
-  const [formatTags, setFormatTags] = useState(initialFormatTags);
-  const [channelTags, setChannelTags] = useState(initialChannelTags);
+  const [formatCatalog, setFormatTags] = useState(initialFormatTags);
+  const formatTags = useVisibleTags(formatCatalog);
+  const [channelCatalog, setChannelTags] = useState(initialChannelTags);
+  const channelTags = useVisibleTags(channelCatalog);
   const [statusColors, setStatusColors] = useState(initialStatusColors);
 
   const [selectedTask, setSelectedTask] = useState<Task | "new" | null>(

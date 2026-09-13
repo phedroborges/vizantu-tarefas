@@ -6,12 +6,18 @@ import { renderMarkdownLite } from "@/components/markdown-lite";
 import { Button, Count, IconButton, Tag } from "@/components/vz";
 import { DatePicker } from "@/components/vz/date-picker";
 import { canReviewItem } from "@/lib/approval-workflow";
+import { organizeClientPackages, type ClientPackageAssignment } from "@/lib/client-packages";
 import { burst } from "@/lib/confetti";
 import { renderScriptView } from "@/components/script-table";
 import { descriptionHeadingKey, parseDescription } from "@/lib/description-sections";
 import "../app/c/client-dashboard.css";
 
-export type DashboardItem = {
+export type DashboardItem = Partial<ClientPackageAssignment> & {
+  planId?: string;
+  planTitle?: string;
+  planKind?: string;
+  captacaoId?: string | null;
+  sequenceOrder?: number;
   id: string;
   name: string;
   status: string;
@@ -164,6 +170,18 @@ export function ClientDashboard({
   }
 
   const orderedItems = useMemo(() => [...items].sort((a, b) => (a.dueDate || "9999-12-31").localeCompare(b.dueDate || "9999-12-31") || a.name.localeCompare(b.name, "pt-BR")), [items]);
+  const packageGroups = useMemo(() => {
+    const fallback = organizeClientPackages(orderedItems, []);
+    const groups = new Map<string, { id: string; label: string; planId: string; planTitle?: string; date: string | null; kind: string; order: number; items: DashboardItem[] }>();
+    for (const [index, item] of orderedItems.entries()) {
+      const assigned = item.clientPackageId ? item : fallback[index];
+      const key = `${item.planId || "legacy"}:${assigned.clientPackageId}`;
+      const group = groups.get(key) || { id: key, planId: item.planId || "legacy", label: assigned.clientPackageLabel!, planTitle: item.planTitle, date: assigned.clientPackageDate || null, kind: assigned.clientPackageKind!, order: assigned.clientPackageOrder || 0, items: [] };
+      group.items.push(assigned);
+      groups.set(key, group);
+    }
+    return [...groups.values()].sort((a, b) => (a.planTitle || "").localeCompare(b.planTitle || "", "pt-BR") || a.planId.localeCompare(b.planId) || a.order - b.order || a.id.localeCompare(b.id));
+  }, [orderedItems]);
   const reviewedCount = items.filter(isReviewed).length;
   const approvedInStageCount = items.filter((item) => item.approvalStatus === "approved").length;
   const reviewedRate = items.length ? Math.round((reviewedCount / items.length) * 100) : 0;
@@ -243,7 +261,7 @@ export function ClientDashboard({
           <div>
             <span className="cd-eyebrow">Portal do cliente · Vizantu</span>
             <h1>Olá, {clientName}</h1>
-            <p>Seu plano está em ordem de publicação. Abra o próximo conteúdo, confira <strong>texto ou criativo</strong> e registre sua decisão.</p>
+            <p>Seu plano está organizado por pacotes, com os conteúdos em ordem de publicação. Abra o próximo conteúdo, confira <strong>texto ou criativo</strong> e registre sua decisão.</p>
           </div>
           <div className="cd-header-meta">
             {[roleTitle, city].filter(Boolean).join(" · ")}
@@ -288,9 +306,9 @@ export function ClientDashboard({
           <div className="cd-review-heading">
             <div>
               <span className="cd-eyebrow">Fluxo de aprovação</span>
-              <h2>Conteúdos em ordem de publicação</h2>
+              <h2>Conteúdos por pacote</h2>
             </div>
-            <small>Toque em um conteúdo para ler e responder.</small>
+            <small>Em ordem de publicação dentro de cada pacote. Toque para ler e responder.</small>
           </div>
 
           <div className="cd-approval-bar-wrap">
@@ -303,8 +321,18 @@ export function ClientDashboard({
             {reviewedRate === 100 && items.length ? <div className="cd-review-complete"><CheckCircle2 size={16} /><span><strong>Plano 100% revisado.</strong> A equipe já pode seguir com os aprovados e preparar os ajustes necessários.</span></div> : null}
           </div>
 
-          <div className="cd-sequence">
-            {orderedItems.map((item, index) => (
+          <div className="cd-package-list">
+            {packageGroups.map((group) => (
+              <section className="cd-group" key={group.id} aria-label={group.label}>
+                <header className="cd-group-head">
+                  <div>{group.planTitle ? <span className="cd-eyebrow">{group.planTitle}</span> : null}<h3>{group.label}</h3>
+                    <p className="cd-package-date">{group.date ? `${group.kind === "capture" ? "Captação" : "Criação"}: ${new Date(`${group.date}T12:00:00`).toLocaleDateString("pt-BR")}` : group.kind === "capture" ? "Data da captação a definir" : "Produção de conteúdo"}</p>
+                  </div>
+                  <span>{group.items.length} conteúdos · {group.items.filter(isReviewed).length} revisados</span>
+                </header>
+                {group.items.some((item) => item.clientPackageWarning && item.clientPackageWarning !== "Data da captação a definir.") ? <div className="cd-package-notices">{[...new Set(group.items.map((item) => item.clientPackageWarning).filter((warning) => warning && warning !== "Data da captação a definir."))].map((warning) => <p key={warning}><AlertCircle size={14} />{warning}</p>)}</div> : null}
+                <div className="cd-package-items">
+            {group.items.map((item, index) => (
               <button type="button" className="cd-sequence-item" key={item.id} onClick={() => setActiveItemId(item.id)}>
                 <span className="cd-item-index">{String(index + 1).padStart(2, "0")}</span>
                 <span className="cd-sequence-date">{item.dueDate ? new Date(`${item.dueDate}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }) : "Sem data"}</span>
@@ -318,6 +346,9 @@ export function ClientDashboard({
                 </span>
                 <span className="cd-sequence-stage"><span className={`cd-pill status-${item.approvalStatus}`}>{isCreativeStage(item) ? "Criativo" : "Texto"}: {STATUS_LABEL[item.approvalStatus]}</span>{item.reference ? <small><Link2 size={10} /> referência</small> : null}</span>
               </button>
+            ))}
+                </div>
+              </section>
             ))}
             {!orderedItems.length ? <div className="cd-empty-state"><CheckCircle2 size={26} /><strong>Tudo certo por aqui</strong><span>Nenhum conteúdo aguardando revisão.</span></div> : null}
           </div>

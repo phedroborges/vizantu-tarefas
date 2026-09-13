@@ -1,3 +1,4 @@
+import { organizeClientPackages, type ClientPackageAssignment } from "./client-packages";
 import { isOverdue } from "./dates";
 import { canReviewItem, derivePlanStage, formatRequiresCapture, nextApprovalReviewVersion, taskStatusAfterClientDecision } from "./approval-workflow";
 import { mergePreferences, normalizePreferences, type MemberPreferences } from "./preferences";
@@ -329,7 +330,12 @@ export async function createTag(input: { kind: TagKind; label: string }): Promis
   return mapTag(row as TagRow);
 }
 
-// Sem updateTag/deleteTag — fora do escopo desta fase (só criar e listar).
+export async function deleteTag(id: string): Promise<boolean> {
+  // As tarefas guardam IDs em arrays, sem cascade: excluir do catálogo retira
+  // a etiqueta da exibição sem apagar tarefas ou alterar outros campos.
+  const row = unwrap(await getSupabase().from("tags").delete().eq("id", id).in("kind", ["formato", "canal"]).select("id").maybeSingle());
+  return Boolean(row);
+}
 
 // ---------- Tarefas ----------
 
@@ -1098,7 +1104,12 @@ export async function resolveClientLink(token: string): Promise<Project | undefi
 // Itens de plano de um projeto, enriquecidos com formato/categoria/captação
 // e o status de aprovação do CLIENTE — é o que alimenta o painel público
 // em /c/[token]. Nunca usa o status interno de produção.
-export type ProjectPlanItem = {
+export type ProjectPlanItem = Partial<ClientPackageAssignment> & {
+  planId?: string;
+  planTitle?: string;
+  planKind?: string;
+  captacaoId?: string | null;
+  sequenceOrder?: number;
   id: string;
   name: string;
   status: string;
@@ -1117,19 +1128,20 @@ export type ProjectPlanItem = {
 
 export async function listProjectPlanItems(projectId: string): Promise<ProjectPlanItem[]> {
   const db = getSupabase();
-  const plans = unwrap(await db.from("plans").select("id, kind").eq("project_id", projectId).eq("source", "native")) as { id: string; kind: string }[];
+  const plans = unwrap(await db.from("plans").select("id, kind, title").eq("project_id", projectId).eq("source", "native")) as { id: string; kind: string; title: string }[];
   const planIds = plans.filter((p) => p.kind === "content" || p.kind === "process").map((p) => p.id);
   if (!planIds.length) return [];
 
   const rows = unwrap(
     await db
       .from("tasks")
-      .select("id, plan_id, captacao_id, name, status, due_date, format_tag_ids, channel_tag_ids, category_tag_ids, description, drive_link, updated_at")
+      .select("id, plan_id, captacao_id, sequence_order, name, status, due_date, format_tag_ids, channel_tag_ids, category_tag_ids, description, drive_link, updated_at")
       .in("plan_id", planIds),
   ) as {
     id: string;
     plan_id: string;
     captacao_id: string | null;
+    sequence_order: number;
     name: string;
     status: TaskStatus;
     due_date: string | null;
@@ -1143,17 +1155,17 @@ export async function listProjectPlanItems(projectId: string): Promise<ProjectPl
   if (!rows.length) return [];
 
   const taskIds = rows.map((t) => t.id);
-  const captacaoIds = Array.from(new Set(rows.map((t) => t.captacao_id).filter((v): v is string => Boolean(v))));
   const tagIds = Array.from(new Set(rows.flatMap((t) => [...t.format_tag_ids, ...t.channel_tag_ids, ...t.category_tag_ids])));
 
-  const [captacoes, tags, approvals] = await Promise.all([
-    captacaoIds.length ? (unwrap(await db.from("plan_captacoes").select("id, label").in("id", captacaoIds)) as { id: string; label: string }[]) : Promise.resolve([]),
+  const [captacoes, tags, approvals, events] = await Promise.all([
+    unwrap(await db.from("plan_captacoes").select("id, plan_id, label, package_kind, sequence_order").in("plan_id", planIds)) as { id: string; plan_id: string; label: string; package_kind: "capture" | "creation"; sequence_order: number }[],
     tagIds.length ? (unwrap(await db.from("tags").select("id, label, kind").in("id", tagIds)) as { id: string; label: string; kind: string }[]) : Promise.resolve([]),
     unwrap(await db.from("plan_item_approvals").select("task_id, status, review_version").in("task_id", taskIds)) as {
       task_id: string;
       status: PlanApprovalStatus;
       review_version: number;
     }[],
+    listPlanEvents(projectId),
   ]);
 
   const captacaoById = new Map(captacoes.map((c) => [c.id, c.label]));
@@ -1169,13 +1181,18 @@ export async function listProjectPlanItems(projectId: string): Promise<ProjectPl
     for (const approval of refreshed) approvalByTask.set(approval.task_id, approval);
   }
 
-  return rows.map((t) => {
+  const items = rows.map((t) => {
     const formatId = t.format_tag_ids.find((id) => tagById.get(id)?.kind === "formato");
     const channelId = t.channel_tag_ids.find((id) => tagById.get(id)?.kind === "canal");
     const approval = approvalByTask.get(t.id);
     const reference = parseDescription(t.description || undefined).referencia || null;
     return {
       id: t.id,
+      planId: t.plan_id,
+      planTitle: plans.find((plan) => plan.id === t.plan_id)?.title,
+      planKind: plans.find((plan) => plan.id === t.plan_id)?.kind,
+      captacaoId: t.captacao_id,
+      sequenceOrder: t.sequence_order,
       name: t.name,
       status: t.status,
       dueDate: t.due_date,
@@ -1191,6 +1208,11 @@ export async function listProjectPlanItems(projectId: string): Promise<ProjectPl
       updatedAt: t.updated_at,
     };
   }).sort((a, b) => (a.dueDate || "9999-12-31").localeCompare(b.dueDate || "9999-12-31") || a.name.localeCompare(b.name, "pt-BR"));
+  return organizeClientPackages(items, captacoes.map((capture) => ({
+    id: capture.id, planId: capture.plan_id, label: capture.label,
+    packageKind: capture.package_kind, sequenceOrder: capture.sequence_order,
+    date: events.find((event) => event.eventType === `${capture.package_kind === "capture" ? "captacao" : "producao"}:${capture.id}`)?.eventDate,
+  })));
 }
 
 // ---------- Aprovação do cliente (eixo separado de tasks.status) ----------

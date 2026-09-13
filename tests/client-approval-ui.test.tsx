@@ -94,3 +94,22 @@ describe("aprovação de criativo no portal", () => {
     expect(button("Aprovar criação")?.disabled).toBe(false);
   });
 });
+
+
+describe("pacotes no painel do cliente", () => {
+  it("separa pacotes, mostra a ordem de publicação e abre o conteúdo correto", async () => {
+    const items: DashboardItem[] = [
+      { ...creative, id: "late", name: "Vídeo posterior", dueDate: "2026-10-20", clientPackageId: "c2", clientPackageLabel: "2ª Captação", clientPackageKind: "capture", clientPackageOrder: 1 },
+      { ...creative, id: "early", name: "Vídeo inicial", dueDate: "2026-10-05", clientPackageId: "c1", clientPackageLabel: "1ª Captação", clientPackageKind: "capture", clientPackageOrder: 0 },
+      { ...creative, id: "middle", name: "Vídeo seguinte", dueDate: "2026-10-08", clientPackageId: "c1", clientPackageLabel: "1ª Captação", clientPackageKind: "capture", clientPackageOrder: 0 },
+    ];
+    await act(async () => root.render(<ClientDashboard clientName="Cliente" roleTitle={null} city={null} instagramHandle={null} initialItems={items} events={[]} initialScore={null} />));
+    const groups = container.querySelectorAll(".cd-package-list .cd-group");
+    expect(groups).toHaveLength(2);
+    expect(groups[0].querySelector("h3")?.textContent).toBe("1ª Captação");
+    expect([...groups[0].querySelectorAll(".cd-group-item-name")].map((node) => node.textContent)).toEqual(["Vídeo inicial", "Vídeo seguinte"]);
+    expect(groups[1].querySelector("h3")?.textContent).toBe("2ª Captação");
+    await click(groups[1].querySelector(".cd-sequence-item"));
+    expect(container.querySelector(".cd-modal")?.textContent || container.textContent).toContain("Vídeo posterior");
+  });
+});

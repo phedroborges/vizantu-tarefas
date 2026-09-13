@@ -1,7 +1,9 @@
 "use client";
 
-import { Check, Plus, Radio, Shapes, Tag as TagIcon } from "lucide-react";
+import { Check, Plus, Radio, Shapes, Trash2, Tag as TagIcon } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { removeTagFromCatalog, useVisibleTags } from "@/lib/tag-catalog";
 import { MetaRow } from "@/components/meta-row";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { Tag, TagKind } from "@/lib/types";
@@ -29,13 +31,37 @@ export function TagPickerPopover({
   triggerClassName?: string;
   align?: "start" | "center" | "end";
 }) {
+  const router = useRouter();
+  const visibleCatalog = useVisibleTags(catalog);
+  const [deleteCandidate, setDeleteCandidate] = useState<Tag | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [error, setError] = useState("");
   const [open, setOpen] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [newLabel, setNewLabel] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const options = useMemo(() => catalog.filter((tag) => tag.kind === kind), [catalog, kind]);
+  const options = useMemo(() => visibleCatalog.filter((tag) => tag.kind === kind), [visibleCatalog, kind]);
+
+  async function confirmDelete() {
+    if (!deleteCandidate || isDeleting) return;
+    setIsDeleting(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/tags/${deleteCandidate.id}`, { method: "DELETE" });
+      const result = await response.json();
+      if (!response.ok && response.status !== 404) throw new Error(result.error || "Não foi possível excluir a etiqueta.");
+      removeTagFromCatalog(deleteCandidate.id);
+      if (selectedIds.includes(deleteCandidate.id)) onChange(selectedIds.filter((id) => id !== deleteCandidate.id));
+      setDeleteCandidate(null);
+      router.refresh();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Não foi possível excluir. Tente novamente.");
+    } finally {
+      setIsDeleting(false);
+    }
+  }
 
   function toggle(id: string) {
     onChange(selectedIds.includes(id) ? selectedIds.filter((item) => item !== id) : [...selectedIds, id]);
@@ -73,7 +99,7 @@ export function TagPickerPopover({
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (!next) cancelAdd();
+        if (!next) { cancelAdd(); setDeleteCandidate(null); setError(""); }
       }}
     >
       <PopoverTrigger className={triggerClassName} onClick={(event) => event.stopPropagation()}>
@@ -84,19 +110,27 @@ export function TagPickerPopover({
           {options.map((tag) => {
             const isSelected = selectedIds.includes(tag.id);
             return (
+              <div className="tag-popover-option" key={tag.id}>
               <button
-                key={tag.id}
                 type="button"
                 className={`tag-popover-row ${isSelected ? "selected" : ""}`}
+                disabled={isDeleting}
                 onClick={() => toggle(tag.id)}
               >
                 {tag.label}
                 {isSelected ? <Check size={13} /> : null}
               </button>
+              {kind !== "categoria" ? <button type="button" className="tag-popover-delete" aria-label={`Excluir etiqueta ${tag.label}`} title={`Excluir ${tag.label}`} disabled={isDeleting} onClick={(event) => { event.stopPropagation(); setError(""); setDeleteCandidate(tag); }}><Trash2 size={13} /></button> : null}
+              </div>
             );
           })}
           {options.length === 0 ? <p className="tag-popover-empty">Nenhuma etiqueta ainda.</p> : null}
         </div>
+        {deleteCandidate ? <div className="tag-popover-confirm" role="group" aria-label="Confirmar exclusão de etiqueta">
+          <p>Excluir <strong>{deleteCandidate.label}</strong>? Ela deixará de aparecer em todas as tarefas.</p>
+          <div><button type="button" disabled={isDeleting} onClick={() => { setDeleteCandidate(null); setError(""); }}>Cancelar</button><button type="button" disabled={isDeleting} onClick={confirmDelete}>{isDeleting ? "Excluindo..." : "Excluir etiqueta"}</button></div>
+        </div> : null}
+        {error ? <p className="tag-popover-error" role="alert">{error}</p> : null}
         <div className="tag-popover-add">
           {isAdding ? (
             <input
@@ -145,7 +179,8 @@ export function TagPicker({
   onChange: (ids: string[]) => void;
   onCatalogUpdate: (tag: Tag) => void;
 }) {
-  const options = useMemo(() => catalog.filter((tag) => tag.kind === kind), [catalog, kind]);
+  const visibleCatalog = useVisibleTags(catalog);
+  const options = useMemo(() => visibleCatalog.filter((tag) => tag.kind === kind), [visibleCatalog, kind]);
   const selected = useMemo(() => options.filter((tag) => selectedIds.includes(tag.id)), [options, selectedIds]);
   const Icon = KIND_ICON[kind];
   const badgeClass = kind === "formato" ? "badge format" : "badge channel";
