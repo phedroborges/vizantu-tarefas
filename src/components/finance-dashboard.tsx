@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BadgeDollarSign, CalendarDays, Check, ChevronRight, Download, FileSignature, Landmark, LockKeyhole, Plus, RefreshCw, Settings2, ShieldCheck, Sparkles, TrendingUp, X } from "lucide-react";
+import { BadgeDollarSign, CalendarDays, Check, ChevronRight, Download, FileSignature, Landmark, LockKeyhole, Plus, RefreshCw, Settings2, ShieldCheck, TrendingUp, Users, X } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/vz";
 import { useConfirm } from "@/components/confirm-dialog";
-import { brl, clientMargins, contractAlerts, contractSummaries, contractedByMonth, growthProjection, metrics, monthAdd, priceSuggestion, productionLines, money, type ProductionLine } from "@/lib/finance/calculations";
+import { brl, clientMargins, contractAlerts, contractSummaries, contractedByMonth, growthProjection, metrics, monthAdd, priceSuggestion, producerClosing, productionLines, money, type ProductionLine } from "@/lib/finance/calculations";
 import { CARGOS_QUE_PRODUZEM, CATEGORIES, RATE_LABELS, type Entry, type FinanceData, type ProductionReview, type RateKey, type Settings } from "@/lib/finance/types";
 import "@/app/financeiro/finance.css";
 
@@ -86,7 +86,9 @@ export function FinanceDashboard({ initialData }: { initialData?: FinanceData })
       {tab === "oneoff" ? <OneOff data={data} month={month} onRevenue={createRevenue} /> : null}
       {tab === "overview" ? <Overview data={data} month={month} stats={stats} /> : null}
       {tab === "costs" ? <Costs data={data} month={month} busy={busy} onEdit={setEditEntry} onCancelSeries={async (entry) => { if (await confirm({ title: "Encerrar próximas parcelas", message: `Cancelar as parcelas a partir de ${entry.competence}?`, confirmLabel: "Encerrar recorrência", danger: true })) await mutate({ action: "cancelSeries", entryId: entry.id }); }} onCancel={async (entry) => { if (await confirm({ title: "Cancelar lançamento", message: `Cancelar “${entry.description}”? O histórico será mantido.`, confirmLabel: "Cancelar lançamento", danger: true })) await mutate({ action: "cancel", entryId: entry.id }); }} /> : null}
-      {tab === "production" ? <Production data={data} month={month} busy={busy} onReview={setReviewLine} onBook={async (line) => {
+      {tab === "production" ? <Production data={data} month={month} busy={busy} onReview={setReviewLine} onClose={async (memberId, name, pending, pieces) => {
+        if (await confirm({ title: `Fechar o mês de ${name}`, message: `${pieces} peça(s), ${brl(pending)}. Cada uma vira uma despesa de produção na competência ${month}.`, confirmLabel: "Lançar fechamento" })) await mutate({ action: "productionClosing", memberId, competence: month });
+      }} onBook={async (line) => {
         if (await confirm({ title: "Lançar produção a pagar", message: `${line.name}: ${brl(line.total)}. O valor e a regra aplicada serão registrados no financeiro.`, confirmLabel: "Lançar despesa" })) await mutate({ action: "production", taskId: line.taskId });
       }} /> : null}
       {tab === "settings" ? <SettingsPanel key={JSON.stringify(data.settings)} settings={data.settings} busy={busy} onSave={(settings) => mutate({ action: "settings", settings })} audit={data.audit} members={data.members} /> : null}
@@ -212,11 +214,29 @@ function Contracts({ data, month, busy, onRevenue, onBlock }: { data: FinanceDat
   </>;
 }
 
-function Production({ data, month, busy, onReview, onBook }: { data: FinanceData; month: string; busy: boolean; onReview: (line: ProductionLine) => void; onBook: (line: ProductionLine) => void }) {
+function Production({ data, month, busy, onReview, onBook, onClose }: { data: FinanceData; month: string; busy: boolean; onReview: (line: ProductionLine) => void; onBook: (line: ProductionLine) => void; onClose: (memberId: string, name: string, pending: number, pieces: number) => void }) {
   const [member, setMember] = useState(""); const [all, setAll] = useState(false);
+  const doMes = productionLines(data.tasks, data.tags, data.reviews, data.settings, data.members).filter((line) => line.deliveredDate?.startsWith(month));
+  const fechamentos = producerClosing(doMes, data.entries);
+  const semDiretor = doMes.filter((line) => !line.producerId);
   const lines = productionLines(data.tasks, data.tags, data.reviews, data.settings, data.members).filter((line) => (all || (line.deliveredDate || line.dueDate).startsWith(month)) && (!member || line.producerId === member));
   const total = lines.reduce((sum, line) => sum + line.total, 0);
-  return <><section className="fin-panel"><div className="fin-panel-title"><div><span className="fin-eyebrow">Valores da produção</span><h2>Tabela da equipe</h2></div><BadgeDollarSign size={20} /></div><div className="fin-table-scroll"><table className="fin-table"><thead><tr><th>Entrega</th><th>Unidade</th><th>Pacote de 5</th></tr></thead><tbody>{Object.entries(data.settings.rates).map(([key, rate]) => <tr key={key}><td>{RATE_LABELS[key as RateKey]}</td><td>{brl(rate.unit)}</td><td>{rate.pack === null ? "—" : brl(rate.pack)}</td></tr>)}</tbody></table></div><p className="fin-footnote">Carrosséis: +{brl(data.settings.extraCard)} por card acima de 8. Grupos de cinco no mesmo pacote, formato e diretor criativo recebem preço de pacote; excedentes usam preço unitário. Prazo desde o cadastro: {data.settings.soloDays} dia(s) para avulsas e {data.settings.packageDays} para pacotes, {data.settings.deadlineMode === "business" ? "úteis (segunda a sexta, sem calendário de feriados)" : "corridos"}. Pagamento de 50% com {data.settings.penaltyMode === "both" ? "atraso e problema confirmado" : "atraso ou problema confirmado"}.</p></section>
+  return <>
+    <section className="fin-panel"><div className="fin-panel-title"><div><span className="fin-eyebrow">Quanto cada um fecha em {month}</span><h2>Fechamento por diretor criativo</h2></div><Users size={20} /></div>
+      <div className="fin-client-grid">{fechamentos.map((fechamento) => {
+        const pessoa = data.members.find((m) => m.id === fechamento.producerId);
+        return <article className="fin-client" key={fechamento.producerId}>
+          <header><h3>{pessoa?.name || "Sem diretor criativo"}</h3><span className={`fin-badge ${fechamento.pending ? "" : "is-ok"}`}>{fechamento.pending ? "A lançar" : "Tudo lançado"}</span></header>
+          <dl><div><dt>Total do mês</dt><dd><strong>{brl(fechamento.total)}</strong></dd></div><div><dt>Peças entregues</dt><dd>{fechamento.pieces}</dd></div><div><dt>Já lançado</dt><dd>{brl(fechamento.launched)}</dd></div><div><dt>Falta lançar</dt><dd className={fechamento.pending ? "fin-negative" : ""}>{brl(fechamento.pending)}</dd></div>{fechamento.penalized ? <div><dt>Com desconto de 50%</dt><dd className="fin-negative">{fechamento.penalized} peça(s)</dd></div> : null}</dl>
+          <details><summary>Por formato</summary><table className="fin-table"><tbody>{fechamento.byFormat.map((formato) => <tr key={formato.rateKey}><td>{RATE_LABELS[formato.rateKey]}</td><td>{formato.count}</td><td>{brl(formato.total)}</td></tr>)}</tbody></table></details>
+          {fechamento.pending ? <Button size="sm" disabled={busy} onClick={() => onClose(fechamento.producerId, pessoa?.name || "", fechamento.pending, fechamento.pendingTaskIds.length)}><Check size={13} /> Lançar as {fechamento.pendingTaskIds.length} pendentes</Button> : null}
+        </article>;
+      })}</div>
+      {!fechamentos.length ? <Empty text="Nenhuma entrega conferida nesta competência." /> : null}
+      {semDiretor.length ? <div className="fin-warning">{semDiretor.length} entrega(s) do mês sem diretor criativo na tarefa. Não entram em fechamento nenhum e não geram pagamento — confira a lista abaixo.</div> : null}
+      <p className="fin-footnote">O valor já lançado vem do lançamento gravado, não da tabela atual: mudar preço depois não reescreve o que já foi combinado. O que falta lançar usa a estimativa de hoje. Lançar cria uma despesa por peça, e a mesma peça nunca é paga duas vezes.</p>
+    </section>
+    <section className="fin-panel"><div className="fin-panel-title"><div><span className="fin-eyebrow">Valores da produção</span><h2>Tabela da equipe</h2></div><BadgeDollarSign size={20} /></div><div className="fin-table-scroll"><table className="fin-table"><thead><tr><th>Entrega</th><th>Unidade</th><th>Pacote de 5</th></tr></thead><tbody>{Object.entries(data.settings.rates).map(([key, rate]) => <tr key={key}><td>{RATE_LABELS[key as RateKey]}</td><td>{brl(rate.unit)}</td><td>{rate.pack === null ? "—" : brl(rate.pack)}</td></tr>)}</tbody></table></div><p className="fin-footnote">Carrosséis: +{brl(data.settings.extraCard)} por card acima de 8. Grupos de cinco no mesmo pacote, formato e diretor criativo recebem preço de pacote; excedentes usam preço unitário. Prazo desde o cadastro: {data.settings.soloDays} dia(s) para avulsas e {data.settings.packageDays} para pacotes, {data.settings.deadlineMode === "business" ? "úteis (segunda a sexta, sem calendário de feriados)" : "corridos"}. Pagamento de 50% com {data.settings.penaltyMode === "both" ? "atraso e problema confirmado" : "atraso ou problema confirmado"}.</p></section>
     <section className="fin-panel"><div className="fin-panel-title"><div><span className="fin-eyebrow">Conferência antes de pagar</span><h2>Produção · {brl(total)}</h2></div><span>{lines.length} tarefas</span></div><div className="fin-filters"><select aria-label="Diretor criativo" value={member} onChange={(e) => setMember(e.target.value)}><option value="">Todos os diretores criativos</option>{data.members.filter((m) => (CARGOS_QUE_PRODUZEM as readonly string[]).includes(m.role)).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select><label><input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} /> Todos os meses</label></div>
       <div className="fin-table-scroll"><table className="fin-table"><thead><tr><th>Tarefa</th><th>Responsável</th><th>Prazo / entrega</th><th>Base</th><th>A pagar</th><th>Conferência</th></tr></thead><tbody>{lines.map((line) => {
         const entry = data.entries.find((e) => e.sourceKey === `production:${line.taskId}`);

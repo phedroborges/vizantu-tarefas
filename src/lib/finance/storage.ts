@@ -127,12 +127,26 @@ export async function mutateFinance(body: Record<string, unknown>, actor: string
     if (raw.deliveredDate && raw.deliveredDate > new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date())) throw new FinanceInputError("Entrega não pode ter data futura.");
     const review: ProductionReview = { taskId, rateKey: raw.rateKey, cards: raw.cards, deliveredDate: raw.deliveredDate ? date(raw.deliveredDate) : null, qualityProblem: raw.qualityProblem, notes: String(raw.notes || "").slice(0, 1000) };
     checked(await db.from("finance_production_reviews").upsert({ task_id: taskId, data: review, updated_by: actor, updated_at: new Date().toISOString() }));
-  } else if (body.action === "production") {
-    const taskId = uuid(body.taskId);
+  } else if (body.action === "production" || body.action === "productionClosing") {
     const data = await loadFinance(actor);
-    const line = productionLines(data.tasks, data.tags, data.reviews, data.settings, data.members).find((item) => item.taskId === taskId);
-    if (!line?.ready) throw new FinanceInputError(line?.pendencia || "Confirme formato, diretor criativo e data de entrega antes de lançar o pagamento.");
-    checked(await db.from("finance_entries").upsert(toRow({ direction: "expense", category: "producao", description: `Produção · ${line.name}`, amount: line.total, competence: line.deliveredDate!.slice(0, 7), projectId: line.projectId, memberId: line.producerId!, recurring: false, seriesId: null, sourceKey: `production:${line.taskId}`, notes: `Base ${line.base} centavos; ${line.penalty ? "50% por atraso/problema conforme regra configurada" : "integral"}. Prazo ${line.dueDate}.` }, actor), { onConflict: "source_key", ignoreDuplicates: true }));
+    const todas = productionLines(data.tasks, data.tags, data.reviews, data.settings, data.members);
+    let alvo: typeof todas;
+    if (body.action === "production") {
+      const taskId = uuid(body.taskId);
+      const line = todas.find((item) => item.taskId === taskId);
+      if (!line?.ready) throw new FinanceInputError(line?.pendencia || "Confirme formato, diretor criativo e data de entrega antes de lançar o pagamento.");
+      alvo = [line];
+    } else {
+      // Fechamento do mês de uma pessoa. O servidor recalcula e filtra sozinho:
+      // aceitar uma lista de tarefas vinda do cliente seria aceitar pagar o que
+      // ele mandasse, inclusive peça de outro diretor ou de outro mês.
+      const producerId = uuid(body.memberId);
+      const competence = String(body.competence || ""); date(`${competence}-01`);
+      alvo = todas.filter((line) => line.ready && line.producerId === producerId && line.deliveredDate!.startsWith(competence));
+      if (!alvo.length) throw new FinanceInputError("Nenhuma entrega conferida e pendente para esta pessoa nesta competência.");
+    }
+    // source_key por tarefa: reenviar o fechamento não paga a mesma peça duas vezes.
+    checked(await db.from("finance_entries").upsert(alvo.map((line) => toRow({ direction: "expense", category: "producao", description: `Produção · ${line.name}`, amount: line.total, competence: line.deliveredDate!.slice(0, 7), projectId: line.projectId, memberId: line.producerId!, recurring: false, seriesId: null, sourceKey: `production:${line.taskId}`, notes: `Base ${line.base} centavos; ${line.penalty ? "50% por atraso/problema conforme regra configurada" : "integral"}. Prazo ${line.dueDate}.` }, actor)), { onConflict: "source_key", ignoreDuplicates: true }));
   } else {
     throw new FinanceInputError("Ação financeira inválida.");
   }

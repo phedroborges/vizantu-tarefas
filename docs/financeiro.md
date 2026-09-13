@@ -81,6 +81,16 @@ Uma peça gera um pagamento só. Quando mais de um diretor criativo passou pela 
 
 O formato é sugerido por etiqueta/nome e pode ser corrigido na conferência. Os grupos de cinco consideram o mesmo projeto, pacote, formato e diretor criativo creditado; sobras são unitárias. O prazo parte do cadastro da tarefa, em horário de São Paulo, e a primeira passagem por entrega ao cliente serve como evidência de entrega. O dono pode corrigir a data. Problema de qualidade precisa ser confirmado na conferência.
 
+## Fechamento por diretor criativo
+
+A conferência é peça a peça, porque é ali que se corrige formato, quantidade de cards e problema de qualidade. Mas ninguém paga peça a peça: paga-se uma pessoa, uma vez no mês.
+
+O fechamento mostra, por diretor criativo da competência: total do mês, quantas peças, a divisão por formato, quanto já virou despesa lançada, quanto falta lançar e quantas peças levaram o desconto de 50%. Um botão lança todas as pendentes de uma vez.
+
+O que já foi lançado aparece pelo **valor gravado no lançamento**, não pela tabela de preços atual — mudar preço depois não reescreve o que já foi combinado. O que falta lançar usa a estimativa de hoje, que ainda é negociável.
+
+O fechamento em lote é recalculado no servidor a partir da pessoa e da competência; a lista de tarefas não vem do navegador. Cada peça vira uma despesa com chave própria, então reenviar o fechamento nunca paga a mesma peça duas vezes.
+
 A produção é estimativa até o dono lançar a despesa. Sem formato, responsável ou evidência de entrega, não há despesa automática. O lançamento guarda valor e regra aplicada; mudar a tabela depois não muda valores já lançados. A mesma tarefa não pode gerar duas despesas automáticas. Escopos além da tabela devem ser negociados e cadastrados como despesa manual.
 
 ## Inadimplência e portal

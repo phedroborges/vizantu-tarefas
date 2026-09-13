@@ -1,6 +1,6 @@
 import { derivedFields, parseFaixas } from "../contract-render";
 import type { Contract, Member, Project, Tag, Task } from "../types";
-import { CARGOS_QUE_PRODUZEM, CATEGORIES, type ClientMargin, type ContractSummary, type Entry, type EntryInput, type FinanceData, type ProductionReview, type RateKey, type Settings } from "./types";
+import { CARGOS_QUE_PRODUZEM, CATEGORIES, type ClientMargin, type ContractSummary, type Entry, type EntryInput, type FinanceData, type ProducerClosing, type ProductionReview, type RateKey, type Settings } from "./types";
 
 function localDate(timestamp: string): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(timestamp));
@@ -295,4 +295,43 @@ export function contractAlerts(contracts: Contract[], today: string, within = 30
     if (days < 0 || days > within) return [];
     return [{ contractId: contract.id, title: contract.title, projectId: contract.projectId ?? null, endsOn, days }];
   });
+}
+
+// ---------- Fechamento por diretor criativo ----------
+//
+// A conferência é peça a peça, e precisa ser: é ali que se corrige formato, card
+// e problema de qualidade. Mas ninguém paga peça a peça — paga-se uma pessoa,
+// uma vez no mês. Sem esta soma, fechar o mês de três pessoas com dezenas de
+// entregas vira contagem manual, que é exatamente onde o erro entra.
+//
+// "Já lançado" vem do lançamento gravado, não da tabela de preços: mudar a
+// tabela depois não pode reescrever o que já foi combinado e registrado. "A
+// lançar" vem da estimativa atual, porque essa ainda é negociável.
+export function producerClosing(lines: ProductionLine[], entries: Entry[]): ProducerClosing[] {
+  const lancado = new Map<string, Entry>();
+  for (const entry of entries) {
+    if (entry.sourceKey?.startsWith("production:") && !entry.cancelled) lancado.set(entry.sourceKey.slice("production:".length), entry);
+  }
+  const porPessoa = new Map<string, ProductionLine[]>();
+  for (const line of lines) {
+    if (!line.producerId || !line.ready) continue;
+    porPessoa.set(line.producerId, [...(porPessoa.get(line.producerId) ?? []), line]);
+  }
+  return [...porPessoa.entries()].map(([producerId, doDiretor]) => {
+    const formatos = new Map<RateKey, { count: number; total: number }>();
+    let launched = 0, pending = 0;
+    const pendingTaskIds: string[] = [];
+    for (const line of doDiretor) {
+      const registro = lancado.get(line.taskId);
+      const valor = registro ? registro.amount : line.total;
+      if (registro) launched += valor; else { pending += valor; pendingTaskIds.push(line.taskId); }
+      const atual = formatos.get(line.rateKey!) ?? { count: 0, total: 0 };
+      formatos.set(line.rateKey!, { count: atual.count + 1, total: atual.total + valor });
+    }
+    return {
+      producerId, pieces: doDiretor.length, penalized: doDiretor.filter((line) => line.penalty).length,
+      byFormat: [...formatos.entries()].map(([rateKey, dados]) => ({ rateKey, ...dados })).sort((a, b) => b.total - a.total),
+      launched, pending, total: launched + pending, pendingTaskIds,
+    };
+  }).sort((a, b) => b.total - a.total);
 }

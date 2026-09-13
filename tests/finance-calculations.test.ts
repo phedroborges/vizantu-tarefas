@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clientMargins, contractAlerts, contractEntries, contractSummaries, contractedByMonth, creditedProducer, growthProjection, metrics, monthAdd, productionLines, priceSuggestion, recurringEntries, validDate } from "../src/lib/finance/calculations";
+import { clientMargins, contractAlerts, contractEntries, contractSummaries, contractedByMonth, creditedProducer, growthProjection, metrics, monthAdd, producerClosing, productionLines, priceSuggestion, recurringEntries, validDate } from "../src/lib/finance/calculations";
 import { DEFAULT_SETTINGS, type Entry } from "../src/lib/finance/types";
 import type { Comment, Contract, Member, Project, Task, UserRole } from "../src/lib/types";
 const entry = (patch: Partial<Entry> = {}): Entry => ({ id: "e1", direction: "income", category: "servicos", description: "Mensalidade", amount: 100000, competence: "2026-09", projectId: "p1", memberId: null, recurring: true, seriesId: "s1", sourceKey: null, cancelled: false, notes: "", createdAt: "2026-09-01", ...patch });
@@ -219,5 +219,43 @@ describe("carteira de contratos", () => {
     const [setembro] = contractedByMonth(carteira, "2026-09", 1);
     expect(setembro.recurring).toBe(350000);
     expect(setembro.oneOff).toBe(140000);
+  });
+});
+
+// ---------- Fechamento por diretor criativo ----------
+describe("fechamento por diretor criativo", () => {
+  const linhas = (entregas: { id: number; quem: string; formato?: string }[]) =>
+    productionLines(entregas.map((entrega) => task(entrega.id, { assigneeId: entrega.quem, name: entrega.formato ?? "Reels", captacaoId: undefined })), [], [], DEFAULT_SETTINGS, equipe);
+
+  it("soma por pessoa, conta as peças e separa por formato", () => {
+    const [fechamento] = producerClosing(linhas([{ id: 1, quem: "a" }, { id: 2, quem: "a" }, { id: 3, quem: "a", formato: "Carrossel" }]), []);
+    expect(fechamento).toMatchObject({ producerId: "a", pieces: 3, launched: 0, pending: 24000, total: 24000 });
+    // Ordenado pelo que pesa mais no bolso: dois reels valem mais que um carrossel.
+    expect(fechamento.byFormat).toEqual([
+      { rateKey: "reels", count: 2, total: 14000 },
+      { rateKey: "carrossel", count: 1, total: 10000 },
+    ]);
+  });
+
+  it("não mistura o fechamento de duas pessoas", () => {
+    const fechamentos = producerClosing(linhas([{ id: 1, quem: "a" }, { id: 2, quem: "b" }, { id: 3, quem: "b" }]), []);
+    expect(fechamentos.map((f) => [f.producerId, f.pieces, f.total])).toEqual([["b", 2, 14000], ["a", 1, 7000]]);
+  });
+
+  // Mudar a tabela de preços depois não pode reescrever o que já foi combinado.
+  it("usa o valor gravado no que já foi lançado, e a estimativa no que falta", () => {
+    const lancado = entry({ id: "pago", direction: "expense", category: "producao", amount: 5000, recurring: false, sourceKey: "production:t1", memberId: "a" });
+    const [fechamento] = producerClosing(linhas([{ id: 1, quem: "a" }, { id: 2, quem: "a" }]), [lancado]);
+    expect(fechamento).toMatchObject({ launched: 5000, pending: 7000, total: 12000, pendingTaskIds: ["t2"] });
+  });
+
+  it("lançamento cancelado volta a contar como pendente", () => {
+    const cancelado = entry({ id: "x", direction: "expense", category: "producao", amount: 5000, recurring: false, sourceKey: "production:t1", cancelled: true });
+    const [fechamento] = producerClosing(linhas([{ id: 1, quem: "a" }]), [cancelado]);
+    expect(fechamento).toMatchObject({ launched: 0, pending: 7000, pendingTaskIds: ["t1"] });
+  });
+
+  it("quem não é diretor criativo não gera fechamento nenhum", () => {
+    expect(producerClosing(linhas([{ id: 1, quem: "social" }, { id: 2, quem: "dono" }]), [])).toEqual([]);
   });
 });
