@@ -1,8 +1,8 @@
-# LAF — Planejamento operacional e comercial
+# LAF, planejamento operacional e comercial
 
 ## Visão geral
 
-A LAF será realizada em seis dias de jogos no Centro Esportivo de Mineiros. As atividades começam às 16h e normalmente seguem até aproximadamente 21h, com pelo menos três jogos por dia.
+A LAF será realizada em seis dias de jogos no Centro Esportivo de Mineiros. As atividades começam às 16h e duram cerca de três horas, com quatro jogos por rodada. O primeiro jogo tem hora marcada e os seguintes começam ao fim do anterior.
 
 A marca da LAF passará por um ajuste antes desta edição. A marca atual é antiga e será refinada sem perder o reconhecimento, e as peças do evento usam a versão ajustada.
 
@@ -22,9 +22,10 @@ A marca da LAF passará por um ajuste antes desta edição. A marca atual é ant
 ## Local e horários
 
 - Local: Centro Esportivo de Mineiros.
-- Início das atividades: 16h.
-- Encerramento habitual: aproximadamente 21h.
-- Programação mínima: três jogos por dia.
+- Início das atividades: 16h (primeiro jogo, com tolerância de 15 minutos).
+- Duração: cerca de três horas por rodada.
+- Programação: quatro jogos por rodada, cada um de 40 minutos em dois tempos de 20.
+- Os jogos seguintes começam ao fim do anterior, sem hora marcada.
 - Total: seis dias de jogos.
 
 ## Chaves
@@ -45,25 +46,96 @@ As dez atléticas do regulamento formam oito equipes, porque algumas se juntaram
 - Fulminante
 - Sistemática
 
+## Formato da competição
+
+Rodadas 1 a 3, em setembro, são a fase de grupos: quatro equipes por chave em turno único, o que fecha a fase em três rodadas.
+
+Rodadas 4 a 6, em outubro, são o mata-mata. O primeiro de cada chave vai direto à semifinal, o segundo e o terceiro disputam a repescagem dentro da própria chave, e a final é em 24 de outubro.
+
+## Por que outubro começa só no dia 14
+
+Os dois primeiros sábados de outubro ficam sem rodada:
+
+- 3 de outubro é véspera das eleições de 4 de outubro de 2026;
+- 10 de outubro cai na semana de saco cheio, quando boa parte dos universitários viaja.
+
+Por isso a rodada 4 foi para a quarta-feira, 14 de outubro, e é a única fora de sábado.
+
+## Público e argumento comercial
+
+Números que sustentam a conversa com patrocinador:
+
+- pelo menos 500 universitários por rodada, em todas as seis;
+- pico histórico de 1.000 pessoas em três horas de evento, na rodada dos clássicos;
+- dois meses de mídia contínua no Instagram, entre 12 de setembro e 24 de outubro;
+- alcance segmentado: o público é o universitário de Mineiros, não audiência genérica.
+
+A rodada 2, no segundo fim de semana, é a rodada dos clássicos: todos os jogos são entre rivais históricos e é o dia em que a quadra lota. A abertura e a final são os outros dois picos.
+
+## Cobertura e formatos publicados
+
+Ao longo dos dois meses, o perfil da LAF publica:
+
+- jogos da rodada;
+- melhor da rodada;
+- palpite da galera;
+- memes da rodada;
+- vídeos de entrevista com os destaques;
+- acompanhamento em tempo real nos stories;
+- fotografia oficial, além dos fotógrafos profissionais convidados;
+- transmissão ao vivo dos jogos no YouTube, em alta qualidade.
+
+## Entrega física do pacote Atacante
+
+O que a organização monta e imprime para cada patrocinador:
+
+- estande de 3x3 metros com três mesas montadas para exposição de produtos;
+- banner na lateral da quadra, 2 x 0,9 m;
+- banner superior, atrás do gol, 1,5 x 0,5 m;
+- banner de backdrop do stand, 2 x 2 m.
+
+A impressão dos três banners é por conta da LAF.
+
+## Planta do ginásio
+
+Quadra: o vestiário fica na lateral esquerda e é por onde os atletas entram. O banner lateral fica na lateral da quadra e o banner superior fica atrás do gol. Abaixo da quadra ficam a cabine da transmissão ao vivo e a entrada principal, que é o ponto de entrevistas e leva o banner com as marcas dos patrocinadores.
+
+Segundo andar: a lojinha da LAF fica à esquerda, a escada dá acesso ao piso, os três stands de patrocinador ficam em sequência e o bar da LAF fica ao lado deles, à direita, na mesma fileira. A fila do bar passa na frente dos três stands, e não existe outro caminho para quem sobe.
+
 ## Patrocínios
 
-### Cota Fodão — R$ 3.000
+Os pacotes se chamam Atacante e Zagueiro. Os nomes antigos, cota Fodão e cota Básica, saíram de circulação.
 
-É a principal classe de patrocínio da LAF. Inclui:
+O vídeo gravado no negócio do patrocinador e publicado no Instagram da LAF entra nos dois pacotes. A orientação é que os dois sejam bons: o Zagueiro não é descrito pelo que falta nele.
 
-- stand no evento;
-- presença do logotipo nos principais espaços e materiais da LAF;
-- liberdade para realizar uma ativação própria no stand;
-- possibilidade de vender produtos ou serviços;
-- distribuição de brindes;
-- realização de sorteios;
-- realização de dinâmicas com o público.
+Os memes da rodada saem sem logo de patrocinador, porque é o conteúdo que mais circula entre as atléticas e marca de patrocinador trava o compartilhamento.
 
-A concepção, a produção e a execução da ativação são de responsabilidade do patrocinador.
+### Pacote Atacante, R$ 3.000
 
-### Cota Básica — R$ 1.000
+Tem tudo que o Zagueiro tem, em tamanho maior, e soma o que é exclusivo dele:
 
-Inclui a presença do logotipo do patrocinador em locais selecionados da comunicação e da estrutura da LAF. Essa modalidade não contempla stand nem a presença ampla prevista na cota Fodão.
+- estande de 3x3 metros com três mesas montadas pela organização;
+- três banners impressos pela LAF (ver a seção de entrega física);
+- logo maior na transmissão ao vivo, com citação falada na abertura de cada jogo e no fechamento;
+- marca nos conteúdos de destaque: melhor da rodada, vídeos de entrevista e palpite da galera;
+- marcação na cobertura em tempo real dos stories;
+- venda, sorteio, brinde e ativação livre no stand;
+- logo em destaque no banner de entrevistas.
+
+Só existem três stands. A concepção, a produção e a execução da ativação são de responsabilidade do patrocinador.
+
+### Pacote Zagueiro, R$ 1.000
+
+Vende repetição em vez de destaque:
+
+- vídeo próprio gravado no negócio e publicado no Instagram da LAF;
+- logo menor na transmissão ao vivo, com citação falada uma vez por dia;
+- logo nos posts de jogos da rodada, nas seis;
+- logo no post de chaveamento e nas fases da competição;
+- presença no post fixo dos apoiadores no perfil;
+- logo no banner de entrevistas dos jogadores;
+- logo na sinalização e na estrutura do evento;
+- dois meses de presença contínua.
 
 ### Visita aos patrocinadores
 
@@ -81,13 +153,16 @@ Todos os patrocinadores serão visitados antes do evento. A visita terá como ob
 
 O segundo andar concentrará parte importante da experiência do público:
 
-- quatro patrocinadores com stand;
-- bar da LAF;
-- lojinha oficial da LAF.
+- lojinha da LAF, à esquerda;
+- escada de acesso ao piso;
+- três stands de patrocinador, em sequência;
+- bar da LAF, ao lado dos stands, na mesma fileira.
+
+A fila do bar passa na frente dos três stands, e não existe outro caminho para quem sobe.
 
 ### Circulação dos jogadores
 
-Os jogadores entrarão na quadra pelo vestiário localizado no fundo do ginásio. Após os jogos, sairão pela entrada principal.
+Os jogadores entrarão na quadra pelo vestiário, que fica na lateral esquerda. Após os jogos, sairão pela entrada principal.
 
 A entrada principal será preparada como ponto de entrevistas. O espaço deverá contar com um banner de fundo contendo as marcas dos patrocinadores, garantindo exposição durante fotos, vídeos e entrevistas.
 
@@ -146,6 +221,14 @@ Todas as peças do evento deverão respeitar a marca ajustada, incluindo:
 - publicações em tempo real;
 - materiais com logotipos dos patrocinadores.
 
+## Tabela oficial
+
+A competição é gerida no Copa Fácil, e a página pública da 16ª LAF fica em:
+
+https://copafacil.com/-eppdr
+
+É a fonte de verdade para chaves, tabela de jogos, horários, resultados, classificação e súmula digital. Antes de montar qualquer peça que dependa de confronto, horário ou resultado, consultar essa página. O regulamento também aponta o Copa Fácil como a plataforma da súmula digital.
+
 ## Regulamento
 
 O regulamento oficial está armazenado em:
@@ -157,13 +240,11 @@ Esse documento deve ser considerado a referência para regras esportivas, crité
 ## Pendências de confirmação
 
 - Confirmar o ano oficial das seis datas nos materiais públicos.
-- Revisar o horário de encerramento: as 21h vinham do planejamento com início às 19h e provavelmente não valem mais com início às 16h. Definir também se o encerramento entra na divulgação como horário oficial ou como previsão.
-- Confirmar se a rodada tem três ou quatro jogos por dia (o regulamento fala em quatro).
+- Publicar a grade de confrontos de cada rodada no Copa Fácil e avisar a equipe de conteúdo, porque três peças dependem dela.
 - Definir o entrevistador: apresentadora da rádio ou Leonardo Rimolo.
-- Definir quais espaços e materiais receberão os logotipos da cota Básica.
-- Definir os quatro patrocinadores que ocuparão os stands.
+- Definir quais espaços e materiais receberão os logotipos do pacote Zagueiro.
+- Definir os três patrocinadores que ocuparão os stands.
 - Levantar necessidades de energia, mobiliário, internet, montagem e segurança dos stands.
 - Produzir e aprovar o banner de entrevistas com os patrocinadores.
 - Definir regras de credenciamento e comercialização para os fotógrafos convidados.
-- Montar a grade de pelo menos três jogos para cada um dos seis dias.
 
