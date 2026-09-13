@@ -163,7 +163,7 @@ export type Comment = {
   newValue?: unknown;
 };
 
-export type NotificationType = "mention" | "task_assigned" | "task_overdue" | "announcement";
+export type NotificationType = "mention" | "task_assigned" | "task_overdue" | "announcement" | "finance_receivable" | "contract_ending";
 
 export type Notification = {
   id: string;

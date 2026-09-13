@@ -28,7 +28,7 @@ export async function loadFinance(actor: string): Promise<FinanceData> {
   const warnings: string[] = [];
   const expected: EntryInput[] = [];
   for (const contract of contracts) {
-    const result = contractEntries(contract);
+    const result = contractEntries(contract, settings);
     if (result.warning) warnings.push(result.warning);
     expected.push(...result.entries);
   }
@@ -81,13 +81,14 @@ export function validateSettings(raw: unknown): Settings {
   date(s.openingDate);
   if (typeof s.taxRegime !== "string" || s.taxRegime.length > 100 || !["cash", "competence"].includes(s.taxBasis) || !["calendar", "business"].includes(s.deadlineMode) || !["both", "either"].includes(s.penaltyMode)) throw new FinanceInputError("Revise as regras de cálculo.");
   for (const days of [s.soloDays, s.packageDays]) if (!Number.isInteger(days) || days < 0 || days > 365) throw new FinanceInputError("Prazo inválido.");
+  if (!Number.isFinite(s.annualAdjustment) || s.annualAdjustment < 0 || s.annualAdjustment > 100) throw new FinanceInputError("Reajuste anual inválido.");
   cents(s.extraCard);
   const rates = Object.fromEntries(Object.keys(DEFAULT_SETTINGS.rates).map((key) => {
     const rate = s.rates?.[key as keyof Settings["rates"]];
     if (!rate) throw new FinanceInputError("Tabela de preços incompleta.");
     return [key, { unit: cents(rate.unit), pack: rate.pack === null ? null : cents(rate.pack) }];
   })) as Settings["rates"];
-  return { taxRate: s.taxRate, taxRegime: s.taxRegime, taxBasis: s.taxBasis, openingBalance: s.openingBalance, openingDate: s.openingDate, targetMargin: s.targetMargin, deadlineMode: s.deadlineMode, penaltyMode: s.penaltyMode, soloDays: s.soloDays, packageDays: s.packageDays, extraCard: s.extraCard, rates };
+  return { taxRate: s.taxRate, taxRegime: s.taxRegime, taxBasis: s.taxBasis, openingBalance: s.openingBalance, openingDate: s.openingDate, targetMargin: s.targetMargin, deadlineMode: s.deadlineMode, penaltyMode: s.penaltyMode, soloDays: s.soloDays, packageDays: s.packageDays, annualAdjustment: s.annualAdjustment, extraCard: s.extraCard, rates };
 }
 
 export async function mutateFinance(body: Record<string, unknown>, actor: string): Promise<void> {
@@ -137,9 +138,9 @@ export async function mutateFinance(body: Record<string, unknown>, actor: string
   } else if (body.action === "production") {
     const taskId = uuid(body.taskId);
     const data = await loadFinance(actor);
-    const line = productionLines(data.tasks, data.tags, data.reviews, data.settings).find((item) => item.taskId === taskId);
-    if (!line?.ready) throw new FinanceInputError("Confirme formato, responsável e data de entrega antes de lançar o pagamento.");
-    checked(await db.from("finance_entries").upsert(toRow({ direction: "expense", category: "producao", description: `Produção · ${line.name}`, amount: line.total, dueDate: date(body.dueDate), competence: line.deliveredDate!.slice(0, 7), projectId: line.projectId, memberId: line.memberId!, recurring: false, seriesId: null, sourceKey: `production:${line.taskId}`, notes: `Base ${line.base} centavos; ${line.penalty ? "50% por atraso/problema conforme regra configurada" : "integral"}. Prazo ${line.dueDate}.` }, actor), { onConflict: "source_key", ignoreDuplicates: true }));
+    const line = productionLines(data.tasks, data.tags, data.reviews, data.settings, data.members).find((item) => item.taskId === taskId);
+    if (!line?.ready) throw new FinanceInputError(line?.pendencia || "Confirme formato, diretor criativo e data de entrega antes de lançar o pagamento.");
+    checked(await db.from("finance_entries").upsert(toRow({ direction: "expense", category: "producao", description: `Produção · ${line.name}`, amount: line.total, dueDate: date(body.dueDate), competence: line.deliveredDate!.slice(0, 7), projectId: line.projectId, memberId: line.producerId!, recurring: false, seriesId: null, sourceKey: `production:${line.taskId}`, notes: `Base ${line.base} centavos; ${line.penalty ? "50% por atraso/problema conforme regra configurada" : "integral"}. Prazo ${line.dueDate}.` }, actor), { onConflict: "source_key", ignoreDuplicates: true }));
   } else {
     throw new FinanceInputError("Ação financeira inválida.");
   }

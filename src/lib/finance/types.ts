@@ -20,12 +20,27 @@ export type Settings = {
   openingBalance: number; openingDate: string; targetMargin: number;
   deadlineMode: "calendar" | "business"; penaltyMode: "both" | "either";
   soloDays: number; packageDays: number;
+  // Percentual aplicado a cada 12 parcelas de contrato recorrente. É uma taxa
+  // fixa configurada, não um índice buscado em lugar nenhum: ninguém aqui
+  // consulta IPCA automaticamente, e fingir que consulta seria pior que zero.
+  annualAdjustment: number;
   rates: Record<RateKey, { unit: number; pack: number | null }>; extraCard: number;
 };
 export const DEFAULT_SETTINGS: Settings = {
-  taxRate: null, taxRegime: "", taxBasis: "competence", openingBalance: 0, openingDate: "2026-01-01", targetMargin: 30,
-  deadlineMode: "calendar", penaltyMode: "both", soloDays: 1, packageDays: 3, extraCard: 2000,
+  // 6% sobre o faturamento, informado pela Vizantu. Alíquota efetiva: não há
+  // apuração de Simples nem envio fiscal aqui.
+  taxRate: 6, taxRegime: "", taxBasis: "competence", openingBalance: 0, openingDate: "2026-01-01", targetMargin: 30,
+  deadlineMode: "calendar", penaltyMode: "both", soloDays: 1, packageDays: 3, extraCard: 2000, annualAdjustment: 0,
   rates: { reels: { unit: 7000, pack: 28000 }, estatico: { unit: 5000, pack: 20000 }, carrossel: { unit: 10000, pack: 40000 }, manual: { unit: 35000, pack: null }, canva: { unit: 30000, pack: null } },
+};
+// Só quem produz peça entra no cálculo de produção: editor de vídeo e designer,
+// que no app são diretor_criativo. Social media e dono não recebem por tarefa —
+// o trabalho deles não é medido em peça entregue.
+export const CARGOS_QUE_PRODUZEM = ["diretor_criativo"] as const;
+
+export type ClientMargin = {
+  projectId: string; revenue: number; tax: number | null; production: number;
+  tools: number; result: number | null; margin: number | null;
 };
 export type ProductionReview = { taskId: string; rateKey: RateKey | null; cards: number; deliveredDate: string | null; qualityProblem: boolean; notes: string };
 export type Block = { projectId: string; blocked: boolean; reason: string; updatedAt: string };

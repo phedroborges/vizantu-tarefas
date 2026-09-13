@@ -1,6 +1,6 @@
 import { derivedFields, parseFaixas } from "../contract-render";
-import type { Contract, Tag, Task } from "../types";
-import { CATEGORIES, type Entry, type EntryInput, type FinanceData, type Payment, type ProductionReview, type RateKey, type Settings } from "./types";
+import type { Contract, Member, Project, Tag, Task } from "../types";
+import { CARGOS_QUE_PRODUZEM, CATEGORIES, type ClientMargin, type Entry, type EntryInput, type FinanceData, type Payment, type ProductionReview, type RateKey, type Settings } from "./types";
 
 function localDate(timestamp: string): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(timestamp));
@@ -37,7 +37,7 @@ export function recurringEntries(input: EntryInput, months: number): EntryInput[
   return Array.from({ length: months }, (_, i) => ({ ...input, dueDate: monthAdd(input.dueDate, i), competence: monthAdd(`${input.competence}-01`, i).slice(0, 7), sourceKey: input.sourceKey ? `${input.sourceKey}:${i}` : null }));
 }
 
-export function contractEntries(contract: Contract): { entries: EntryInput[]; warning?: string } {
+export function contractEntries(contract: Contract, settings?: Pick<Settings, "annualAdjustment">): { entries: EntryInput[]; warning?: string } {
   if (contract.status !== "assinado") return { entries: [] };
   const f = contract.fields;
   const start = f.vigencia_inicio;
@@ -54,9 +54,13 @@ export function contractEntries(contract: Contract): { entries: EntryInput[]; wa
   }
   const firstDue = `${monthAdd(start, contract.paymentMode === "pre" ? -1 : 0).slice(0, 7)}-${String(day).padStart(2, "0")}`;
   const projectTotal = contract.paymentStructure === "projeto" ? money(derivedFields(f, contract.paymentMode, contract.paymentStructure).valor_total_formatado || "") : amount;
+  // O reajuste anual só toca a recorrência de valor fixo. Escalonado já traz os
+  // valores escritos no contrato, e projeto é parcela de um total fechado —
+  // reajustar qualquer um dos dois seria cobrar diferente do que foi assinado.
+  const adjust = (value: number, index: number) => Math.round(value * (1 + (settings?.annualAdjustment || 0) / 100) ** Math.floor(index / 12));
   const values = contract.paymentStructure === "escalonado" ? tierValues : contract.paymentStructure === "projeto"
     ? Array.from({ length: months }, (_, i) => Math.floor(projectTotal / months) + (i < projectTotal % months ? 1 : 0))
-    : Array.from({ length: months }, () => amount);
+    : Array.from({ length: months }, (_, i) => adjust(amount, i));
   return { entries: values.map((value, index) => ({
     direction: "income", category: contract.paymentStructure === "projeto" ? "campanha" : "servicos",
     description: `${contract.title} · ${index + 1}/${months}`, amount: value,
@@ -138,22 +142,78 @@ export function priceSuggestion(cost: number, tax: number | null, margin: number
   return { floor, suggested: Math.ceil(floor * (score !== null && score >= 9 ? 1 + promoterPremium / 100 : 1)), note: score === null ? "Sem avaliação: preço por custo e margem." : score <= 6 ? "Priorize corrigir a experiência antes de reajustar." : "Simulação comercial; não altera o contrato." };
 }
 
-export type ProductionLine = { taskId: string; name: string; projectId: string; memberId?: string; rateKey: RateKey | null; package: boolean; cards: number; dueDate: string; deliveredDate: string | null; late: boolean; qualityProblem: boolean; base: number; total: number; penalty: boolean; ready: boolean };
-export function productionLines(tasks: Task[], tags: Tag[], reviews: ProductionReview[], settings: Settings): ProductionLine[] {
+// ---------- Quem recebe pela tarefa ----------
+//
+// Uma peça passa por várias mãos e só pode gerar um pagamento. A regra do dono é
+// "o que mais trabalhou", e o app tem como responder isso sem chutar: toda troca
+// de responsável fica registrada na atividade da tarefa, com valor antigo, novo
+// e hora. Dá para remontar a linha do tempo e somar quanto tempo cada pessoa
+// segurou a tarefa até a entrega.
+//
+// Só entram os cargos que produzem peça. Social media e dono aparecem na linha
+// do tempo como qualquer outro, e são ignorados aqui de propósito: o trabalho
+// deles não é medido em peça entregue.
+export function assignmentSegments(task: Task, endAt: number): { memberId: string | null; from: number; to: number }[] {
+  const changes = task.comments
+    .filter((comment) => comment.kind === "activity" && comment.fieldKey === "assigneeId")
+    .map((comment) => ({ at: Date.parse(comment.createdAt), para: (comment.newValue ?? null) as string | null, de: (comment.oldValue ?? null) as string | null }))
+    .filter((change) => Number.isFinite(change.at))
+    .sort((a, b) => a.at - b.at);
+  // Sem nenhuma troca registrada, quem está com a tarefa hoje é quem sempre
+  // esteve. Com trocas, o primeiro "valor antigo" é quem começou com ela.
+  let holder = changes.length ? changes[0].de : task.assigneeId ?? null;
+  let since = Date.parse(task.createdAt);
+  const segments: { memberId: string | null; from: number; to: number }[] = [];
+  for (const change of changes) {
+    segments.push({ memberId: holder, from: since, to: change.at });
+    holder = change.para;
+    since = change.at;
+  }
+  segments.push({ memberId: holder, from: since, to: endAt });
+  return segments;
+}
+
+export function creditedProducer(task: Task, eligible: Set<string>, endAt: number): string | null {
+  const held = new Map<string, number>();
+  let ultimo: string | null = null;
+  for (const segment of assignmentSegments(task, endAt)) {
+    const to = Math.min(segment.to, endAt);
+    if (!segment.memberId || !eligible.has(segment.memberId) || to <= segment.from) continue;
+    held.set(segment.memberId, (held.get(segment.memberId) ?? 0) + (to - segment.from));
+    ultimo = segment.memberId;
+  }
+  if (!held.size) return null;
+  const maior = Math.max(...held.values());
+  const empatados = [...held.entries()].filter(([, tempo]) => tempo === maior).map(([id]) => id);
+  // Empate desempata em quem estava com a tarefa no fim: quem finalizou leva.
+  if (empatados.length === 1) return empatados[0];
+  return ultimo && empatados.includes(ultimo) ? ultimo : [...empatados].sort()[0];
+}
+
+export type ProductionLine = { taskId: string; name: string; projectId: string; memberId?: string; producerId: string | null; rateKey: RateKey | null; package: boolean; cards: number; dueDate: string; deliveredDate: string | null; late: boolean; qualityProblem: boolean; base: number; total: number; penalty: boolean; ready: boolean; pendencia: string | null };
+
+export function productionLines(tasks: Task[], tags: Tag[], reviews: ProductionReview[], settings: Settings, members: Member[]): ProductionLine[] {
   const labels = new Map(tags.map((tag) => [tag.id, tag.label]));
   const reviewById = new Map(reviews.map((review) => [review.taskId, review]));
+  const produzem = new Set(members.filter((member) => (CARGOS_QUE_PRODUZEM as readonly string[]).includes(member.role)).map((member) => member.id));
   const rows = tasks.map((task) => {
     const review = reviewById.get(task.id);
     const format = [...task.formatTagIds.map((id) => labels.get(id) || ""), task.name].join(" ").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
     const rateKey: RateKey | null = review?.rateKey || (/manual.*marca/.test(format) ? "manual" : /canva|apresentacao/.test(format) ? "canva" : /carross/.test(format) ? "carrossel" : /reels?|video/.test(format) ? "reels" : /estatico|feed|story/.test(format) ? "estatico" : null);
     const deliveryEvent = task.statusHistory.find((event) => ["para_aprovacao", "aprovado", "finalizado"].includes(event.status));
     const delivered = review?.deliveredDate || (deliveryEvent ? localDate(deliveryEvent.enteredAt) : null);
+    const fim = deliveryEvent ? Date.parse(deliveryEvent.enteredAt) : Date.now();
+    const producerId = creditedProducer(task, produzem, fim);
     const dueDate = daysAdd(localDate(task.createdAt), task.captacaoId ? settings.packageDays : settings.soloDays, settings.deadlineMode === "business");
     const late = Boolean(delivered && delivered > dueDate);
     const qualityProblem = review?.qualityProblem || false;
-    return { taskId: task.id, name: task.name, projectId: task.projectId, memberId: task.assigneeId, rateKey, package: Boolean(task.captacaoId), cards: review?.cards ?? 8, dueDate, deliveredDate: delivered,
-      late, qualityProblem, base: 0, total: 0, penalty: settings.penaltyMode === "both" ? late && qualityProblem : late || qualityProblem, ready: Boolean(delivered && rateKey && task.assigneeId),
-      group: `${task.projectId}:${task.captacaoId || task.id}:${task.assigneeId}:${rateKey}` };
+    const pendencia = !rateKey ? "Sem formato reconhecido: confira o tipo da peça."
+      : !delivered ? "Sem evidência de entrega: a tarefa ainda não passou por aprovação."
+      : !producerId ? "Sem diretor criativo na tarefa: ninguém que produz peça foi responsável por ela."
+      : null;
+    return { taskId: task.id, name: task.name, projectId: task.projectId, memberId: task.assigneeId, producerId, rateKey, package: Boolean(task.captacaoId), cards: review?.cards ?? 8, dueDate, deliveredDate: delivered,
+      late, qualityProblem, base: 0, total: 0, penalty: settings.penaltyMode === "both" ? late && qualityProblem : late || qualityProblem, ready: !pendencia, pendencia,
+      group: `${task.projectId}:${task.captacaoId || task.id}:${producerId}:${rateKey}` };
   });
   const groups = new Map<string, typeof rows>();
   for (const row of rows) { const group = groups.get(row.group) || []; group.push(row); groups.set(row.group, group); }
@@ -169,4 +229,66 @@ export function productionLines(tasks: Task[], tags: Tag[], reviews: ProductionR
     row.total = Math.round(row.base * (row.penalty ? 0.5 : 1));
   }
   return rows;
+}
+
+// ---------- Margem por cliente ----------
+//
+// Receita do cliente menos o que ele custa de verdade: imposto sobre o que ele
+// fatura, a produção lançada na conta dele e a fatia das ferramentas que ele
+// consome. Ferramenta é assinatura da empresa inteira e não vem carimbada por
+// cliente, então é rateada pela participação dele na receita do mês — quem
+// fatura mais puxa mais ferramenta. Sem receita no mês, não há rateio.
+//
+// Operacional, marketing e pró-labore ficam de fora: são custo de existir a
+// empresa, não custo de atender aquele cliente. Misturar os dois faria todo
+// cliente parecer deficitário nos meses fracos.
+export function clientMargins(data: Pick<FinanceData, "entries" | "settings" | "projects">, month: string): ClientMargin[] {
+  const live = data.entries.filter((entry) => !entry.cancelled && entry.competence === month);
+  const receitaTotal = sum(live.filter((entry) => entry.direction === "income" && entry.projectId));
+  const ferramentas = sum(live.filter((entry) => entry.direction === "expense" && entry.category === "ferramentas"));
+  return data.projects.map((project) => {
+    const revenue = sum(live.filter((entry) => entry.direction === "income" && entry.projectId === project.id));
+    const production = sum(live.filter((entry) => entry.direction === "expense" && entry.category === "producao" && entry.projectId === project.id));
+    const tools = receitaTotal ? Math.round(ferramentas * revenue / receitaTotal) : 0;
+    const tax = data.settings.taxRate === null ? null : Math.round(revenue * data.settings.taxRate / 100);
+    const result = tax === null ? null : revenue - tax - production - tools;
+    return { projectId: project.id, revenue, tax, production, tools, result, margin: result !== null && revenue ? result / revenue : null };
+  });
+}
+
+// ---------- Régua de cobrança ----------
+//
+// Interna, e só. O cliente não vê nada disso: o plano dele é aberto por link e
+// qualquer número financeiro ali vaza para quem tiver o endereço. Aqui a régua
+// vira aviso para o dono, dentro do app com login.
+export type ReceivableAlert = { entry: Entry; stage: "vence_em_3" | "vence_hoje" | "vencido"; days: number; open: number };
+export function receivableAlerts(entries: Entry[], payments: Payment[], today: string): ReceivableAlert[] {
+  const dia = 86400000;
+  return entries.flatMap((entry): ReceivableAlert[] => {
+    if (entry.cancelled || entry.direction !== "income") return [];
+    const open = balance(entry, payments, today);
+    if (open <= 0) return [];
+    const days = Math.round((Date.parse(`${today}T12:00:00Z`) - Date.parse(`${entry.dueDate}T12:00:00Z`)) / dia);
+    if (days > 0) return [{ entry, stage: "vencido" as const, days, open }];
+    if (days === 0) return [{ entry, stage: "vence_hoje" as const, days: 0, open }];
+    if (days >= -3) return [{ entry, stage: "vence_em_3" as const, days: -days, open }];
+    return [];
+  });
+}
+
+// ---------- Contrato chegando ao fim ----------
+// Contrato que vence sem ninguém renovar tira o cliente do MRR em silêncio, e o
+// churn só conta depois que já aconteceu. O aviso existe para chegar antes.
+export type ContractAlert = { contractId: string; title: string; projectId: string | null; endsOn: string; days: number };
+export function contractAlerts(contracts: Contract[], today: string, within = 30): ContractAlert[] {
+  return contracts.flatMap((contract) => {
+    if (contract.status !== "assinado") return [];
+    const start = contract.fields.vigencia_inicio;
+    const months = Number(contract.fields.vigencia_meses);
+    if (!start || !validDate(start) || !Number.isInteger(months) || months < 1) return [];
+    const endsOn = monthAdd(start, months);
+    const days = Math.round((Date.parse(`${endsOn}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / 86400000);
+    if (days < 0 || days > within) return [];
+    return [{ contractId: contract.id, title: contract.title, projectId: contract.projectId ?? null, endsOn, days }];
+  });
 }

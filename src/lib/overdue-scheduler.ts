@@ -1,8 +1,9 @@
+import { varrerAvisosFinanceiros } from "./finance/alerts";
 import { createDailyOverdueNotifications } from "./storage";
 
 // ---------- Varredura diária de tarefas atrasadas ----------
 //
-// O aviso de atraso é a única notificação que ninguém dispara ao usar o app:
+// Os avisos que ninguém dispara ao usar o app:
 // menção nasce de um comentário, atribuição nasce de uma edição, aviso nasce de
 // uma publicação. Atraso nasce da passagem do tempo, então precisa de alguém
 // batendo na porta todo dia.
@@ -39,16 +40,28 @@ export function estaNaHoraDeAvisar(agora = new Date()): boolean {
   return horaEmSaoPaulo(agora) >= HORA_DE_AVISAR;
 }
 
-export async function varrerAtrasos(agora = new Date()): Promise<number> {
-  if (!estaNaHoraDeAvisar(agora)) return 0;
+// Cada varredura é independente da outra de propósito: se a leitura do
+// financeiro quebrar, o aviso de tarefa atrasada continua saindo, e vice-versa.
+// Uma falha em conta a receber não pode calar a operação inteira.
+async function tentar(nome: string, acao: () => Promise<number>): Promise<number> {
   try {
-    return await createDailyOverdueNotifications(hojeEmSaoPaulo(agora));
+    return await acao();
   } catch (error) {
     // Varredura que quebra não pode derrubar o servidor inteiro junto: o app
     // serve tarefas, plano e formulário, e nada disso depende deste aviso.
-    console.error("[atrasos] varredura falhou:", error);
+    console.error(`[${nome}] varredura falhou:`, error);
     return 0;
   }
+}
+
+export async function varrerAtrasos(agora = new Date()): Promise<number> {
+  if (!estaNaHoraDeAvisar(agora)) return 0;
+  const hoje = hojeEmSaoPaulo(agora);
+  const [tarefas, financeiro] = await Promise.all([
+    tentar("atrasos", () => createDailyOverdueNotifications(hoje)),
+    tentar("financeiro", () => varrerAvisosFinanceiros(hoje)),
+  ]);
+  return tarefas + financeiro;
 }
 
 let agendado = false;
