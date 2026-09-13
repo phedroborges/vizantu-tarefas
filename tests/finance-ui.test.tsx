@@ -31,6 +31,20 @@ describe("painel financeiro",()=>{
     await click(button("Avulsos"));expect(container.textContent).toContain("Receita esporádica");
     await click(button("Produção da equipe"));expect(container.textContent).toContain("Tabela da equipe");expect(container.textContent).toContain("280,00");
   });
+  // O fechamento precisa mostrar de onde o valor saiu, não só o valor.
+  it("mostra o extrato de cada diretor criativo com a regra de preço aplicada",async()=>{
+    await mount();await click(button("Produção da equipe"));
+    const texto=container.textContent||"";
+    expect(texto).toContain("Fechamento por diretor criativo");
+    expect(texto).toContain("Extrato de entregas");
+    expect(texto).toContain("Designer de exemplo");
+    // as cinco peças do pacote fecham em pacote de 5, e a linha diz isso
+    expect(texto).toContain("Regra de preço");
+    expect(texto).toContain("Pacote de 5");
+    expect(texto).toContain("Condição");
+    expect(texto).toContain("Integral");
+    expect(texto).toContain("Falta lançar");
+  });
   it("campanha avulsa desmarca recorrência e envia centavos",async()=>{
     await mount();await click(button("Novo lançamento"));
     const form=document.querySelector('.fin-modal form') as HTMLFormElement;

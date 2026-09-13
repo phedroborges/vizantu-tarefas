@@ -46,13 +46,6 @@ export type ContractSummary = {
   projectId: string; seriesId: string | null; description: string;
   monthly: number; first: string; last: string; monthsLeft: number; remaining: number;
 };
-// O fechamento de um diretor criativo no mês: quantas peças, de que tipo,
-// quanto já virou despesa e quanto ainda falta lançar.
-export type ProducerClosing = {
-  producerId: string; pieces: number; penalized: number;
-  byFormat: { rateKey: RateKey; count: number; total: number }[];
-  launched: number; pending: number; total: number; pendingTaskIds: string[];
-};
 export type ProductionReview = { taskId: string; rateKey: RateKey | null; cards: number; deliveredDate: string | null; qualityProblem: boolean; notes: string };
 export type Block = { projectId: string; blocked: boolean; reason: string; updatedAt: string };
 export type Audit = { id: string; action: string; actorId: string | null; createdAt: string; entityId: string };

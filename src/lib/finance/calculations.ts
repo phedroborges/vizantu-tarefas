@@ -1,6 +1,6 @@
 import { derivedFields, parseFaixas } from "../contract-render";
 import type { Contract, Member, Project, Tag, Task } from "../types";
-import { CARGOS_QUE_PRODUZEM, CATEGORIES, type ClientMargin, type ContractSummary, type Entry, type EntryInput, type FinanceData, type ProducerClosing, type ProductionReview, type RateKey, type Settings } from "./types";
+import { CARGOS_QUE_PRODUZEM, CATEGORIES, type ClientMargin, type ContractSummary, type Entry, type EntryInput, type FinanceData, type ProductionReview, type RateKey, type Settings } from "./types";
 
 function localDate(timestamp: string): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(timestamp));
@@ -169,7 +169,11 @@ export function creditedProducer(task: Task, eligible: Set<string>, endAt: numbe
   return ultimo && empatados.includes(ultimo) ? ultimo : [...empatados].sort()[0];
 }
 
-export type ProductionLine = { taskId: string; name: string; projectId: string; memberId?: string; producerId: string | null; rateKey: RateKey | null; package: boolean; cards: number; dueDate: string; deliveredDate: string | null; late: boolean; qualityProblem: boolean; base: number; total: number; penalty: boolean; ready: boolean; pendencia: string | null };
+// `rule` guarda por que a peça custa o que custa. Sem isso o extrato mostra um
+// valor e ninguém consegue conferir de onde ele saiu — e conferência que não dá
+// para refazer na mão não é conferência, é confiança.
+export type PriceRule = { pack: boolean; packSize: number; unit: number; extraCards: number; extraCardValue: number };
+export type ProductionLine = { taskId: string; name: string; projectId: string; memberId?: string; producerId: string | null; rateKey: RateKey | null; package: boolean; cards: number; dueDate: string; deliveredDate: string | null; late: boolean; qualityProblem: boolean; base: number; total: number; penalty: boolean; ready: boolean; pendencia: string | null; rule: PriceRule | null };
 
 export function productionLines(tasks: Task[], tags: Tag[], reviews: ProductionReview[], settings: Settings, members: Member[]): ProductionLine[] {
   const labels = new Map(tags.map((tag) => [tag.id, tag.label]));
@@ -191,7 +195,7 @@ export function productionLines(tasks: Task[], tags: Tag[], reviews: ProductionR
       : !producerId ? "Sem diretor criativo na tarefa: ninguém que produz peça foi responsável por ela."
       : null;
     return { taskId: task.id, name: task.name, projectId: task.projectId, memberId: task.assigneeId, producerId, rateKey, package: Boolean(task.captacaoId), cards: review?.cards ?? 8, dueDate, deliveredDate: delivered,
-      late, qualityProblem, base: 0, total: 0, penalty: settings.penaltyMode === "both" ? late && qualityProblem : late || qualityProblem, ready: !pendencia, pendencia,
+      late, qualityProblem, base: 0, total: 0, penalty: settings.penaltyMode === "both" ? late && qualityProblem : late || qualityProblem, ready: !pendencia, pendencia, rule: null as PriceRule | null,
       group: `${task.projectId}:${task.captacaoId || task.id}:${producerId}:${rateKey}` };
   });
   const groups = new Map<string, typeof rows>();
@@ -203,9 +207,12 @@ export function productionLines(tasks: Task[], tags: Tag[], reviews: ProductionR
     const group = groups.get(row.group)!;
     const rank = group.indexOf(row);
     const discountedCount = Math.floor(group.length / 5) * 5;
-    row.base = row.package && rate.pack !== null && rank < discountedCount ? Math.floor(rate.pack / 5) + (rank % 5 < rate.pack % 5 ? 1 : 0) : rate.unit;
-    if (row.rateKey === "carrossel") row.base += Math.max(0, row.cards - 8) * settings.extraCard;
+    const noPacote = row.package && rate.pack !== null && rank < discountedCount;
+    row.base = noPacote ? Math.floor(rate.pack! / 5) + (rank % 5 < rate.pack! % 5 ? 1 : 0) : rate.unit;
+    const extraCards = row.rateKey === "carrossel" ? Math.max(0, row.cards - 8) : 0;
+    row.base += extraCards * settings.extraCard;
     row.total = Math.round(row.base * (row.penalty ? 0.5 : 1));
+    row.rule = { pack: noPacote, packSize: 5, unit: noPacote ? rate.pack! : rate.unit, extraCards, extraCardValue: settings.extraCard };
   }
   return rows;
 }
@@ -307,6 +314,13 @@ export function contractAlerts(contracts: Contract[], today: string, within = 30
 // "Já lançado" vem do lançamento gravado, não da tabela de preços: mudar a
 // tabela depois não pode reescrever o que já foi combinado e registrado. "A
 // lançar" vem da estimativa atual, porque essa ainda é negociável.
+// O fechamento de um diretor criativo no mês: quantas peças, de que tipo,
+// quanto já virou despesa, quanto falta lançar e o extrato item a item.
+export type ProducerClosing = {
+  producerId: string; pieces: number; penalized: number; lines: ProductionLine[];
+  byFormat: { rateKey: RateKey; count: number; total: number }[];
+  launched: number; pending: number; total: number; pendingTaskIds: string[];
+};
 export function producerClosing(lines: ProductionLine[], entries: Entry[]): ProducerClosing[] {
   const lancado = new Map<string, Entry>();
   for (const entry of entries) {
@@ -330,6 +344,7 @@ export function producerClosing(lines: ProductionLine[], entries: Entry[]): Prod
     }
     return {
       producerId, pieces: doDiretor.length, penalized: doDiretor.filter((line) => line.penalty).length,
+      lines: [...doDiretor].sort((a, b) => (a.deliveredDate ?? "").localeCompare(b.deliveredDate ?? "") || a.name.localeCompare(b.name)),
       byFormat: [...formatos.entries()].map(([rateKey, dados]) => ({ rateKey, ...dados })).sort((a, b) => b.total - a.total),
       launched, pending, total: launched + pending, pendingTaskIds,
     };

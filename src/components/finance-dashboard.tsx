@@ -223,19 +223,39 @@ function Production({ data, month, busy, onReview, onBook, onClose }: { data: Fi
   const total = lines.reduce((sum, line) => sum + line.total, 0);
   return <>
     <section className="fin-panel"><div className="fin-panel-title"><div><span className="fin-eyebrow">Quanto cada um fecha em {month}</span><h2>Fechamento por diretor criativo</h2></div><Users size={20} /></div>
-      <div className="fin-client-grid">{fechamentos.map((fechamento) => {
-        const pessoa = data.members.find((m) => m.id === fechamento.producerId);
-        return <article className="fin-client" key={fechamento.producerId}>
-          <header><h3>{pessoa?.name || "Sem diretor criativo"}</h3><span className={`fin-badge ${fechamento.pending ? "" : "is-ok"}`}>{fechamento.pending ? "A lançar" : "Tudo lançado"}</span></header>
-          <dl><div><dt>Total do mês</dt><dd><strong>{brl(fechamento.total)}</strong></dd></div><div><dt>Peças entregues</dt><dd>{fechamento.pieces}</dd></div><div><dt>Já lançado</dt><dd>{brl(fechamento.launched)}</dd></div><div><dt>Falta lançar</dt><dd className={fechamento.pending ? "fin-negative" : ""}>{brl(fechamento.pending)}</dd></div>{fechamento.penalized ? <div><dt>Com desconto de 50%</dt><dd className="fin-negative">{fechamento.penalized} peça(s)</dd></div> : null}</dl>
-          <details><summary>Por formato</summary><table className="fin-table"><tbody>{fechamento.byFormat.map((formato) => <tr key={formato.rateKey}><td>{RATE_LABELS[formato.rateKey]}</td><td>{formato.count}</td><td>{brl(formato.total)}</td></tr>)}</tbody></table></details>
-          {fechamento.pending ? <Button size="sm" disabled={busy} onClick={() => onClose(fechamento.producerId, pessoa?.name || "", fechamento.pending, fechamento.pendingTaskIds.length)}><Check size={13} /> Lançar as {fechamento.pendingTaskIds.length} pendentes</Button> : null}
-        </article>;
-      })}</div>
+      {fechamentos.length > 1 ? <div className="fin-chart" role="img" aria-label="Comparação do valor fechado por diretor criativo">{fechamentos.map((fechamento) => {
+        const maior = Math.max(1, ...fechamentos.map((item) => item.total));
+        return <div className="fin-chart-row" key={fechamento.producerId}><span>{(data.members.find((m) => m.id === fechamento.producerId)?.name || "—").split(" ")[0]}</span><div><i style={{ width: `${fechamento.launched / maior * 100}%` }} /><i className="is-cost" style={{ width: `${fechamento.pending / maior * 100}%` }} /></div><small>{brl(fechamento.total)} · {fechamento.pieces} peças</small></div>;
+      })}<p className="fin-footnote">Roxo: já lançado · cinza: falta lançar.</p></div> : null}
+      {semDiretor.length ? <div className="fin-warning">{semDiretor.length} entrega(s) do mês sem diretor criativo na tarefa. Não entram em fechamento nenhum e não geram pagamento — é processo a corrigir, não valor a pagar.</div> : null}
       {!fechamentos.length ? <Empty text="Nenhuma entrega conferida nesta competência." /> : null}
-      {semDiretor.length ? <div className="fin-warning">{semDiretor.length} entrega(s) do mês sem diretor criativo na tarefa. Não entram em fechamento nenhum e não geram pagamento — confira a lista abaixo.</div> : null}
-      <p className="fin-footnote">O valor já lançado vem do lançamento gravado, não da tabela atual: mudar preço depois não reescreve o que já foi combinado. O que falta lançar usa a estimativa de hoje. Lançar cria uma despesa por peça, e a mesma peça nunca é paga duas vezes.</p>
     </section>
+
+    {fechamentos.map((fechamento) => {
+      const pessoa = data.members.find((m) => m.id === fechamento.producerId);
+      const maiorFormato = Math.max(1, ...fechamento.byFormat.map((formato) => formato.total));
+      return <section className="fin-panel" key={fechamento.producerId}>
+        <div className="fin-panel-title"><div><span className="fin-eyebrow">Extrato de entregas · {month}</span><h2>{pessoa?.name || "Sem diretor criativo"} · {brl(fechamento.total)}</h2></div>
+          {fechamento.pending ? <Button disabled={busy} onClick={() => onClose(fechamento.producerId, pessoa?.name || "", fechamento.pending, fechamento.pendingTaskIds.length)}><Check size={15} /> Lançar as {fechamento.pendingTaskIds.length} pendentes</Button> : <span className="fin-badge is-ok">Tudo lançado</span>}
+        </div>
+        <div className="fin-mini-grid"><Metric label="Total do mês" value={brl(fechamento.total)} detail={`${fechamento.pieces} peças entregues`} /><Metric label="Já lançado" value={brl(fechamento.launched)} detail="Valor gravado na despesa" /><Metric label="Falta lançar" value={brl(fechamento.pending)} detail="Estimativa pela tabela de hoje" /><Metric label="Com desconto" value={`${fechamento.penalized} peça(s)`} detail={`50% quando ${data.settings.penaltyMode === "both" ? "atrasa E há problema" : "atrasa OU há problema"}`} /></div>
+        <div className="fin-chart" role="img" aria-label={`Valor por formato de ${pessoa?.name || "diretor criativo"}`}>{fechamento.byFormat.map((formato) => <div className="fin-chart-row" key={formato.rateKey}><span>{RATE_LABELS[formato.rateKey].split(" ")[0]}</span><div><i style={{ width: `${formato.total / maiorFormato * 100}%` }} /></div><small>{formato.count} × · {brl(formato.total)}</small></div>)}</div>
+        <div className="fin-table-scroll"><table className="fin-table"><thead><tr><th>Entrega</th><th>Cliente</th><th>Prazo e entrega</th><th>Regra de preço</th><th>Condição</th><th>Valor</th></tr></thead><tbody>{fechamento.lines.map((line) => {
+          const lancado = data.entries.find((e) => e.sourceKey === `production:${line.taskId}` && !e.cancelled);
+          const regra = line.rule;
+          return <tr key={line.taskId}>
+            <td><strong>{line.name}</strong><small>{line.rateKey ? RATE_LABELS[line.rateKey] : "—"}</small></td>
+            <td>{data.projects.find((p) => p.id === line.projectId)?.name || "—"}</td>
+            <td>{dateLabel(line.dueDate)}<small>{line.deliveredDate ? `Entregue ${dateLabel(line.deliveredDate)}` : "Sem registro"}</small>{line.late ? <span className="fin-badge is-late">Atraso</span> : null}</td>
+            <td>{regra ? <>{regra.pack ? `Pacote de ${regra.packSize}` : "Unitário"}<small>{regra.pack ? `${brl(regra.unit)} ÷ ${regra.packSize}` : brl(regra.unit)}{regra.extraCards ? ` + ${regra.extraCards} card(s) × ${brl(regra.extraCardValue)}` : ""}</small></> : "—"}</td>
+            <td>{line.penalty ? <><span className="fin-badge is-late">50% do valor</span><small>{line.late && line.qualityProblem ? "Atraso e problema" : line.late ? "Atraso" : "Problema de qualidade"}</small></> : <>Integral<small>No prazo e sem problema</small></>}</td>
+            <td><strong>{brl(lancado ? lancado.amount : line.total)}</strong><small>{lancado ? "Lançado" : `Base ${brl(line.base)}`}</small></td>
+          </tr>;
+        })}</tbody></table></div>
+        <p className="fin-footnote">Cada linha mostra de onde o valor saiu: a regra aplicada, os cards extras e a condição de prazo. Peça já lançada aparece pelo valor gravado na despesa, não pela tabela de hoje — mudar preço depois não reescreve o que já foi combinado. Grupos de cinco no mesmo pacote, formato e diretor criativo recebem preço de pacote; o que sobra do múltiplo de cinco é unitário.</p>
+      </section>;
+    })}
+
     <section className="fin-panel"><div className="fin-panel-title"><div><span className="fin-eyebrow">Valores da produção</span><h2>Tabela da equipe</h2></div><BadgeDollarSign size={20} /></div><div className="fin-table-scroll"><table className="fin-table"><thead><tr><th>Entrega</th><th>Unidade</th><th>Pacote de 5</th></tr></thead><tbody>{Object.entries(data.settings.rates).map(([key, rate]) => <tr key={key}><td>{RATE_LABELS[key as RateKey]}</td><td>{brl(rate.unit)}</td><td>{rate.pack === null ? "—" : brl(rate.pack)}</td></tr>)}</tbody></table></div><p className="fin-footnote">Carrosséis: +{brl(data.settings.extraCard)} por card acima de 8. Grupos de cinco no mesmo pacote, formato e diretor criativo recebem preço de pacote; excedentes usam preço unitário. Prazo desde o cadastro: {data.settings.soloDays} dia(s) para avulsas e {data.settings.packageDays} para pacotes, {data.settings.deadlineMode === "business" ? "úteis (segunda a sexta, sem calendário de feriados)" : "corridos"}. Pagamento de 50% com {data.settings.penaltyMode === "both" ? "atraso e problema confirmado" : "atraso ou problema confirmado"}.</p></section>
     <section className="fin-panel"><div className="fin-panel-title"><div><span className="fin-eyebrow">Conferência antes de pagar</span><h2>Produção · {brl(total)}</h2></div><span>{lines.length} tarefas</span></div><div className="fin-filters"><select aria-label="Diretor criativo" value={member} onChange={(e) => setMember(e.target.value)}><option value="">Todos os diretores criativos</option>{data.members.filter((m) => (CARGOS_QUE_PRODUZEM as readonly string[]).includes(m.role)).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select><label><input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} /> Todos os meses</label></div>
       <div className="fin-table-scroll"><table className="fin-table"><thead><tr><th>Tarefa</th><th>Responsável</th><th>Prazo / entrega</th><th>Base</th><th>A pagar</th><th>Conferência</th></tr></thead><tbody>{lines.map((line) => {

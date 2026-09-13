@@ -259,3 +259,40 @@ describe("fechamento por diretor criativo", () => {
     expect(producerClosing(linhas([{ id: 1, quem: "social" }, { id: 2, quem: "dono" }]), [])).toEqual([]);
   });
 });
+
+// ---------- A regra que formou o preço ----------
+// O extrato mostra de onde cada valor saiu. Conferência que não dá para refazer
+// na mão não é conferência, então a regra aplicada é dado, não texto de tela.
+describe("regra de preço registrada na linha", () => {
+  const cinco = (patch: Partial<Parameters<typeof task>[1]> = {}) =>
+    productionLines(Array.from({ length: 5 }, (_, i) => task(i, { assigneeId: "a", ...patch })), [], [], DEFAULT_SETTINGS, equipe);
+
+  it("marca o preço de pacote quando os cinco fecham", () => {
+    const linhas = cinco();
+    expect(linhas.every((linha) => linha.rule?.pack)).toBe(true);
+    expect(linhas[0].rule).toMatchObject({ pack: true, packSize: 5, unit: 28000, extraCards: 0 });
+    expect(linhas.reduce((total, linha) => total + linha.total, 0)).toBe(28000);
+  });
+
+  it("a sobra do múltiplo de cinco volta a ser unitária", () => {
+    const seis = productionLines(Array.from({ length: 6 }, (_, i) => task(i, { assigneeId: "a" })), [], [], DEFAULT_SETTINGS, equipe);
+    expect(seis.filter((linha) => linha.rule?.pack)).toHaveLength(5);
+    const avulsa = seis.find((linha) => !linha.rule?.pack)!;
+    expect(avulsa.rule).toMatchObject({ pack: false, unit: 7000 });
+    expect(avulsa.total).toBe(7000);
+  });
+
+  it("registra os cards acima de oito e o que eles custam", () => {
+    const t = task(1, { assigneeId: "a", captacaoId: undefined, name: "Carrossel" });
+    const review = { taskId: t.id, rateKey: "carrossel" as const, cards: 11, deliveredDate: "2026-09-04", qualityProblem: false, notes: "" };
+    const [linha] = productionLines([t], [], [review], DEFAULT_SETTINGS, equipe);
+    expect(linha.rule).toMatchObject({ pack: false, unit: 10000, extraCards: 3, extraCardValue: 2000 });
+    expect(linha.base).toBe(16000);
+  });
+
+  it("o extrato do fechamento vem ordenado por entrega e traz as linhas inteiras", () => {
+    const [fechamento] = producerClosing(cinco(), []);
+    expect(fechamento.lines).toHaveLength(5);
+    expect(fechamento.lines.every((linha) => linha.rule !== null && linha.producerId === "a")).toBe(true);
+  });
+});

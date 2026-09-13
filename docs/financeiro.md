@@ -85,7 +85,15 @@ O formato é sugerido por etiqueta/nome e pode ser corrigido na conferência. Os
 
 A conferência é peça a peça, porque é ali que se corrige formato, quantidade de cards e problema de qualidade. Mas ninguém paga peça a peça: paga-se uma pessoa, uma vez no mês.
 
-O fechamento mostra, por diretor criativo da competência: total do mês, quantas peças, a divisão por formato, quanto já virou despesa lançada, quanto falta lançar e quantas peças levaram o desconto de 50%. Um botão lança todas as pendentes de uma vez.
+Cada diretor criativo tem o seu próprio bloco, separado dos demais, com:
+
+- os números do mês: total, peças entregues, já lançado, falta lançar e quantas levaram desconto;
+- um gráfico por formato, e outro comparando o fechado entre as pessoas;
+- o **extrato item a item** de tudo que ele entregou.
+
+O extrato mostra, em cada linha, de onde o valor saiu: prazo e data de entrega, a regra de preço aplicada (pacote de cinco ou unitário, com a conta à vista), os cards acima de oito e quanto custaram, e a condição de prazo — integral, ou 50% com o motivo. Conferência que não dá para refazer na mão não é conferência, é confiança; por isso a regra aplicada é gravada na linha, não escrita na tela.
+
+Um botão lança todas as pendentes da pessoa de uma vez.
 
 O que já foi lançado aparece pelo **valor gravado no lançamento**, não pela tabela de preços atual — mudar preço depois não reescreve o que já foi combinado. O que falta lançar usa a estimativa de hoje, que ainda é negociável.
 
