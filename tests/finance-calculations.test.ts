@@ -1,11 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { balance, clientMargins, contractAlerts, contractEntries, creditedProducer, growthProjection, metrics, monthAdd, productionLines, priceSuggestion, receivableAlerts, recurringEntries, validDate } from "../src/lib/finance/calculations";
-import { DEFAULT_SETTINGS, type Entry, type Payment } from "../src/lib/finance/types";
+import { clientMargins, contractAlerts, contractEntries, contractSummaries, contractedByMonth, creditedProducer, growthProjection, metrics, monthAdd, productionLines, priceSuggestion, recurringEntries, validDate } from "../src/lib/finance/calculations";
+import { DEFAULT_SETTINGS, type Entry } from "../src/lib/finance/types";
 import type { Comment, Contract, Member, Project, Task, UserRole } from "../src/lib/types";
-const entry = (patch: Partial<Entry> = {}): Entry => ({ id: "e1", direction: "income", category: "servicos", description: "Mensalidade", amount: 100000, dueDate: "2026-09-10", competence: "2026-09", projectId: "p1", memberId: null, recurring: true, seriesId: "s1", sourceKey: null, cancelled: false, notes: "", createdAt: "2026-09-01", ...patch });
-const payment = (patch: Partial<Payment> = {}): Payment => ({ id: "payment", entryId: "e1", amount: 50000, paidAt: "2026-09-10", method: "Pix", reference: "", reversed: false, ...patch });
+const entry = (patch: Partial<Entry> = {}): Entry => ({ id: "e1", direction: "income", category: "servicos", description: "Mensalidade", amount: 100000, competence: "2026-09", projectId: "p1", memberId: null, recurring: true, seriesId: "s1", sourceKey: null, cancelled: false, notes: "", createdAt: "2026-09-01", ...patch });
 const contract = (patch: Partial<Contract> = {}): Contract => ({ id: "contract", projectId: "p1", title: "Gestão", templateId: "gestao_marca", paymentMode: "pre", paymentStructure: "mensal", status: "assinado", fields: { valor_mensal: "2.000,00", vigencia_inicio: "2026-09-01", vigencia_meses: "3", dia_vencimento: "10", data_assinatura: "2026-08-20" }, body: "", createdAt: "", updatedAt: "", ...patch });
-const base = { entries: [], payments: [], settings: { ...DEFAULT_SETTINGS, taxRate: 10 } };
+const base = { entries: [], settings: { ...DEFAULT_SETTINGS, taxRate: 10 } };
 const SEM_IMPOSTO = { ...DEFAULT_SETTINGS, taxRate: null };
 const quem = (id: string, role: UserRole = "diretor_criativo"): Member => ({ id, name: id, email: `${id}@v.com`, role, aiEnabled: false, active: true, createdAt: "", updatedAt: "" });
 const equipe: Member[] = [quem("member"), quem("a"), quem("b"), quem("social", "social_media"), quem("dono", "dono")];
@@ -14,10 +13,9 @@ const troca = (de: string | null, para: string | null, createdAt: string): Comme
 function task(i: number, patch: Partial<Task> = {}): Task { return { id: `t${i}`, projectId: "p1", name: "Reels", kind: "conteudo", createdAt: "2026-09-01T12:00:00Z", updatedAt: "2026-09-01T12:00:00Z", status: "aprovado", statusHistory: [{ status: "para_aprovacao", enteredAt: "2026-09-04T12:00:00Z", exitedAt: null }], images: [], formatTagIds: [], channelTagIds: [], categoryTagIds: [], lists: [], comments: [], assigneeId: "member", captacaoId: "cap", ...patch }; }
 
 describe("contratos e recorrência", () => {
-  it("gera parcelas finitas, com a primeira nunca anterior à assinatura", () => {
+  it("gera uma parcela por competência, sem inventar vencimento", () => {
     const result = contractEntries(contract());
     expect(result.entries).toHaveLength(3);
-    expect(result.entries.map((e) => e.dueDate)).toEqual(["2026-08-20", "2026-09-10", "2026-10-10"]);
     expect(result.entries.map((e) => e.competence)).toEqual(["2026-09", "2026-10", "2026-11"]);
     expect(new Set(result.entries.map((e) => e.sourceKey)).size).toBe(3);
   });
@@ -34,31 +32,31 @@ describe("contratos e recorrência", () => {
     const result = contractEntries(c).entries;
     expect(result.map((e) => e.amount)).toEqual([3334,3334,3333]); expect(result.every((e) => !e.recurring)).toBe(true);
   });
-  it("recorrência iniciada em 31 respeita fevereiro e recupera o dia no mês seguinte", () => {
-    expect(recurringEntries({ ...entry(), dueDate: "2026-01-31", competence: "2026-01" }, 3).map((e) => e.dueDate)).toEqual(["2026-01-31", "2026-02-28", "2026-03-31"]);
+  it("recorrência anda mês a mês e datas inválidas são recusadas", () => {
+    expect(recurringEntries({ ...entry(), competence: "2026-01" }, 3).map((e) => e.competence)).toEqual(["2026-01", "2026-02", "2026-03"]);
     expect(monthAdd("2024-01-31",1)).toBe("2024-02-29"); expect(validDate("2026-02-31")).toBe(false);
   });
 });
 describe("DRE, caixa e indicadores", () => {
-  it("separa competência, recebimento, retiradas e pró-labore", () => {
-    const data = { ...base, entries: [entry(), entry({ id: "pro", direction: "expense", category: "prolabore", amount: 20000 }), entry({ id: "ret", direction: "expense", category: "retiradas", amount: 10000 })], payments: [payment(), payment({ entryId: "ret", amount: 10000 })] };
-    const result = metrics(data, "2026-09", "2026-09-13");
-    expect(result.revenue).toBe(100000); expect(result.received).toBe(50000); expect(result.tax).toBe(10000); expect(result.profit).toBe(70000); expect(result.cash).toBe(40000); expect(result.receivable).toBe(50000);
+  it("separa receita, imposto, pró-labore e retiradas por competência", () => {
+    const data = { ...base, entries: [entry(), entry({ id: "pro", direction: "expense", category: "prolabore", amount: 20000 }), entry({ id: "ret", direction: "expense", category: "retiradas", amount: 10000 })] };
+    const result = metrics(data, "2026-09");
+    // Retirada de lucro não é despesa operacional: não derruba o resultado.
+    expect(result.revenue).toBe(100000); expect(result.tax).toBe(10000); expect(result.profit).toBe(70000);
   });
   it("imposto real substitui a estimativa", () => {
-    const result = metrics({ ...base, entries: [entry(), entry({ id: "tax", direction: "expense", category: "impostos", amount: 6000 })] }, "2026-09", "2026-09-13");
+    const result = metrics({ ...base, entries: [entry(), entry({ id: "tax", direction: "expense", category: "impostos", amount: 6000 })] }, "2026-09");
     expect(result.tax).toBe(6000); expect(result.profit).toBe(94000);
   });
   it("não inventa imposto ou LTV quando falta configuração ou churn", () => {
-    const result = metrics({ ...base, settings: SEM_IMPOSTO, entries: [entry()] }, "2026-09", "2026-09-13");
+    const result = metrics({ ...base, settings: SEM_IMPOSTO, entries: [entry()] }, "2026-09");
     expect(result.tax).toBeNull(); expect(result.profit).toBeNull(); expect(result.ltv).toBeNull(); expect(result.health).toBe("Configuração incompleta");
   });
-  it("exclui campanhas do MRR, cancelamentos e estornos do caixa", () => {
-    const result = metrics({ ...base, entries: [entry(), entry({ id: "ad", recurring: false, category: "campanha", amount: 30000 }), entry({ id: "gone", cancelled: true })], payments: [payment({ reversed: true })] }, "2026-09", "2026-09-13");
-    expect(result.mrr).toBe(100000); expect(result.revenue).toBe(130000); expect(result.cash).toBe(0);
+  it("exclui campanhas do MRR e cancelados da receita", () => {
+    const result = metrics({ ...base, entries: [entry(), entry({ id: "ad", recurring: false, category: "campanha", amount: 30000 }), entry({ id: "gone", cancelled: true })] }, "2026-09");
+    expect(result.mrr).toBe(100000); expect(result.revenue).toBe(130000);
   });
-  it("não trata meses sem registros como meses com receita zero", () => { expect(metrics({ ...base, entries: [entry({ competence: "2026-08" })] }, "2026-09", "2026-09-13").averageRevenue).toBe(100000); });
-  it("baixa parcial e estorno mantêm saldo correto", () => { expect(balance(entry(), [payment()])).toBe(50000); expect(balance(entry(), [payment({ reversed: true })])).toBe(100000); });
+  it("não trata meses sem registros como meses com receita zero", () => { expect(metrics({ ...base, entries: [entry({ competence: "2026-08" })] }, "2026-09").averageRevenue).toBe(100000); });
 });
 describe("produção e precificação", () => {
   it("pacote de cinco reels custa 280, e seis custam 350", () => {
@@ -166,21 +164,7 @@ describe("margem por cliente", () => {
 });
 
 // ---------- Régua de cobrança e fim de contrato ----------
-describe("avisos internos de cobrança e contrato", () => {
-  it("avisa três dias antes, no dia e depois de vencido", () => {
-    const abertos = [entry({ id: "a", dueDate: "2026-09-16" }), entry({ id: "b", dueDate: "2026-09-13" }), entry({ id: "c", dueDate: "2026-09-03" })];
-    const alertas = receivableAlerts(abertos, [], "2026-09-13");
-    expect(alertas.map((alerta) => alerta.stage)).toEqual(["vence_em_3", "vence_hoje", "vencido"]);
-    expect(alertas[2].days).toBe(10);
-  });
-
-  it("cala sobre o que já foi pago, cancelado ou ainda está longe", () => {
-    const pago = entry({ id: "pago", dueDate: "2026-09-10" });
-    expect(receivableAlerts([pago], [payment({ entryId: "pago", amount: 100000 })], "2026-09-13")).toEqual([]);
-    expect(receivableAlerts([entry({ cancelled: true })], [], "2026-09-13")).toEqual([]);
-    expect(receivableAlerts([entry({ dueDate: "2026-10-30" })], [], "2026-09-13")).toEqual([]);
-  });
-
+describe("contratos: quanto valem e quando acabam", () => {
   it("avisa contrato que termina dentro de trinta dias, e só ele", () => {
     const perto = contract({ id: "perto", fields: { ...contract().fields, vigencia_inicio: "2026-07-01", vigencia_meses: "3" } });
     const longe = contract({ id: "longe", fields: { ...contract().fields, vigencia_inicio: "2026-09-01", vigencia_meses: "12" } });
@@ -196,5 +180,44 @@ describe("avisos internos de cobrança e contrato", () => {
     expect(valores[11]).toBe(200000);
     expect(valores[12]).toBe(220000);
     expect(contractEntries(c).entries[12].amount).toBe(200000); // sem configurar, não reajusta
+  });
+});
+
+// ---------- O que substituiu o fluxo de caixa ----------
+describe("carteira de contratos", () => {
+  const serie = (projectId: string, seriesId: string, meses: string[], valor: number) =>
+    meses.map((competence, i) => entry({ id: `${seriesId}-${i}`, projectId, seriesId, competence, amount: valor, description: "Gestão de Marca" }));
+
+  const carteira = [
+    ...serie("p1", "s1", ["2026-08", "2026-09", "2026-10", "2026-11"], 200000),
+    ...serie("p2", "s2", ["2026-09", "2026-10"], 150000),
+    entry({ id: "campanha", projectId: "p3", seriesId: "s3", competence: "2026-09", amount: 140000, recurring: false, category: "campanha" }),
+  ];
+
+  it("resume cada contrato: quanto vale, quando acaba e quanto falta entrar", () => {
+    const [maior, menor] = contractSummaries(carteira, "2026-09");
+    expect(maior).toMatchObject({ projectId: "p1", monthly: 200000, first: "2026-08", last: "2026-11", monthsLeft: 3, remaining: 600000 });
+    expect(menor).toMatchObject({ projectId: "p2", monthly: 150000, last: "2026-10", monthsLeft: 2, remaining: 300000 });
+  });
+
+  it("não trata receita avulsa como contrato", () => {
+    expect(contractSummaries(carteira, "2026-09").map((resumo) => resumo.projectId)).toEqual(["p1", "p2"]);
+  });
+
+  it("ignora parcelas canceladas na conta do que falta entrar", () => {
+    const comCancelada = carteira.map((parcela) => parcela.id === "s1-3" ? { ...parcela, cancelled: true } : parcela);
+    expect(contractSummaries(comCancelada, "2026-09")[0]).toMatchObject({ last: "2026-10", monthsLeft: 2, remaining: 400000 });
+  });
+
+  it("mostra o contratado mês a mês e deixa a queda aparecer quando o contrato acaba", () => {
+    const meses = contractedByMonth(carteira, "2026-09", 4);
+    expect(meses.map((linha) => linha.recurring)).toEqual([350000, 350000, 200000, 0]);
+    expect(meses[0].oneOff).toBe(140000);
+  });
+
+  it("separa recorrente de avulso em vez de somar os dois num número só", () => {
+    const [setembro] = contractedByMonth(carteira, "2026-09", 1);
+    expect(setembro.recurring).toBe(350000);
+    expect(setembro.oneOff).toBe(140000);
   });
 });

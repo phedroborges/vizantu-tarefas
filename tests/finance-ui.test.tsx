@@ -15,8 +15,21 @@ async function change(input: HTMLInputElement|HTMLSelectElement, value:string) {
 beforeEach(()=>{vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT",true);vi.stubGlobal("fetch",fetchMock);fetchMock.mockReset();container=document.createElement("div");document.body.append(container);root=createRoot(container);});
 afterEach(async()=>{await act(async()=>root.unmount());container.remove();vi.unstubAllGlobals();});
 describe("painel financeiro",()=>{
-  it("mostra DRE e troca entre clientes e produção",async()=>{
-    await mount();expect(container.textContent).toContain("DRE gerencial");await click(button("Clientes"));expect(container.textContent).toContain("Aurora Clínica");expect(container.textContent).toContain("Índice de satisfação");await click(button("Produção da equipe"));expect(container.textContent).toContain("Tabela da equipe");expect(container.textContent).toContain("R$ 280,00");
+  // A tela abre no que o dono pediu: quanto os contratos valem e até quando.
+  // Fluxo de caixa não aparece em lugar nenhum — se voltar, este teste grita.
+  it("abre nos contratos, com valor mensal e fim de cada um",async()=>{
+    await mount();
+    expect(container.textContent).toContain("Contratado por mês");
+    expect(container.textContent).toContain("Contratos ativos");
+    expect(container.textContent).toContain("Contratado mês a mês");
+    expect(container.textContent).toContain("Aurora Clínica");
+    for (const sumiu of ["Saldo de caixa","Inadimplência","A receber","Dar baixa","Vencimento"]) expect(container.textContent).not.toContain(sumiu);
+  });
+  it("troca entre visão geral, avulsos e produção",async()=>{
+    await mount();
+    await click(button("Visão geral"));expect(container.textContent).toContain("DRE gerencial");
+    await click(button("Avulsos"));expect(container.textContent).toContain("Receita esporádica");
+    await click(button("Produção da equipe"));expect(container.textContent).toContain("Tabela da equipe");expect(container.textContent).toContain("280,00");
   });
   it("campanha avulsa desmarca recorrência e envia centavos",async()=>{
     await mount();await click(button("Novo lançamento"));

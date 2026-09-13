@@ -1,6 +1,6 @@
 import { derivedFields, parseFaixas } from "../contract-render";
 import type { Contract, Member, Project, Tag, Task } from "../types";
-import { CARGOS_QUE_PRODUZEM, CATEGORIES, type ClientMargin, type Entry, type EntryInput, type FinanceData, type Payment, type ProductionReview, type RateKey, type Settings } from "./types";
+import { CARGOS_QUE_PRODUZEM, CATEGORIES, type ClientMargin, type ContractSummary, type Entry, type EntryInput, type FinanceData, type ProductionReview, type RateKey, type Settings } from "./types";
 
 function localDate(timestamp: string): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(timestamp));
@@ -28,31 +28,26 @@ export function daysAdd(date: string, count: number, business = false): string {
   for (let i = 0; i < count;) { value.setUTCDate(value.getUTCDate() + 1); if (!business || ![0, 6].includes(value.getUTCDay())) i++; }
   return value.toISOString().slice(0, 10);
 }
-export const paid = (entry: Entry, payments: Payment[], asOf = "9999-12-31") => payments.filter((p) => p.entryId === entry.id && !p.reversed && p.paidAt <= asOf).reduce((sum, p) => sum + p.amount, 0);
-export const balance = (entry: Entry, payments: Payment[], asOf?: string) => entry.cancelled ? 0 : Math.max(0, entry.amount - paid(entry, payments, asOf));
 const sum = (items: Entry[]) => items.reduce((total, entry) => total + entry.amount, 0);
 
 export function recurringEntries(input: EntryInput, months: number): EntryInput[] {
-  if (!Number.isInteger(months) || months < 1 || months > 120 || !validDate(input.dueDate) || !validDate(`${input.competence}-01`)) throw new Error("Informe datas válidas e um prazo de 1 a 120 meses.");
-  return Array.from({ length: months }, (_, i) => ({ ...input, dueDate: monthAdd(input.dueDate, i), competence: monthAdd(`${input.competence}-01`, i).slice(0, 7), sourceKey: input.sourceKey ? `${input.sourceKey}:${i}` : null }));
+  if (!Number.isInteger(months) || months < 1 || months > 120 || !validDate(`${input.competence}-01`)) throw new Error("Informe uma competência válida e um prazo de 1 a 120 meses.");
+  return Array.from({ length: months }, (_, i) => ({ ...input, competence: monthAdd(`${input.competence}-01`, i).slice(0, 7), sourceKey: input.sourceKey ? `${input.sourceKey}:${i}` : null }));
 }
 
 export function contractEntries(contract: Contract, settings?: Pick<Settings, "annualAdjustment">): { entries: EntryInput[]; warning?: string } {
   if (contract.status !== "assinado") return { entries: [] };
   const f = contract.fields;
   const start = f.vigencia_inicio;
-  const day = Number(f.dia_vencimento);
-  const signature = f.data_assinatura;
   const amount = money(f.valor_mensal || "");
   const tiers = parseFaixas(f.faixas_pagamento || f.escalonamento || "");
   // Campos de escalonamento seguem os mesmos nomes do gerador do contrato.
   if (tiers.reduce((total, tier) => total + tier.meses, 0) > 120) return { entries: [], warning: `${contract.title}: o prazo máximo de importação é de 120 meses.` };
   const tierValues = tiers.flatMap((tier) => Array.from({ length: Math.min(tier.meses, 120) }, () => Math.round(tier.valor * 100)));
   const months = contract.paymentStructure === "escalonado" ? tierValues.length : Number(contract.paymentStructure === "projeto" ? f.parcelas || "1" : f.vigencia_meses);
-  if (!contract.projectId || !validDate(start || "") || !validDate(signature || "") || !Number.isInteger(day) || day < 1 || day > 28 || !Number.isInteger(months) || months < 1 || months > 120 || (contract.paymentStructure !== "escalonado" && (!Number.isSafeInteger(amount) || amount <= 0))) {
-    return { entries: [], warning: `${contract.title}: complete projeto, valor, assinatura, início, prazo e vencimento (1 a 28) no contrato.` };
+  if (!contract.projectId || !validDate(start || "") || !Number.isInteger(months) || months < 1 || months > 120 || (contract.paymentStructure !== "escalonado" && (!Number.isSafeInteger(amount) || amount <= 0))) {
+    return { entries: [], warning: `${contract.title}: complete projeto, valor, início e prazo no contrato.` };
   }
-  const firstDue = `${monthAdd(start, contract.paymentMode === "pre" ? -1 : 0).slice(0, 7)}-${String(day).padStart(2, "0")}`;
   const projectTotal = contract.paymentStructure === "projeto" ? money(derivedFields(f, contract.paymentMode, contract.paymentStructure).valor_total_formatado || "") : amount;
   // O reajuste anual só toca a recorrência de valor fixo. Escalonado já traz os
   // valores escritos no contrato, e projeto é parcela de um total fechado —
@@ -64,25 +59,20 @@ export function contractEntries(contract: Contract, settings?: Pick<Settings, "a
   return { entries: values.map((value, index) => ({
     direction: "income", category: contract.paymentStructure === "projeto" ? "campanha" : "servicos",
     description: `${contract.title} · ${index + 1}/${months}`, amount: value,
-    dueDate: monthAdd(firstDue, index) < signature ? signature : monthAdd(firstDue, index),
     competence: monthAdd(start, index).slice(0, 7), projectId: contract.projectId!, memberId: null,
     recurring: contract.paymentStructure !== "projeto", seriesId: contract.id, sourceKey: `contract:${contract.id}:${index}`,
-    notes: "Gerado do contrato assinado. Recebimento depende de baixa.",
+    notes: "Gerado do contrato assinado.",
   })) };
 }
 
-export function metrics(data: Pick<FinanceData, "entries" | "payments" | "settings">, month: string, today: string) {
-  const { payments, settings } = data;
+export function metrics(data: Pick<FinanceData, "entries" | "settings">, month: string) {
+  const { settings } = data;
   const entries = data.entries.filter((entry) => !entry.cancelled);
   const current = entries.filter((entry) => entry.competence === month);
   const revenue = sum(current.filter((entry) => entry.direction === "income"));
   const expenses = current.filter((entry) => entry.direction === "expense");
   const costs = Object.fromEntries(Object.keys(CATEGORIES).map((key) => [key, sum(expenses.filter((entry) => entry.category === key))])) as Record<keyof typeof CATEGORIES, number>;
-  const entryById = new Map(entries.map((entry) => [entry.id, entry]));
-  const cashPayments = payments.filter((p) => !p.reversed && p.paidAt.startsWith(month) && entryById.has(p.entryId));
-  const received = cashPayments.filter((p) => entryById.get(p.entryId)?.direction === "income").reduce((s, p) => s + p.amount, 0);
-  const spent = cashPayments.filter((p) => entryById.get(p.entryId)?.direction === "expense").reduce((s, p) => s + p.amount, 0);
-  const taxEstimate = settings.taxRate === null ? null : Math.round((settings.taxBasis === "cash" ? received : revenue) * settings.taxRate / 100);
+  const taxEstimate = settings.taxRate === null ? null : Math.round(revenue * settings.taxRate / 100);
   // Imposto cadastrado substitui a provisão estimada: nunca somar os dois.
   const tax = costs.impostos || taxEstimate;
   const directCost = costs.producao;
@@ -103,17 +93,6 @@ export function metrics(data: Pick<FinanceData, "entries" | "payments" | "settin
   const ltv = churn && arpa !== null && grossMargin !== null && grossMargin > 0 ? Math.round(arpa * grossMargin / churn) : null;
   const newClients = [...clients].filter((id) => !priorClients.has(id)).length;
   const cac = newClients ? Math.round(costs.marketing / newClients) : null;
-  const cash = settings.openingBalance + payments.filter((p) => !p.reversed && p.paidAt >= settings.openingDate && p.paidAt <= today && entryById.has(p.entryId))
-    .reduce((total, p) => total + (entryById.get(p.entryId)?.direction === "income" ? p.amount : -p.amount), 0);
-  const overdue = entries.filter((e) => e.direction === "income" && e.dueDate < today && balance(e, payments, today) > 0);
-  const aging = [0, 0, 0, 0];
-  for (const entry of overdue) {
-    const days = Math.floor((Date.parse(today) - Date.parse(entry.dueDate)) / 86400000);
-    aging[days <= 7 ? 0 : days <= 30 ? 1 : days <= 60 ? 2 : 3] += balance(entry, payments, today);
-  }
-  const dueInMonth = entries.filter((entry) => entry.dueDate.startsWith(month));
-  const receivable = dueInMonth.filter((e) => e.direction === "income").reduce((s, e) => s + balance(e, payments, today), 0);
-  const payable = dueInMonth.filter((e) => e.direction === "expense").reduce((s, e) => s + balance(e, payments, today), 0);
   const monthlyClients = new Set(current.filter((e) => e.direction === "income").map((e) => e.projectId).filter(Boolean));
   const breakEven = grossMargin && grossMargin > 0 ? Math.round(operatingCost / grossMargin) : null;
   const historicalStart = monthAdd(`${month}-01`, -3).slice(0, 7);
@@ -125,11 +104,11 @@ export function metrics(data: Pick<FinanceData, "entries" | "payments" | "settin
   const observed = history.filter((h) => h.hasData);
   const averageRevenue = observed.length ? Math.round(observed.reduce((s, h) => s + h.revenue, 0) / observed.length) : null;
   const averageCost = observed.length ? Math.round(observed.reduce((s, h) => s + h.cost, 0) / observed.length) : null;
-  const health = !current.length ? "Sem dados" : tax === null ? "Configuração incompleta" : cash < 0 || (profit !== null && profit < 0) ? "Crítica" : overdue.length || (margin !== null && margin * 100 < settings.targetMargin) ? "Atenção" : "Saudável";
-  return { revenue, costs, tax, taxEstimate, directCost, operatingCost, grossProfit, profit, margin, received, spent, cash, receivable, payable,
+  // Saúde sem caixa: sobra resultado e margem, que é o que a competência sabe.
+  const health = !current.length ? "Sem dados" : tax === null ? "Configuração incompleta" : profit !== null && profit < 0 ? "Crítica" : margin !== null && margin * 100 < settings.targetMargin ? "Atenção" : "Saudável";
+  return { revenue, costs, tax, taxEstimate, directCost, operatingCost, grossProfit, profit, margin,
     mrr, arr: mrr * 12, arpa, ticket: monthlyClients.size ? Math.round(sum(current.filter((e) => e.direction === "income" && e.projectId !== null)) / monthlyClients.size) : null,
-    churn, ltv, cac, newClients, clients: clients.size, aging, overdue, breakEven, health, history, averageRevenue, averageCost,
-    runway: averageCost && averageCost > 0 ? Math.max(0, cash / averageCost) : null };
+    churn, ltv, cac, newClients, clients: clients.size, breakEven, health, history, averageRevenue, averageCost };
 }
 
 export function growthProjection(base: number, cost: number, growth: number, churn: number, months: number) {
@@ -256,23 +235,48 @@ export function clientMargins(data: Pick<FinanceData, "entries" | "settings" | "
   });
 }
 
-// ---------- Régua de cobrança ----------
+// ---------- O que os contratos valem ----------
 //
-// Interna, e só. O cliente não vê nada disso: o plano dele é aberto por link e
-// qualquer número financeiro ali vaza para quem tiver o endereço. Aqui a régua
-// vira aviso para o dono, dentro do app com login.
-export type ReceivableAlert = { entry: Entry; stage: "vence_em_3" | "vence_hoje" | "vencido"; days: number; open: number };
-export function receivableAlerts(entries: Entry[], payments: Payment[], today: string): ReceivableAlert[] {
-  const dia = 86400000;
-  return entries.flatMap((entry): ReceivableAlert[] => {
-    if (entry.cancelled || entry.direction !== "income") return [];
-    const open = balance(entry, payments, today);
-    if (open <= 0) return [];
-    const days = Math.round((Date.parse(`${today}T12:00:00Z`) - Date.parse(`${entry.dueDate}T12:00:00Z`)) / dia);
-    if (days > 0) return [{ entry, stage: "vencido" as const, days, open }];
-    if (days === 0) return [{ entry, stage: "vence_hoje" as const, days: 0, open }];
-    if (days >= -3) return [{ entry, stage: "vence_em_3" as const, days: -days, open }];
-    return [];
+// Isto substitui o fluxo de caixa. A pergunta não é quando o dinheiro entra —
+// isso o Asaas responde — e sim quanto a carteira vale por mês, e até quando.
+//
+// Cada série recorrente é um contrato: a competência mais antiga é o começo, a
+// mais recente é o fim, e o que falta entrar é a soma das competências daqui
+// para a frente. Contrato sem data de fim não existe aqui, porque toda série é
+// gerada com um número de parcelas — se um dia houver recorrência sem fim, ela
+// aparece com o último mês cadastrado, que é a verdade disponível.
+export function contractSummaries(entries: Entry[], fromMonth: string): ContractSummary[] {
+  const series = new Map<string, Entry[]>();
+  for (const entry of entries) {
+    if (entry.cancelled || entry.direction !== "income" || !entry.recurring || !entry.projectId) continue;
+    const chave = entry.seriesId || entry.id;
+    series.set(chave, [...(series.get(chave) ?? []), entry]);
+  }
+  return [...series.entries()].map(([chave, parcelas]) => {
+    const ordenadas = [...parcelas].sort((a, b) => a.competence.localeCompare(b.competence));
+    const futuras = ordenadas.filter((parcela) => parcela.competence >= fromMonth);
+    const atual = ordenadas.find((parcela) => parcela.competence === fromMonth) ?? futuras[0] ?? ordenadas.at(-1)!;
+    return {
+      projectId: ordenadas[0].projectId!, seriesId: ordenadas[0].seriesId ?? chave,
+      description: ordenadas[0].description.replace(/ · \d+\/\d+$/, ""),
+      monthly: atual.amount, first: ordenadas[0].competence, last: ordenadas.at(-1)!.competence,
+      monthsLeft: futuras.length, remaining: futuras.reduce((total, parcela) => total + parcela.amount, 0),
+    };
+  }).sort((a, b) => b.monthly - a.monthly);
+}
+
+// Quanto já está contratado em cada um dos próximos meses. É o número que o
+// dono pediu: "quanto eu tenho de contratos todos os meses". Não presume
+// renovação — mês depois do fim do contrato aparece menor, e é para aparecer.
+export function contractedByMonth(entries: Entry[], fromMonth: string, months = 12): { month: string; recurring: number; oneOff: number }[] {
+  return Array.from({ length: months }, (_, i) => {
+    const key = monthAdd(`${fromMonth}-01`, i).slice(0, 7);
+    const doMes = entries.filter((entry) => !entry.cancelled && entry.direction === "income" && entry.competence === key);
+    return {
+      month: key,
+      recurring: doMes.filter((entry) => entry.recurring).reduce((total, entry) => total + entry.amount, 0),
+      oneOff: doMes.filter((entry) => !entry.recurring).reduce((total, entry) => total + entry.amount, 0),
+    };
   });
 }
 
