@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowLeft, AtSign, BarChart3, CheckCircle2, Clock3, Eye, EyeOff, KeyRound, Loader2, MapPin, Plus, ShieldAlert, Target, Trash2, UserRound } from "lucide-react";
+import { isOverdue } from "@/lib/dates";
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { useConfirm } from "@/components/confirm-dialog";
@@ -107,7 +108,7 @@ export function ProjectProfileView({
   const { confirm, ConfirmDialog } = useConfirm();
   const [tab, setTab] = useState<ProjectTab>("informacoes");
   const done = initialTasks.filter((task) => task.status === "finalizado").length;
-  const overdue = initialTasks.filter((task) => task.dueDate && task.dueDate < new Date().toISOString().slice(0, 10) && task.status !== "finalizado").length;
+  const overdue = initialTasks.filter((task) => isOverdue(task.dueDate, task.status)).length;
   const completion = initialTasks.length ? Math.round(done / initialTasks.length * 100) : 0;
   const nps = satisfactionScores.length ? Math.round(((satisfactionScores.filter((item) => item.score >= 9).length - satisfactionScores.filter((item) => item.score <= 6).length) / satisfactionScores.length) * 100) : null;
 

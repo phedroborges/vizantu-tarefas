@@ -163,3 +163,16 @@ describe("dashboard gerencial", () => {
     expect(result.members.find((member) => member.memberId === "m2")!.statusMs.revisao).toBe(5 * 86_400_000 + 3 * 3_600_000);
   });
 });
+
+
+it("descartada não é carga aberta, atraso ou pendência de informação", () => {
+  const discarded = task({ id: "discarded", name: "Descartada", status: "problema", assigneeId: "m1", dueDate: "2020-01-01", formatTagIds: [], channelTagIds: [], statusHistory: [{ status: "problema", enteredAt: "2026-09-01T12:00:00Z", exitedAt: null }] });
+  const metrics = buildDashboardMetrics({ tasks: [discarded], projects, members, tags, nowIso: NOW });
+  expect(metrics.activeTasks).toBe(0);
+  expect(metrics.overdueTasks).toBe(0);
+  expect(metrics.members.find((member) => member.memberId === "m1")?.openTasks).toBe(0);
+  expect(metrics.aging).toEqual([]);
+  expect(metrics.alerts).toEqual([]);
+  expect(metrics.projectHealth[0]).toMatchObject({ open: 0, overdue: 0, done: 0 });
+  expect(metrics.punctuality.delivered).toBe(0);
+});

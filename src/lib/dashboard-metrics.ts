@@ -2,6 +2,7 @@ import { overdueDays, summarizeStatusDurations } from "./dates";
 import { isUserComment } from "./task-activity";
 import { findTaskGaps, type TaskGapType } from "./task-readiness";
 import {
+  CLOSED_TASK_STATUSES,
   TASK_STATUSES,
   type Member,
   type Project,
@@ -320,7 +321,7 @@ export function buildDashboardMetrics({
   for (const task of tasks) {
     if (task.assigneeId && memberMetrics.has(task.assigneeId)) {
       const metric = memberMetrics.get(task.assigneeId)!;
-      if (task.status !== "finalizado") metric.openTasks += 1;
+      if (!CLOSED_TASK_STATUSES.includes(task.status)) metric.openTasks += 1;
     }
     const assignmentBoundaries = assigneeChanges(task).map((change) => change.at);
     for (const entry of task.statusHistory) {
@@ -395,7 +396,7 @@ export function buildDashboardMetrics({
     .sort((a, b) => (b.totalMs || 0) - (a.totalMs || 0) || b.count - a.count);
 
   const alerts: DashboardDataAlert[] = [];
-  for (const task of tasks.filter((item) => item.status !== "finalizado")) {
+  for (const task of tasks.filter((item) => !CLOSED_TASK_STATUSES.includes(item.status))) {
     const projectName = projectNames.get(task.projectId) || "Projeto removido";
     for (const gap of findTaskGaps(task, tags)) {
       alerts.push({ id: `${task.id}:${gap.type}`, taskId: task.id, taskName: task.name, projectName, ...gap });
@@ -520,7 +521,7 @@ export function buildDashboardMetrics({
   // Envelhecimento: quanto tempo cada demanda aberta está parada no status em
   // que está. Diferente do atraso, aparece antes do prazo estourar.
   const aging: DashboardAgingItem[] = tasks
-    .filter((task) => task.status !== "finalizado")
+    .filter((task) => !CLOSED_TASK_STATUSES.includes(task.status))
     .flatMap((task) => {
       const since = inCurrentStatusSince(task);
       if (since === undefined || since > nowMs) return [];
@@ -554,7 +555,7 @@ export function buildDashboardMetrics({
         name: project.name,
         total: projectTasks.length,
         done,
-        open: projectTasks.length - done,
+        open: projectTasks.filter((task) => !CLOSED_TASK_STATUSES.includes(task.status)).length,
         overdue: projectTasks.filter((task) => overdueDays(task.dueDate, task.status, today) > 0).length,
         rework: projectTasks.filter((task) => reworkByTask.has(task.id)).length,
         alerts: alerts.filter((alert) => projectTasks.some((task) => task.id === alert.taskId)).length,
@@ -568,7 +569,7 @@ export function buildDashboardMetrics({
   return {
     generatedAt: nowIso,
     totalTasks: tasks.length,
-    activeTasks: tasks.filter((task) => task.status !== "finalizado").length,
+    activeTasks: tasks.filter((task) => !CLOSED_TASK_STATUSES.includes(task.status)).length,
     overdueTasks: lateness.length,
     reworkRate: tasks.length ? Math.round((reworkTasks.length / tasks.length) * 100) : 0,
     reworkedTasks: reworkTasks.length,

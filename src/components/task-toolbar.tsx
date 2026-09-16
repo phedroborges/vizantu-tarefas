@@ -24,7 +24,7 @@ export type TaskFilters = {
 
 export function countActiveFilters(filters: TaskFilters): number {
   // A busca não conta: ela já está visível na barra, com o texto à mostra.
-  // "Mostrar finalizadas" conta, porque muda o que aparece e fica escondido.
+  // "Mostrar finalizadas e descartadas" conta, porque muda o que aparece e fica escondido.
   return [filters.projectId, filters.assigneeId, filters.status, filters.list].filter(Boolean).length + (filters.showFinalized ? 1 : 0);
 }
 
@@ -118,7 +118,7 @@ export function TaskToolbar({
               </label>
               <Button type="button" variant={filters.showFinalized ? "soft" : "secondary"} onClick={() => onFiltersChange({ showFinalized: !filters.showFinalized })} aria-pressed={filters.showFinalized}>
                 {filters.showFinalized ? <EyeOff size={14} /> : <Eye size={14} />}
-                {filters.showFinalized ? "Ocultar finalizadas" : "Mostrar finalizadas"}
+                {filters.showFinalized ? "Ocultar finalizadas e descartadas" : "Mostrar finalizadas e descartadas"}
               </Button>
               {activeCount ? (
                 <Button

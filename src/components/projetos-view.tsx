@@ -1,5 +1,6 @@
 "use client";
 
+import { isOverdue } from "@/lib/dates";
 import Link from "next/link";
 import { Copy, Folders, Link2, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -30,12 +31,11 @@ export function ProjetosView({ initialProjects, initialTasks, canEdit = true }: 
 
   const taskStats = useMemo(() => {
     const result = new Map<string, { total: number; done: number; overdue: number }>();
-    const today = new Date().toISOString().slice(0, 10);
     for (const task of initialTasks) {
       const current = result.get(task.projectId) || { total: 0, done: 0, overdue: 0 };
       current.total++;
       if (task.status === "finalizado") current.done++;
-      if (task.dueDate && task.dueDate < today && task.status !== "finalizado") current.overdue++;
+      if (isOverdue(task.dueDate, task.status)) current.overdue++;
       result.set(task.projectId, current);
     }
     return result;

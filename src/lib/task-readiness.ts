@@ -1,4 +1,4 @@
-import { type TagKind, type TaskKind, type TaskStatus } from "./types";
+import { CLOSED_TASK_STATUSES, type TagKind, type TaskKind, type TaskStatus } from "./types";
 
 // A mesma regra precisa valer nos dois lugares: no aviso que o time vê dentro
 // da tarefa e na contagem que o gestor vê no dashboard. Duplicar a regra em
@@ -40,7 +40,7 @@ function hasTagOfKind(ids: string[], kind: TagKind, tagKinds: Map<string, TagKin
 }
 
 export function findTaskGaps(task: TaskReadinessInput, tags: { id: string; kind: TagKind }[] = []): TaskGap[] {
-  if (task.status === "finalizado") return [];
+  if (CLOSED_TASK_STATUSES.includes(task.status)) return [];
   const tagKinds = new Map(tags.map((tag) => [tag.id, tag.kind]));
   const gaps: TaskGap[] = [];
 

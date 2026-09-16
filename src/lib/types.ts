@@ -107,6 +107,9 @@ export const TASK_STATUSES: { value: TaskStatus; label: string; group: StatusGro
 // Confirmado com o Phedro: nestes 3 status a demanda já foi produzida (o que
 // resta são fatores externos) — por isso nunca contam como atrasada, e a data
 // de entrega volta a ficar editável.
+// Encerradas saem da fila padrão. Aprovadas ainda podem aguardar publicação.
+export const CLOSED_TASK_STATUSES: TaskStatus[] = ["problema", "finalizado"];
+
 export const DONE_STATUSES: TaskStatus[] = ["aprovado", "problema", "finalizado"];
 
 // ---------- Cor por etapa do status (customizável, ver status_colors) ----------

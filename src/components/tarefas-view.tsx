@@ -10,7 +10,7 @@ import {
 import { responseError } from "@/lib/request-error";
 import { useSetPageDetail } from "@/lib/page-context";
 import { findTaskGaps } from "@/lib/task-readiness";
-import { STATUS_GROUPS, TASK_COLUMNS, TASK_LIST_KINDS, TASK_STATUSES } from "@/lib/types";
+import { CLOSED_TASK_STATUSES, STATUS_GROUPS, TASK_COLUMNS, TASK_LIST_KINDS, TASK_STATUSES } from "@/lib/types";
 import type { Member, Project, StatusColor, Tag, Task, TaskColumnKey, TaskListKind, TaskStatus } from "@/lib/types";
 import { useVisibleTags } from "@/lib/tag-catalog";
 import { TagPickerPopover } from "@/components/tag-picker";
@@ -236,9 +236,9 @@ export function TarefasView({
   const filteredTasks = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return tasks.filter((task) => {
-      // Finalizada não tem mais nada a acompanhar — some da lista, a menos que
-      // o usuário peça pra ver ("Mostrar finalizadas") ou filtre por esse status direto.
-      if (task.status === "finalizado" && !showFinalized && statusFilter !== "finalizado") return false;
+      // Finalizadas e descartadas saem da fila, mas continuam acessíveis
+      // pelo filtro de status, pelo histórico ou pelo link direto.
+      if (CLOSED_TASK_STATUSES.includes(task.status) && !showFinalized && statusFilter !== task.status) return false;
       if (projectFilter && task.projectId !== projectFilter) return false;
       if (assigneeFilter && task.assigneeId !== assigneeFilter) return false;
       if (statusFilter && statusFilterValue(task) !== statusFilter) return false;

@@ -35,8 +35,8 @@ describe("pendências da tarefa", () => {
     expect(findTaskGaps(input({ status: "em_criacao", driveLink: "" }), tags)[0].critical).toBe(false);
   });
 
-  it("cala a boca na tarefa finalizada", () => {
-    expect(findTaskGaps(input({ status: "finalizado", driveLink: "", assigneeId: undefined, dueDate: undefined }), tags)).toEqual([]);
+  it.each(["finalizado", "problema"] as const)("não cobra informações de tarefa encerrada em %s", (status) => {
+    expect(findTaskGaps(input({ status, driveLink: "", assigneeId: undefined, dueDate: undefined }), tags)).toEqual([]);
   });
 
   it("só cobra formato e canal de conteúdo", () => {
