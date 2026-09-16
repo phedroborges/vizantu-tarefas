@@ -1,37 +1,58 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef } from "react";
 
-function inlineMarkdown(text: string) {
-  const parts = text.split(/(\*\*[^*\n]+\*\*)/g);
-  return parts.map((part, index) => part.startsWith("**") && part.endsWith("**")
-    ? <strong key={index}>{part.slice(2, -2)}</strong>
-    : part);
-}
-
-function editorBlocks(markdown: string, placeholder?: string) {
-  if (!markdown) return <div data-placeholder={placeholder || ""}><br /></div>;
-  return markdown.split("\n").map((line, index) => {
+// O navegador é dono dos nós editáveis durante a digitação. Recriá-los a cada
+// input (ou usar o texto como key) quebra seleção, desfazer e teclas de acento.
+function renderEditor(root: HTMLElement, markdown: string) {
+  const fragment = document.createDocumentFragment();
+  for (const line of markdown.split("\n")) {
+    const block = document.createElement("div");
     const heading = line.match(/^###\s*(.*)$/);
-    return heading
-      ? <div className="live-markdown-heading" data-md-heading="3" key={index}>{inlineMarkdown(heading[1])}<br /></div>
-      : <div key={index}>{inlineMarkdown(line)}<br /></div>;
-  });
+    if (heading) {
+      block.className = "live-markdown-heading";
+      block.dataset.mdHeading = "3";
+    }
+    const text = heading ? heading[1] : line;
+    for (const part of text.split(/(\*\*[^*\n]+\*\*)/g)) {
+      if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
+        const strong = document.createElement("strong");
+        strong.textContent = part.slice(2, -2);
+        block.append(strong);
+      } else {
+        block.append(document.createTextNode(part));
+      }
+    }
+    if (!text) block.append(document.createElement("br"));
+    fragment.append(block);
+  }
+  root.replaceChildren(fragment);
 }
 
-function serializeInline(node: Node): string {
-  if (node.nodeType === Node.TEXT_NODE) return node.textContent || "";
-  if (!(node instanceof HTMLElement) || node.tagName === "BR") return "";
-  const content = [...node.childNodes].map(serializeInline).join("");
-  return node.tagName === "STRONG" || node.tagName === "B" ? `**${content}**` : content;
+function serializeChildren(parent: Node): string {
+  let text = "";
+  let previousWasBlock = false;
+  [...parent.childNodes].forEach((node, index, nodes) => {
+    const block = node instanceof HTMLElement && /^(DIV|P)$/.test(node.tagName);
+    if (index > 0 && (previousWasBlock || (block && !text.endsWith("\n")))) text += "\n";
+    if (node.nodeType === Node.TEXT_NODE) text += node.textContent || "";
+    else if (node instanceof HTMLElement) {
+      if (node.tagName === "BR") {
+        // O último BR só sustenta a linha do cursor em alguns navegadores.
+        if (index < nodes.length - 1) text += "\n";
+      } else {
+        const content = serializeChildren(node);
+        text += node.dataset.mdHeading ? `### ${content}`
+          : /^(STRONG|B)$/.test(node.tagName) ? `**${content}**` : content;
+      }
+    }
+    previousWasBlock = block;
+  });
+  return text;
 }
 
 export function markdownFromEditor(root: HTMLElement) {
-  return [...root.childNodes].map((block) => {
-    if (block.nodeType === Node.TEXT_NODE) return block.textContent || "";
-    const text = [...block.childNodes].map(serializeInline).join("");
-    return block instanceof HTMLElement && block.dataset.mdHeading ? `### ${text}` : text;
-  }).join("\n").replace(/\n+$/, "");
+  return serializeChildren(root).replace(/\n+$/, "");
 }
 
 function selectionOffset(root: HTMLElement) {
@@ -61,13 +82,15 @@ function restoreSelection(root: HTMLElement, requested: number) {
     remaining -= length;
     node = walker.nextNode();
   }
+  const range = document.createRange();
+  range.selectNodeContents(root);
+  range.collapse(false);
+  window.getSelection()?.removeAllRanges();
+  window.getSelection()?.addRange(range);
 }
 
-function formattingCharactersBefore(text: string, caret: number) {
-  const before = text.slice(0, caret);
-  const headings = before.match(/(^|\n)###\s/g)?.length || 0;
-  const boldPairs = before.match(/\*\*[^*\n]+\*\*/g)?.length || 0;
-  return headings * 4 + boldPairs * 4;
+function updatePlaceholder(root: HTMLElement) {
+  root.classList.toggle("is-empty", !root.textContent && !markdownFromEditor(root));
 }
 
 export function LiveMarkdownEditor({ value, onChange, onFiles, placeholder, className }: {
@@ -77,27 +100,34 @@ export function LiveMarkdownEditor({ value, onChange, onFiles, placeholder, clas
   placeholder?: string;
   className?: string;
 }) {
-  const [source, setSource] = useState(value);
   const ref = useRef<HTMLDivElement>(null);
-  const pendingCaret = useRef<number | null>(null);
-  const lastEmitted = useRef(value);
-
-  useEffect(() => {
-    if (value === lastEmitted.current) return;
-    setSource(value);
-  }, [value]);
+  const composing = useRef(false);
+  const lastEmitted = useRef<string | undefined>(undefined);
 
   useLayoutEffect(() => {
-    if (pendingCaret.current === null || !ref.current) return;
-    restoreSelection(ref.current, pendingCaret.current);
-    pendingCaret.current = null;
-  }, [source]);
+    const root = ref.current;
+    if (!root || composing.current) return;
+    if (value !== lastEmitted.current) {
+      const caret = document.activeElement === root ? selectionOffset(root) : null;
+      renderEditor(root, value);
+      lastEmitted.current = value;
+      if (caret !== null) restoreSelection(root, caret);
+    }
+    updatePlaceholder(root);
+  }, [value, className]);
+
+  function emit(root: HTMLElement) {
+    updatePlaceholder(root);
+    const next = markdownFromEditor(root);
+    if (next === lastEmitted.current) return;
+    lastEmitted.current = next;
+    onChange(next);
+  }
 
   return (
     <div
-      key={source}
       ref={ref}
-      className={`${className || ""} live-markdown-editor${source ? "" : " is-empty"}`}
+      className={`${className || ""} live-markdown-editor`}
       contentEditable
       suppressContentEditableWarning
       role="textbox"
@@ -116,18 +146,25 @@ export function LiveMarkdownEditor({ value, onChange, onFiles, placeholder, clas
         onFiles?.(files);
       }}
       onDragOver={(event) => { if ([...event.dataTransfer.types].includes("Files")) event.preventDefault(); }}
-      onInput={(event) => {
-        const root = event.currentTarget;
-        const caret = selectionOffset(root);
-        const visible = root.innerText;
-        const next = markdownFromEditor(root);
-        pendingCaret.current = caret === null ? null : Math.max(0, caret - formattingCharactersBefore(visible, caret));
-        lastEmitted.current = next;
-        setSource(next);
-        onChange(next);
+      onCompositionStart={() => { composing.current = true; }}
+      onCompositionEnd={(event) => {
+        composing.current = false;
+        emit(event.currentTarget);
       }}
-    >
-      {editorBlocks(source, placeholder)}
-    </div>
+      onInput={(event) => {
+        updatePlaceholder(event.currentTarget);
+        // Acentos/IME só chegam ao autosave depois de a composição terminar.
+        if (composing.current || (event.nativeEvent as InputEvent).isComposing) return;
+        emit(event.currentTarget);
+      }}
+      onBlur={(event) => {
+        if (composing.current) return;
+        emit(event.currentTarget);
+        // Formata marcações novas ao sair; nunca reconstrói o texto enquanto
+        // a pessoa escreve, seleciona ou usa o histórico nativo de desfazer.
+        renderEditor(event.currentTarget, markdownFromEditor(event.currentTarget));
+        updatePlaceholder(event.currentTarget);
+      }}
+    />
   );
 }

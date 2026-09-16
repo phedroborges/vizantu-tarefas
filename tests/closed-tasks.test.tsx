@@ -12,7 +12,7 @@ const task = (status: TaskStatus, name: string): Task => ({
 });
 const tasks = [task("problema", "Peça descartada"), task("finalizado", "Peça finalizada"), task("aprovado", "Peça aprovada"), task("em_criacao", "Peça em produção")];
 function render(preferences: Partial<MemberPreferences> = {}, initialTaskId?: string) {
-  return renderToStaticMarkup(<TarefasView initialTasks={tasks} initialProjects={[]} initialMembers={[]} initialFormatTags={[]} initialChannelTags={[]} initialStatusColors={[]} initialPreferences={{ ...defaultPreferences(), ...preferences }} initialTaskId={initialTaskId} />);
+  return renderToStaticMarkup(<TarefasView currentUserId="member" initialTasks={tasks} initialProjects={[]} initialMembers={[]} initialFormatTags={[]} initialChannelTags={[]} initialStatusColors={[]} initialPreferences={{ ...defaultPreferences(), ...preferences }} initialTaskId={initialTaskId} />);
 }
 describe("tarefas encerradas na lista", () => {
   it("oculta problema e finalizado por padrão, mantendo aprovado e em criação", () => {
