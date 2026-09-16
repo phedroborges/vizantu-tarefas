@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { DATE_FORMATS, daysBetweenIso, formatTaskDate, isDateFormatKey } from "../src/lib/date-format";
 
 const HOJE = "2026-08-16";
@@ -55,4 +55,15 @@ describe("formatos de data do prazo", () => {
     expect(isDateFormatKey("qualquer")).toBe(false);
     expect(isDateFormatKey(null)).toBe(false);
   });
+});
+
+
+it("formatadores reutilizados acompanham a virada do dia em São Paulo", () => {
+  vi.useFakeTimers();
+  try {
+    vi.setSystemTime(new Date("2026-09-17T02:59:59Z"));
+    expect(formatTaskDate("2026-09-17", "inteligente")).toBe("amanhã");
+    vi.setSystemTime(new Date("2026-09-17T03:00:01Z"));
+    expect(formatTaskDate("2026-09-17", "inteligente")).toBe("hoje");
+  } finally { vi.useRealTimers(); }
 });

@@ -8,13 +8,15 @@ import { AvatarPicker } from "@/components/avatar-picker";
 import { useConfirm } from "@/components/confirm-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button, Card, EmptyState, Field, IconButton, Input, PageHeader, Progress, SearchInput, Select, Tag, Toolbar } from "@/components/vz";
-import { PROJECT_STATUSES, type Project, type ProjectStatus, type Task } from "@/lib/types";
+import { PROJECT_STATUSES, type Project, type ProjectStatus } from "@/lib/types";
+
+import type { TaskSummary } from "@/lib/storage";
 
 type ProjectDraft = { name: string; client: string; clientRole: string; clientCity: string; clientInstagram: string; avatarUrl: string | null; avatarColor: string | null; status: ProjectStatus };
 const EMPTY_DRAFT: ProjectDraft = { name: "", client: "", clientRole: "", clientCity: "", clientInstagram: "", avatarUrl: null, avatarColor: null, status: "ativo" };
 const toneByStatus = { ativo: "green", pausado: "amber", concluido: "slate" } as const;
 
-export function ProjetosView({ initialProjects, initialTasks, canEdit = true }: { initialProjects: Project[]; initialTasks: Task[]; canEdit?: boolean }) {
+export function ProjetosView({ initialProjects, initialTasks, canEdit = true }: { initialProjects: Project[]; initialTasks: TaskSummary[]; canEdit?: boolean }) {
   const [projects, setProjects] = useState(initialProjects);
   const [draft, setDraft] = useState<ProjectDraft>(EMPTY_DRAFT);
   const [editingId, setEditingId] = useState<string | null>(null);

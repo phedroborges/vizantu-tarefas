@@ -14,8 +14,8 @@ function newId() {
   return Math.random().toString(36).slice(2);
 }
 
-export function AiAssistant() {
-  const [open, setOpen] = useState(false);
+export function AiAssistant({ initiallyOpen = false }: { initiallyOpen?: boolean }) {
+  const [open, setOpen] = useState(initiallyOpen);
   const pageContext = usePageContextText();
   const { messages, setMessages, isSending, send, confirmDelete } = useAssistantChat({ pageContext });
   const hasLoadedSummaryRef = useRef(false);

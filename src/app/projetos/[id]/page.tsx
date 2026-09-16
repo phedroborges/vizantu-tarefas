@@ -21,18 +21,17 @@ export default async function ProjetoPage({ params }: { params: Promise<{ id: st
   const abas = abasDoProjeto(user.role);
   const veCredenciais = podeVerCredenciais(user.role);
   const veContratos = abas.includes("documentos");
-  const [profile, credentials, allTasks, satisfactionScores, formatTags, channelTags, members, plans, surveys, team, allContracts] = await Promise.all([
+  const [profile, credentials, allTasks, satisfactionScores, tags, members, plans, surveys, team, allContracts] = await Promise.all([
     getProjectProfile(id),
     veCredenciais ? listProjectCredentials(id) : Promise.resolve([]),
-    listTasks(),
+    listTasks({ projectIds: [id], listKinds: user.accessibleListKinds }),
     listSatisfactionScores(id),
-    listTags("formato"),
-    listTags("canal"),
+    listTags(),
     listMembers(),
     listPlans(id),
     listSurveys(id),
     abas.includes("equipe") ? listProjectTeam(id) : Promise.resolve([]),
-    veContratos ? listContracts() : Promise.resolve([]),
+    veContratos ? listContracts(id) : Promise.resolve([]),
   ]);
 
   return (
@@ -50,8 +49,8 @@ export default async function ProjetoPage({ params }: { params: Promise<{ id: st
         canEditTasks
         abas={abas}
         initialTeam={team}
-        formatTags={formatTags}
-        channelTags={channelTags}
+        formatTags={tags.filter((tag) => tag.kind === "formato")}
+        channelTags={tags.filter((tag) => tag.kind === "canal")}
         members={members}
         initialPlans={plans}
         initialSurveys={surveys}

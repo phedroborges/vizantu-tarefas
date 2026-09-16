@@ -8,7 +8,7 @@ import { TASK_KINDS, TASK_STATUSES } from "@/lib/types";
 export async function GET() {
   const auth = await requireUser();
   if (isResponse(auth)) return auth;
-  const tasks = await listTasks();
+  const tasks = await listTasks({ projectIds: auth.accessibleProjectIds, listKinds: auth.accessibleListKinds });
   const byProject = filterTasksByAccess(tasks, auth.accessibleProjectIds);
   return NextResponse.json({ tasks: filterTasksByListAccess(byProject, auth.accessibleListKinds) });
 }

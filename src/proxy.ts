@@ -1,11 +1,9 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { timedSupabaseFetch } from "@/lib/supabase/timed-fetch";
 import { abrePorLinkPublico } from "@/lib/public-links";
 
-// Next.js 16 descontinuou middleware.ts em favor de proxy.ts (exporta
-// proxy(), não middleware()) — um middleware.ts aqui seria ignorado
-// silenciosamente no build, e a proteção de rota simplesmente não entraria em
-// vigor, sem erro nenhum. Fica no mesmo nível de app/ (dentro de src/).
+// O proxy renova a sessão das páginas. APIs autenticam no próprio handler.
 
 const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password", "/auth/confirm", "/design-system"];
 
@@ -23,11 +21,12 @@ const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password", "/auth/co
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   // Links externos não dependem da sessão da equipe, nem da renovação dela.
-  if (abrePorLinkPublico(pathname)) return NextResponse.next({ request });
+  if (abrePorLinkPublico(pathname) || pathname.startsWith("/api/")) return NextResponse.next({ request });
 
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, {
+    global: { fetch: timedSupabaseFetch("auth") },
     cookies: {
       getAll: () => request.cookies.getAll(),
       setAll: (cookiesToSet) => {
@@ -38,20 +37,12 @@ export async function proxy(request: NextRequest) {
     },
   });
 
-  // getUser() renova o token se necessário (grava via setAll acima) — roda
-  // nas demais rotas que casarem o matcher, inclusive APIs internas.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const isApi = pathname.startsWith("/api/");
+  // Verifica a assinatura do JWT e renova cookies vencidos. A guarda da página
+  // continua consultando getUser + members para revogação e permissões atuais.
+  // https://supabase.com/docs/guides/auth/server-side/creating-a-client
+  const { data, error } = await supabase.auth.getClaims();
+  const user = !error && data?.claims;
   const isPublicPath = PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
-
-  if (isApi) {
-    // /api/** só recebe o cookie renovado aqui — 401/403 é responsabilidade de
-    // cada route handler (requireUser), nunca um redirect HTML numa chamada fetch.
-    return response;
-  }
 
   if (!user && !isPublicPath) {
     const url = request.nextUrl.clone();
@@ -74,5 +65,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|fonts/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|woff|woff2|ttf|otf)$).*)"],
 };

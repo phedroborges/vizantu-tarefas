@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isResponse, requireUser } from "@/lib/authz";
-import { listNotificationsForMember, markAllNotificationsRead } from "@/lib/storage";
+import { countUnreadNotifications, listNotificationsForMember, markAllNotificationsRead } from "@/lib/storage";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const auth = await requireUser();
   if (isResponse(auth)) return auth;
-  const notifications = await listNotificationsForMember(auth.id);
-  return NextResponse.json({ notifications, unread: notifications.filter((item) => !item.readAt).length });
+  const limit = request.nextUrl.searchParams.get("preview") === "1" ? 6 : 100;
+  const [notifications, unread] = await Promise.all([
+    listNotificationsForMember(auth.id, limit), countUnreadNotifications(auth.id),
+  ]);
+  return NextResponse.json({ notifications, unread });
 }
 
 export async function PATCH(request: NextRequest) {

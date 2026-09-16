@@ -1,5 +1,5 @@
 import { organizeClientPackages, type ClientPackageAssignment } from "./client-packages";
-import { isOverdue } from "./dates";
+import { todayIso } from "./dates";
 import { canReviewItem, derivePlanStage, formatRequiresCapture, nextApprovalReviewVersion, taskStatusAfterClientDecision } from "./approval-workflow";
 import { mergePreferences, normalizePreferences, type MemberPreferences } from "./preferences";
 import { inheritsCaptureEditor } from "./assignee-inheritance";
@@ -7,7 +7,7 @@ import { parseDescription } from "./description-sections";
 import { getSupabase } from "./supabase-client";
 import { activityEventsFromComments, createActivityComments } from "./task-activity";
 import { questionsForTemplate, type SurveyTemplate } from "./survey-templates";
-import { BRAND_STAGES, DEFAULT_STATUS_COLORS, TASK_STATUSES } from "./types";
+import { BRAND_STAGES, DEFAULT_STATUS_COLORS, DONE_STATUSES, TASK_STATUSES } from "./types";
 import type {
   Announcement,
   AnnouncementScope,
@@ -461,16 +461,44 @@ function transitionStatusHistory(history: StatusHistoryEntry[], next: TaskStatus
   return copy;
 }
 
-export async function listTasks(options: { all?: boolean } = {}): Promise<Task[]> {
+export type TaskQueryScope = { projectIds?: string[] | "all"; listKinds?: TaskListKind[] | "all" };
+
+function tasksQuery(columns: string, scope: TaskQueryScope) {
+  let query = getSupabase().from("tasks").select(columns);
+  if (scope.projectIds && scope.projectIds !== "all") query = query.in("project_id", scope.projectIds);
+  if (scope.listKinds && scope.listKinds !== "all") {
+    // Sem lista continua visível, como em filterTasksByListAccess. Os valores
+    // vêm do enum interno, nunca de uma expressão PostgREST enviada pelo cliente.
+    const kinds = scope.listKinds.filter((kind) => kind === "estrategica" || kind === "criativa");
+    query = query.or(`lists.is.null,lists.eq.{}${kinds.length ? `,lists.ov.{${kinds.join(",")}}` : ""}`);
+  }
+  return query;
+}
+
+export type TaskSummary = Pick<Task, "projectId" | "status" | "dueDate" | "lists">;
+
+// Cards de projetos só precisam de contagens, nunca comentários, imagens ou copy.
+export async function listTaskSummaries(scope: TaskQueryScope = {}): Promise<TaskSummary[]> {
+  if (Array.isArray(scope.projectIds) && !scope.projectIds.length) return [];
+  const tasks: TaskSummary[] = [];
+  for (let offset = 0; ; offset += 1000) {
+    const page = unwrap(await tasksQuery("id, project_id, status, due_date, lists", scope).order("id").range(offset, offset + 999)) as Pick<TaskRow, "project_id" | "status" | "due_date" | "lists">[];
+    tasks.push(...page.map((row) => ({ projectId: row.project_id, status: row.status, dueDate: row.due_date ?? undefined, lists: row.lists ?? [] })));
+    if (page.length < 1000) return tasks;
+  }
+}
+
+export async function listTasks(options: TaskQueryScope & { all?: boolean } = {}): Promise<Task[]> {
+  if (Array.isArray(options.projectIds) && !options.projectIds.length) return [];
   const rows: TaskRow[] = [];
   if (options.all) {
     for (let offset = 0; ; offset += 1000) {
-      const page = unwrap(await getSupabase().from("tasks").select("*").order("id").range(offset, offset + 999)) as TaskRow[];
+      const page = unwrap(await tasksQuery("*", options).order("id").range(offset, offset + 999)) as TaskRow[];
       rows.push(...page);
       if (page.length < 1000) break;
     }
   } else {
-    rows.push(...unwrap(await getSupabase().from("tasks").select("*")) as TaskRow[]);
+    rows.push(...unwrap(await tasksQuery("*", options)) as TaskRow[]);
   }
   const tasks = await attachPlanKind(rows.map(mapTask));
   return tasks.sort((a, b) => (a.dueDate || "9999-99-99").localeCompare(b.dueDate || "9999-99-99"));
@@ -810,6 +838,17 @@ export async function listNotificationsForMember(memberId: string, limit = 100):
   }
 }
 
+export async function countUnreadNotifications(memberId: string): Promise<number> {
+  try {
+    const result = await getSupabase().from("notifications").select("id", { count: "exact", head: true }).eq("recipient_member_id", memberId).is("read_at", null);
+    unwrap(result);
+    return result.count ?? 0;
+  } catch (error) {
+    if (isNotificationsTableMissing(error)) return 0;
+    throw error;
+  }
+}
+
 export async function markNotificationRead(id: string, memberId: string): Promise<boolean> {
   try {
     const rows = unwrap(await getSupabase().from("notifications").update({ read_at: nowIso() }).eq("id", id).eq("recipient_member_id", memberId).select("id"));
@@ -822,11 +861,18 @@ export async function markAllNotificationsRead(memberId: string): Promise<void> 
   catch (error) { if (!isNotificationsTableMissing(error)) throw error; }
 }
 
-export async function createDailyOverdueNotifications(date = new Date().toISOString().slice(0, 10)): Promise<number> {
-  const tasks = await listTasks();
-  const overdue = tasks.filter((task) => task.assigneeId && isOverdue(task.dueDate, task.status));
-  await createNotifications(overdue.map((task) => ({ recipientMemberId: task.assigneeId!, type: "task_overdue" as const, taskId: task.id, title: "Tarefa atrasada", body: `${task.name} venceu em ${task.dueDate}`, actionUrl: `/tarefas/${task.id}`, dedupeKey: `overdue:${date}:${task.id}:${task.assigneeId}` })));
-  return overdue.length;
+export async function createDailyOverdueNotifications(date = todayIso()): Promise<number> {
+  let total = 0;
+  for (let offset = 0; ; offset += 500) {
+    const overdue = unwrap(await getSupabase().from("tasks")
+      .select("id, name, due_date, assignee_id")
+      .not("assignee_id", "is", null).lt("due_date", date)
+      .not("status", "in", `(${DONE_STATUSES.join(",")})`)
+      .order("id").range(offset, offset + 499)) as { id: string; name: string; due_date: string; assignee_id: string }[];
+    await createNotifications(overdue.map((task) => ({ recipientMemberId: task.assignee_id, type: "task_overdue" as const, taskId: task.id, title: "Tarefa atrasada", body: `${task.name} venceu em ${task.due_date}`, actionUrl: `/tarefas/${task.id}`, dedupeKey: `overdue:${date}:${task.id}:${task.assignee_id}` })));
+    total += overdue.length;
+    if (overdue.length < 500) return total;
+  }
 }
 
 export async function requestTaskDateChange(input: { projectId: string; taskId: string; reviewerName: string; requestedDate: string; reason?: string }): Promise<Task | undefined> {
@@ -1167,13 +1213,9 @@ export async function listProjectPlanItems(projectId: string): Promise<ProjectPl
   const tagIds = Array.from(new Set(rows.flatMap((t) => [...t.format_tag_ids, ...t.channel_tag_ids, ...t.category_tag_ids])));
 
   const [captacoes, tags, approvals, events] = await Promise.all([
-    unwrap(await db.from("plan_captacoes").select("id, plan_id, label, package_kind, sequence_order").in("plan_id", planIds)) as { id: string; plan_id: string; label: string; package_kind: "capture" | "creation"; sequence_order: number }[],
-    tagIds.length ? (unwrap(await db.from("tags").select("id, label, kind").in("id", tagIds)) as { id: string; label: string; kind: string }[]) : Promise.resolve([]),
-    unwrap(await db.from("plan_item_approvals").select("task_id, status, review_version").in("task_id", taskIds)) as {
-      task_id: string;
-      status: PlanApprovalStatus;
-      review_version: number;
-    }[],
+    db.from("plan_captacoes").select("id, plan_id, label, package_kind, sequence_order").in("plan_id", planIds).then((result) => unwrap(result) as { id: string; plan_id: string; label: string; package_kind: "capture" | "creation"; sequence_order: number }[]),
+    tagIds.length ? db.from("tags").select("id, label, kind").in("id", tagIds).then((result) => unwrap(result) as { id: string; label: string; kind: string }[]) : Promise.resolve([]),
+    db.from("plan_item_approvals").select("task_id, status, review_version").in("task_id", taskIds).then((result) => unwrap(result) as { task_id: string; status: PlanApprovalStatus; review_version: number }[]),
     listPlanEvents(projectId),
   ]);
 
@@ -1240,10 +1282,8 @@ export async function listPlanStages(plans: { id: string; projectId: string }[])
   const projectIds = Array.from(new Set(plans.map((plan) => plan.projectId)));
 
   const [linkRows, taskRows] = await Promise.all([
-    unwrap(await db.from("client_links").select("project_id, revoked_at, expires_at").in("project_id", projectIds)) as Promise<
-      { project_id: string; revoked_at: string | null; expires_at: string | null }[]
-    >,
-    unwrap(await db.from("tasks").select("id, plan_id").in("plan_id", plans.map((plan) => plan.id))) as Promise<{ id: string; plan_id: string }[]>,
+    db.from("client_links").select("project_id, revoked_at, expires_at").in("project_id", projectIds).then((result) => unwrap(result) as { project_id: string; revoked_at: string | null; expires_at: string | null }[]),
+    db.from("tasks").select("id, plan_id").in("plan_id", plans.map((plan) => plan.id)).then((result) => unwrap(result) as { id: string; plan_id: string }[]),
   ]);
   const approvalRows = taskRows.length
     ? (unwrap(await db.from("plan_item_approvals").select("task_id, status, review_version").in("task_id", taskRows.map((task) => task.id))) as { task_id: string; status: PlanApprovalStatus; review_version: number }[])
@@ -1938,8 +1978,10 @@ function mapContract(row: ContractRow): Contract {
   };
 }
 
-export async function listContracts(): Promise<Contract[]> {
-  const rows = unwrap(await getSupabase().from("contracts").select("*").order("updated_at", { ascending: false }));
+export async function listContracts(projectId?: string): Promise<Contract[]> {
+  let query = getSupabase().from("contracts").select("*").order("updated_at", { ascending: false });
+  if (projectId) query = query.eq("project_id", projectId);
+  const rows = unwrap(await query);
   return (rows as ContractRow[]).map(mapContract);
 }
 

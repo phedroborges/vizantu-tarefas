@@ -21,8 +21,10 @@ const toRow = (e: EntryInput, actor: string) => ({ direction: e.direction, categ
 
 export async function loadFinance(actor: string): Promise<FinanceData> {
   const db = getSupabase();
-  const [contracts, projects, members, tasks, tags, settingsRow] = await Promise.all([
+  const [contracts, projects, members, tasks, tags, settingsRow, storedEntries, blockRows, reviewRows, scoreRows, auditRows] = await Promise.all([
     listContracts(), listProjects(), listMembers(), listTasks({ all: true }), listTags(), db.from("finance_settings").select("data").eq("id", true).maybeSingle().then(checked),
+    allRows("finance_entries"), allRows("finance_project_blocks", "project_id"), allRows("finance_production_reviews", "task_id"), allRows("client_satisfaction_scores"),
+    db.from("finance_audit").select("id,entity_id,action,actor_id,created_at").order("created_at", { ascending: false }).limit(100).then(checked),
   ]);
   const settings: Settings = { ...DEFAULT_SETTINGS, ...settingsRow?.data, rates: { ...DEFAULT_SETTINGS.rates, ...settingsRow?.data?.rates } };
   const warnings: string[] = [];
@@ -32,11 +34,20 @@ export async function loadFinance(actor: string): Promise<FinanceData> {
     if (result.warning) warnings.push(result.warning);
     expected.push(...result.entries);
   }
-  if (expected.length) checked(await db.from("finance_entries").upsert(expected.map((e) => toRow(e, actor)), { onConflict: "source_key", ignoreDuplicates: true }));
-  const [entryRows, blockRows, reviewRows, scoreRows, auditRows] = await Promise.all([
-    allRows("finance_entries"), allRows("finance_project_blocks", "project_id"), allRows("finance_production_reviews", "task_id"), allRows("client_satisfaction_scores"),
-    db.from("finance_audit").select("id,entity_id,action,actor_id,created_at").order("created_at", { ascending: false }).limit(100).then(checked),
-  ]);
+  // Abrir o painel normalmente é só leitura. Gera apenas parcelas novas;
+  // não reenvia todo o contrato ao banco em cada navegação ou fechamento.
+  const existingSources = new Set(storedEntries.map((entry) => entry.source_key));
+  const missing = expected.filter((entry) => !existingSources.has(entry.sourceKey));
+  let entryRows = storedEntries;
+  let visibleAuditRows = auditRows;
+  if (missing.length) {
+    checked(await db.from("finance_entries").upsert(missing.map((entry) => toRow(entry, actor)), { onConflict: "source_key", ignoreDuplicates: true }));
+    // Relê depois da escrita: outra requisição pode ter criado a mesma parcela.
+    [entryRows, visibleAuditRows] = await Promise.all([
+      allRows("finance_entries"),
+      db.from("finance_audit").select("id,entity_id,action,actor_id,created_at").order("created_at", { ascending: false }).limit(100).then(checked),
+    ]);
+  }
   const entries = entryRows.map(mapEntry);
   const bySource = new Map(entries.filter((e) => e.sourceKey).map((e) => [e.sourceKey, e]));
   for (const entry of expected) {
@@ -52,7 +63,7 @@ export async function loadFinance(actor: string): Promise<FinanceData> {
     blocks: blockRows.map((r) => ({ projectId: String(r.project_id), blocked: Boolean(r.blocked), reason: String(r.reason), updatedAt: String(r.updated_at) })),
     reviews: reviewRows.map((r) => ({ ...(r.data as ProductionReview), taskId: String(r.task_id) })),
     scores: scoreRows.map((r) => ({ projectId: String(r.project_id), score: Number(r.score), createdAt: String(r.created_at) })),
-    audit: (auditRows ?? []).map((r) => ({ id: r.id, entityId: r.entity_id, action: r.action, actorId: r.actor_id, createdAt: r.created_at })),
+    audit: (visibleAuditRows ?? []).map((r) => ({ id: r.id, entityId: r.entity_id, action: r.action, actorId: r.actor_id, createdAt: r.created_at })),
   };
 }
 

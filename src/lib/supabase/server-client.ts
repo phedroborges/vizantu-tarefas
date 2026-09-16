@@ -1,4 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
+import { timedSupabaseFetch } from "./timed-fetch";
 import { cookies } from "next/headers";
 
 // Serve tanto Server Components quanto Route Handlers — ambos suportam
@@ -8,6 +9,7 @@ import { cookies } from "next/headers";
 export async function createClient() {
   const cookieStore = await cookies();
   return createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, {
+    global: { fetch: timedSupabaseFetch("auth") },
     cookies: {
       getAll: () => cookieStore.getAll(),
       setAll: (cookiesToSet) => {

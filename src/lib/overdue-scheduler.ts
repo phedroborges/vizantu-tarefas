@@ -54,7 +54,7 @@ async function tentar(nome: string, acao: () => Promise<number>): Promise<number
   }
 }
 
-export async function varrerAtrasos(agora = new Date()): Promise<number> {
+async function executarVarredura(agora: Date): Promise<number> {
   if (!estaNaHoraDeAvisar(agora)) return 0;
   const hoje = hojeEmSaoPaulo(agora);
   const [tarefas, financeiro] = await Promise.all([
@@ -62,6 +62,13 @@ export async function varrerAtrasos(agora = new Date()): Promise<number> {
     tentar("financeiro", () => varrerAvisosFinanceiros(hoje)),
   ]);
   return tarefas + financeiro;
+}
+
+// Cron manual e temporizador podem coincidir; compartilham o trabalho em curso.
+let emAndamento: Promise<number> | undefined;
+export function varrerAtrasos(agora = new Date()): Promise<number> {
+  if (!emAndamento) emAndamento = executarVarredura(agora).finally(() => { emAndamento = undefined; });
+  return emAndamento;
 }
 
 let agendado = false;

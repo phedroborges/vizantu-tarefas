@@ -6,16 +6,15 @@ import {
   UserRoundCheck, UserRoundX, UsersRound,
 } from "lucide-react";
 import Link from "next/link";
-import { useMemo } from "react";
 import {
-  buildDashboardMetrics,
+  type DashboardMetrics,
   type DashboardAgingItem, type DashboardFlowPoint, type DashboardLeadTime,
   type DashboardMemberMetric, type DashboardProjectHealth, type DashboardPunctuality,
 } from "@/lib/dashboard-metrics";
 import { formatDuration, formatDueDate } from "@/lib/dates";
-import { TASK_STATUSES, type Member, type Project, type StatusGroup, type Tag, type Task, type TaskStatus } from "@/lib/types";
+import { TASK_STATUSES, type StatusGroup, type TaskStatus } from "@/lib/types";
 
-type DashboardViewProps = { tasks: Task[]; projects: Project[]; members: Member[]; tags: Tag[]; nowIso: string };
+type DashboardViewProps = { metrics: DashboardMetrics };
 
 const STATUS_SHORT: Record<TaskStatus, string> = {
   rascunho: "Rasc.", aguardando_informacao: "Info.", aprovacao_copy: "Copy", aguardando_captacao: "Capt.",
@@ -227,8 +226,7 @@ function ActivityChart({ members }: { members: DashboardMemberMetric[] }) {
   return <div className="dash-activity"><div className="dash-chart-legend"><span><i className="activity-created" />Criações</span><span><i className="activity-change" />Alterações</span><span><i className="activity-comment" />Comentários</span></div>{rows.map((member) => <div className={`dash-activity__row${member.totalActivity ? "" : " is-idle"}`} key={member.memberId}><div><Avatar member={member} small /><span>{member.name}</span></div><div className="dash-activity__track" title={`${member.created} criações, ${member.changes} alterações, ${member.comments} comentários`}><i className="activity-created" style={{ width: `${(member.created / maximum) * 100}%` }} /><i className="activity-change" style={{ width: `${(member.changes / maximum) * 100}%` }} /><i className="activity-comment" style={{ width: `${(member.comments / maximum) * 100}%` }} /></div><strong>{member.totalActivity}</strong></div>)}</div>;
 }
 
-export function DashboardView({ tasks, projects, members, tags, nowIso }: DashboardViewProps) {
-  const metrics = useMemo(() => buildDashboardMetrics({ tasks, projects, members, tags, nowIso }), [tasks, projects, members, tags, nowIso]);
+export function DashboardView({ metrics }: DashboardViewProps) {
   const activeMembers = metrics.members;
   const maxComments = Math.max(1, ...metrics.topCommented.map((task) => task.count));
   const lastWeek = metrics.throughput.at(-1);

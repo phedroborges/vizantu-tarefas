@@ -17,8 +17,8 @@ export type CurrentUser = {
 
 // cache() deduplica dentro de UMA requisição — chamar getCurrentUser() várias
 // vezes na mesma página/rota custa 1 round-trip de auth + 1 query em members,
-// não N (o cache do React vale tanto pra Server Components quanto Route
-// Handlers no Next.js).
+// não N durante a renderização de Server Components. Route Handlers fazem
+// sua própria verificação; não dependem de memoização entre chamadas.
 export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   const supabase = await createClient();
   const {

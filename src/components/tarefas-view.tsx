@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { CheckSquare, Plus } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -11,8 +12,6 @@ import { useSetPageDetail } from "@/lib/page-context";
 import { findTaskGaps } from "@/lib/task-readiness";
 import { STATUS_GROUPS, TASK_COLUMNS, TASK_LIST_KINDS, TASK_STATUSES } from "@/lib/types";
 import type { Member, Project, StatusColor, Tag, Task, TaskColumnKey, TaskListKind, TaskStatus } from "@/lib/types";
-import { TaskModal } from "@/components/task-modal";
-import { QuickTaskModal } from "@/components/quick-task-modal";
 import { useVisibleTags } from "@/lib/tag-catalog";
 import { TagPickerPopover } from "@/components/tag-picker";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -29,6 +28,9 @@ import { useArrastoDeColuna } from "@/components/vz/use-resize";
 import { Button, Card, EmptyState, Input, PageHeader } from "@/components/vz";
 import { DatePicker } from "@/components/vz/date-picker";
 import { PlanCalendar } from "@/components/plan-calendar";
+
+const TaskModal = dynamic(() => import("@/components/task-modal").then((module) => module.TaskModal));
+const QuickTaskModal = dynamic(() => import("@/components/quick-task-modal").then((module) => module.QuickTaskModal));
 
 const NO_ASSIGNEE = "none";
 // Base UI's <Select.Value> só resolve o rótulo se o Root receber esse mapa.

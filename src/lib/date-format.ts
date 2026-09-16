@@ -47,18 +47,12 @@ function relativeLabel(days: number): string {
   return `há ${Math.abs(days)} dias`;
 }
 
+const shortFormatters = [false, true].map((withYear) => new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", ...(withYear ? { year: "numeric" } : {}), timeZone: TZ }));
+const longFormatters = [false, true].map((withYear) => new Intl.DateTimeFormat("pt-BR", { day: "numeric", month: "long", ...(withYear ? { year: "numeric" } : {}), timeZone: TZ }));
+const numericFormatter = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: TZ });
+
 function short(date: Date, withYear: boolean): string {
-  // O pt-BR devolve "16 de ago." — a forma curta que a tabela usa é "16 ago",
-  // então o "de" e o ponto saem.
-  return new Intl.DateTimeFormat("pt-BR", {
-    day: "2-digit",
-    month: "short",
-    ...(withYear ? { year: "numeric" } : {}),
-    timeZone: TZ,
-  })
-    .format(date)
-    .replace(/ de /g, " ")
-    .replace(/\./g, "");
+  return shortFormatters[Number(withYear)].format(date).replace(/ de /g, " ").replace(/\./g, "");
 }
 
 export function formatTaskDate(
@@ -74,14 +68,9 @@ export function formatTaskDate(
     case "curto":
       return short(date, !sameYear);
     case "extenso":
-      return new Intl.DateTimeFormat("pt-BR", {
-        day: "numeric",
-        month: "long",
-        ...(sameYear ? {} : { year: "numeric" }),
-        timeZone: TZ,
-      }).format(date);
+      return longFormatters[Number(!sameYear)].format(date);
     case "numerico":
-      return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: TZ }).format(date);
+      return numericFormatter.format(date);
     case "relativo":
       return relativeLabel(daysBetweenIso(today, dateStr));
     case "inteligente":

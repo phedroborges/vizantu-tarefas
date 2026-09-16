@@ -4,7 +4,7 @@ import { BarChart3, Bell, BookOpen, CheckSquare, ClipboardList, FileQuestion, Fi
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { AiAssistant } from "@/components/ai-assistant";
+import { AiAssistantLauncher } from "@/components/ai-assistant-launcher";
 import { AnnouncementComposer } from "@/components/announcement-composer";
 import { AnnouncementGate } from "@/components/announcement-gate";
 import { NotificationBell } from "@/components/notification-bell";
@@ -124,7 +124,7 @@ export function AdminShell({
       </div>
       {/* Na página do chat completo o widget seria redundante — e o botão
           flutuante cobre o "Enviar" do composer. */}
-      {user.aiEnabled && active !== "assistente" ? <AiAssistant /> : null}
+      {user.aiEnabled && active !== "assistente" ? <AiAssistantLauncher /> : null}
       <AnnouncementGate />
     </div>
     </PageContextProvider>

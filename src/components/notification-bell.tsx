@@ -2,7 +2,7 @@
 
 import { Bell, CheckCheck } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Notification } from "@/lib/types";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button, EmptyState, IconButton } from "@/components/vz";
@@ -11,15 +11,33 @@ export function NotificationBell() {
   const [items, setItems] = useState<Notification[]>([]);
   const [unread, setUnread] = useState(0);
 
-  const load = useCallback(() => {
-    fetch("/api/notifications").then((response) => response.json()).then((data) => { setItems(data.notifications || []); setUnread(data.unread || 0); }).catch(() => {});
+  const inFlight = useRef<AbortController | null>(null);
+  const load = useCallback(async () => {
+    if (document.visibilityState === "hidden" || inFlight.current) return;
+    const controller = new AbortController();
+    inFlight.current = controller;
+    try {
+      const response = await fetch("/api/notifications?preview=1", { signal: controller.signal });
+      if (!response.ok) return;
+      const data = await response.json();
+      if (!controller.signal.aborted) { setItems(data.notifications || []); setUnread(data.unread || 0); }
+    } catch { /* Uma atualização posterior tenta novamente. */ }
+    finally { if (inFlight.current === controller) inFlight.current = null; }
   }, []);
   useEffect(() => {
-    load();
-    const onFocus = () => load();
+    const initialLoad = window.setTimeout(() => { void load(); }, 0);
+    const onFocus = () => { void load(); };
     window.addEventListener("focus", onFocus);
-    const timer = window.setInterval(load, 60_000);
-    return () => { window.removeEventListener("focus", onFocus); window.clearInterval(timer); };
+    document.addEventListener("visibilitychange", onFocus);
+    const timer = window.setInterval(onFocus, 60_000);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+      window.clearInterval(timer);
+      window.clearTimeout(initialLoad);
+      inFlight.current?.abort();
+      inFlight.current = null;
+    };
   }, [load]);
 
   async function read(item: Notification) {

@@ -4,6 +4,7 @@ import { USER_ROLES, type UserRole } from "@/lib/types";
 import { BrandsView } from "@/components/brands-view";
 import { ContratosView } from "@/components/contratos-view";
 import { ClientDashboard } from "@/components/client-dashboard";
+import { buildDashboardMetrics } from "@/lib/dashboard-metrics";
 import { DashboardView } from "@/components/dashboard-view";
 import { KnowledgeView } from "@/components/knowledge-view";
 import { MembrosView } from "@/components/membros-view";
@@ -64,13 +65,7 @@ export default async function PreviaPage({ searchParams }: { searchParams: Promi
     <AdminShell active={ATIVO[tela]} user={usuario}>
       <BarraDeTelas atual={tela} cargo={cargo} />
       {tela === "dashboard" ? (
-        <DashboardView
-          tasks={TAREFAS}
-          projects={PROJETOS}
-          members={MEMBROS}
-          tags={[...FORMATOS, ...CANAIS, ...CATEGORIAS]}
-          nowIso={AGORA}
-        />
+        <DashboardView metrics={buildDashboardMetrics({ tasks: TAREFAS, projects: PROJETOS, members: MEMBROS, tags: [...FORMATOS, ...CANAIS, ...CATEGORIAS], nowIso: AGORA })} />
       ) : null}
 
       {tela === "tarefas" ? (

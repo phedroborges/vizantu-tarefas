@@ -5,12 +5,11 @@ import { listMembers, listProjects, listStatusColors, listTags, listTasks } from
 // Compartilhado entre /tarefas e /tarefas/[id] — mesma busca + filtro por
 // acesso, pra não divergir entre as duas rotas.
 export async function loadTarefasData(user: CurrentUser) {
-  const [tasks, projects, members, formatTags, channelTags, statusColors] = await Promise.all([
-    listTasks(),
+  const [tasks, projects, members, tags, statusColors] = await Promise.all([
+    listTasks({ projectIds: user.accessibleProjectIds, listKinds: user.accessibleListKinds }),
     listProjects(),
     listMembers(),
-    listTags("formato"),
-    listTags("canal"),
+    listTags(),
     listStatusColors(),
   ]);
 
@@ -18,5 +17,5 @@ export async function loadTarefasData(user: CurrentUser) {
   const byProject = filterTasksByAccess(tasks, user.accessibleProjectIds);
   const visibleTasks = filterTasksByListAccess(byProject, user.accessibleListKinds);
 
-  return { tasks: visibleTasks, projects: visibleProjects, members, formatTags, channelTags, statusColors };
+  return { tasks: visibleTasks, projects: visibleProjects, members, formatTags: tags.filter((tag) => tag.kind === "formato"), channelTags: tags.filter((tag) => tag.kind === "canal"), statusColors };
 }

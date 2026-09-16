@@ -1,3 +1,4 @@
+import { timedSupabaseFetch } from "./supabase/timed-fetch";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 // Só roda no servidor (rotas de API / server components) com a service role
@@ -12,7 +13,7 @@ export function getSupabase(): SupabaseClient {
   if (!url || !serviceRoleKey) {
     throw new Error("SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY precisam estar configuradas no ambiente.");
   }
-  client = createClient(url, serviceRoleKey, { auth: { persistSession: false } });
+  client = createClient(url, serviceRoleKey, { auth: { persistSession: false }, global: { fetch: timedSupabaseFetch("database") } });
   return client;
 }
 

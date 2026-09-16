@@ -3,13 +3,15 @@ import { DONE_STATUSES, type StatusHistoryEntry, type TaskStatus } from "./types
 const TZ = "America/Sao_Paulo";
 const DONE_SET = new Set<TaskStatus>(DONE_STATUSES);
 
+// Reutiliza os formatadores, não a data: virada do dia continua correta sem
+// recriar Intl.DateTimeFormat a cada célula, filtro ou comparação de ordenação.
+const isoFormatter = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: TZ });
+const monthFormatter = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric", timeZone: TZ });
+const dueFormatter = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", timeZone: TZ });
+const dateTimeFormatter = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: TZ });
+
 export function todayIso(): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: TZ,
-  }).format(new Date());
+  return isoFormatter.format(new Date());
 }
 
 export function monthKeyFromDate(dateStr: string): string {
@@ -22,7 +24,7 @@ export function currentMonthKey(): string {
 
 export function monthLabel(key: string): string {
   const [year, month] = key.split("-").map(Number);
-  return new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric", timeZone: TZ }).format(
+  return monthFormatter.format(
     new Date(Date.UTC(year, month - 1, 15)),
   );
 }
@@ -43,20 +45,13 @@ export function daysInCalendarMonth(key: string): (number | null)[] {
 export function formatDueDate(dateStr?: string): string {
   if (!dateStr) return "Sem prazo";
   const [year, month, day] = dateStr.split("-").map(Number);
-  return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", timeZone: TZ }).format(
+  return dueFormatter.format(
     new Date(Date.UTC(year, month - 1, day, 12)),
   );
 }
 
 export function formatDateTime(iso: string): string {
-  return new Intl.DateTimeFormat("pt-BR", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: TZ,
-  }).format(new Date(iso));
+  return dateTimeFormatter.format(new Date(iso));
 }
 
 export function isOverdue(dueDate: string | undefined, status: TaskStatus): boolean {
@@ -120,7 +115,7 @@ export function timeUntilDueLabel(dueDate: string, now: Date = new Date()): stri
     // pelas horas desde o fim do dia dava um dia a menos que a tabela ("há 11
     // dias" ao lado de "12 dias"), e duas contas diferentes pro mesmo atraso
     // na mesma tela destroem a confiança nas duas.
-    const hojeIso = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: TZ }).format(now);
+    const hojeIso = isoFormatter.format(now);
     const [ay, am, ad] = hojeIso.split("-").map(Number);
     const [by, bm, bd] = dueDate.split("-").map(Number);
     const days = Math.round((Date.UTC(ay, am - 1, ad) - Date.UTC(by, bm - 1, bd)) / 86_400_000);
