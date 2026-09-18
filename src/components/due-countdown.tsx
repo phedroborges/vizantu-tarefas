@@ -5,9 +5,9 @@ import Link from "next/link";
 import { useMemo, useSyncExternalStore } from "react";
 import { Avatar } from "@/components/avatar";
 import { hoursUntilDue, isOverdue, timeUntilDueLabel } from "@/lib/dates";
-import { DONE_STATUSES, type Project, type Task } from "@/lib/types";
+import { OVERDUE_STATUSES, type Project, type Task } from "@/lib/types";
 
-const DONE = new Set<string>(DONE_STATUSES);
+const IN_PRODUCTION = new Set<string>(OVERDUE_STATUSES);
 const QUANTAS = 5;
 
 // O relógio é uma fonte externa ao React, igual ao localStorage: o minuto atual
@@ -48,7 +48,7 @@ export function DueCountdown({
 
   const proximas = useMemo(() => {
     return tasks
-      .filter((task) => task.dueDate && !DONE.has(task.status))
+      .filter((task) => task.dueDate && IN_PRODUCTION.has(task.status))
       .sort((a, b) => a.dueDate!.localeCompare(b.dueDate!))
       .slice(0, QUANTAS);
   }, [tasks]);

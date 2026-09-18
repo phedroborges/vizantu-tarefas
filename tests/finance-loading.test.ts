@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({ db: vi.fn(), contracts: vi.fn(), projects: vi.
 vi.mock("@/lib/supabase-client", () => ({ getSupabase: mocks.db }));
 vi.mock("@/lib/storage", () => ({ listContracts: mocks.contracts, listProjects: mocks.projects, listMembers: mocks.members, listTasks: mocks.tasks, listTags: mocks.tags, createNotifications: mocks.notifications }));
 vi.mock("@/lib/finance/calculations", async (importOriginal) => ({ ...await importOriginal<object>(), contractEntries: mocks.generated }));
-import { loadFinance, loadFinanceProduction } from "@/lib/finance/storage";
+import { loadFinance, loadFinanceProduction, mutateFinance } from "@/lib/finance/storage";
 import { varrerAvisosFinanceiros } from "@/lib/finance/alerts";
 import { DEFAULT_SETTINGS } from "@/lib/finance/types";
 let writes: unknown[];
@@ -63,4 +63,14 @@ it("produção funciona sem consultar ou importar contratos", async () => {
   expect(mocks.tasks).toHaveBeenCalledWith({ all: true, projection: "production" });
   expect(mocks.contracts).not.toHaveBeenCalled();
   expect(writes).toEqual([]);
+});
+
+it("fechamento do servidor lança a despesa para quem assumiu e entregou", async () => {
+  const erika = "11111111-1111-4111-8111-111111111111";
+  const luis = "22222222-2222-4222-8222-222222222222";
+  mocks.members.mockResolvedValue([{ id: erika, role: "diretor_criativo" }, { id: luis, role: "diretor_criativo" }]);
+  mocks.tasks.mockResolvedValue([{ id: "task", name: "Reels", projectId: "project", assigneeId: luis, createdAt: "2026-09-01T12:00:00Z", formatTagIds: [], status: "aprovado", statusHistory: [{ status: "para_aprovacao", enteredAt: "2026-09-05T12:00:00Z", exitedAt: null }], comments: [{ kind: "activity", fieldKey: "assigneeId", oldValue: erika, newValue: luis, createdAt: "2026-09-04T12:00:00Z" }] }]);
+  await mutateFinance({ action: "productionClosing", memberId: luis, competence: "2026-09" }, "owner");
+  expect(writes).toEqual([expect.arrayContaining([expect.objectContaining({ member_id: luis, source_key: "production:task", amount: 7000 })])]);
+  expect(mocks.contracts).not.toHaveBeenCalled();
 });

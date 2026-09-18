@@ -79,9 +79,9 @@ describe("dashboard gerencial", () => {
     expect(metrics.reschedules[0]).toMatchObject({ taskId: "t1", originalDate: "2026-09-05", currentDate: "2026-09-08", changes: 1, movedDays: 3 });
   });
 
-  it("segmenta atraso ativo por gravidade", () => {
-    expect(metrics.overdueTasks).toBe(1);
-    expect(metrics.delayBuckets.find((bucket) => bucket.label === "1 dia")?.count).toBe(1);
+  it("espera por aprovação não vira atraso ativo", () => {
+    expect(metrics.overdueTasks).toBe(0);
+    expect(metrics.delayBuckets.find((bucket) => bucket.label === "1 dia")?.count).toBe(0);
   });
 
   it("separa o tempo produzindo do tempo esperando na fila", () => {
@@ -120,7 +120,7 @@ describe("dashboard gerencial", () => {
 
   it("envelhece a tarefa aberta pelo tempo parado no status atual", () => {
     expect(metrics.aging).toHaveLength(1);
-    expect(metrics.aging[0]).toMatchObject({ taskId: "t1", status: "para_aprovacao", days: 2.1, overdue: true, assigneeName: "Ana" });
+    expect(metrics.aging[0]).toMatchObject({ taskId: "t1", status: "para_aprovacao", days: 2.1, overdue: false, assigneeName: "Ana" });
     // O limite saudável nasce do P85 do prazo real, não de um número escolhido.
     expect(metrics.agingThresholdDays).toBe(8);
   });
@@ -134,7 +134,7 @@ describe("dashboard gerencial", () => {
 
   it("resume a saúde de cada cliente pela carteira aberta", () => {
     expect(metrics.projectHealth).toHaveLength(1);
-    expect(metrics.projectHealth[0]).toMatchObject({ id: "p1", total: 3, done: 1, open: 2, overdue: 1, rework: 1, progress: 33 });
+    expect(metrics.projectHealth[0]).toMatchObject({ id: "p1", total: 3, done: 1, open: 2, overdue: 0, rework: 1, progress: 33 });
     expect(metrics.projectHealth[0].alerts).toBe(metrics.alerts.length);
   });
 

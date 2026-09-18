@@ -499,7 +499,7 @@ export function TarefasView({
             locked={isOverdue(task.dueDate, task.status)}
             dateFormat={dateFormat}
             onChange={(dueDate) => patchTask(task.id, { dueDate })}
-            onLockedClick={() => showToast('Tarefa atrasada — mude o status para "Aprovado", "Problema" ou "Finalizado" para editar a data.')}
+            onLockedClick={() => showToast('Tarefa atrasada enquanto está em criação. Ao entregar, atualize para "Para aprovação" ou "Aprovado".')}
           />
         );
       case "status":

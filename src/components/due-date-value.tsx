@@ -5,9 +5,8 @@ import { formatTaskDate, type DateFormatKey } from "@/lib/date-format";
 import { overdueDays } from "@/lib/dates";
 import type { TaskStatus } from "@/lib/types";
 
-// Atraso é informação de PRAZO, não de status: quem está atrasada continua
-// "Em criação" ou "Aprovação de texto" — só passou da data. Por isso o aviso
-// mora aqui, na coluna de entrega, e a tag de status nunca é substituída.
+// Atraso só é cobrado enquanto a demanda está em criação. Enviar para
+// aprovação encerra a etapa do diretor, mesmo se a publicação acontecer depois.
 export function DueDateValue({
   dueDate,
   status,

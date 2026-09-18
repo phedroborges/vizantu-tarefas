@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hoursUntilDue, overdueDays, timeUntilDueLabel } from "../src/lib/dates";
+import { hoursUntilDue, isOverdue, overdueDays, timeUntilDueLabel } from "../src/lib/dates";
 
 const HOJE = "2026-08-16";
 // 16/08/2026 12:00 em São Paulo (UTC-3) = 15:00 UTC.
@@ -17,8 +17,9 @@ describe("atraso e contagem regressiva", () => {
   });
 
   it("3. status concluído nunca conta como atrasado", () => {
-    for (const status of ["aprovado", "problema", "finalizado"] as const) {
+    for (const status of ["rascunho", "aprovacao_copy", "aguardando_captacao", "pronto_para_criacao", "revisao", "ajuste", "para_aprovacao", "aprovado", "problema", "finalizado"] as const) {
       expect(overdueDays("2026-01-01", status, HOJE)).toBe(0);
+      expect(isOverdue("2026-01-01", status)).toBe(false);
     }
   });
 

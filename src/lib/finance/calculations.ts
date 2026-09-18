@@ -123,58 +123,30 @@ export function priceSuggestion(cost: number, tax: number | null, margin: number
 }
 
 // ---------- Quem recebe pela tarefa ----------
-//
-// Uma peça passa por várias mãos e só pode gerar um pagamento. A regra do dono é
-// "o que mais trabalhou", e o app tem como responder isso sem chutar: toda troca
-// de responsável fica registrada na atividade da tarefa, com valor antigo, novo
-// e hora. Dá para remontar a linha do tempo e somar quanto tempo cada pessoa
-// segurou a tarefa até a entrega.
-//
-// Só entram os cargos que produzem peça. Social media e dono aparecem na linha
-// do tempo como qualquer outro, e são ignorados aqui de propósito: o trabalho
-// deles não é medido em peça entregue.
-export function assignmentSegments(task: Task, endAt: number): { memberId: string | null; from: number; to: number }[] {
+// O crédito é do último diretor responsável até a entrega. Tempo de posse não
+// mede produção. A passagem posterior para social media não transfere o crédito.
+export function creditedProducer(task: Task, eligible: Set<string>, endAt: number): string | null {
   const changes = task.comments
     .filter((comment) => comment.kind === "activity" && comment.fieldKey === "assigneeId")
-    .map((comment) => ({ at: Date.parse(comment.createdAt), para: (comment.newValue ?? null) as string | null, de: (comment.oldValue ?? null) as string | null }))
+    .map((comment) => ({ at: Date.parse(comment.createdAt), to: comment.newValue as string | null, from: comment.oldValue as string | null }))
     .filter((change) => Number.isFinite(change.at))
     .sort((a, b) => a.at - b.at);
-  // Sem nenhuma troca registrada, quem está com a tarefa hoje é quem sempre
-  // esteve. Com trocas, o primeiro "valor antigo" é quem começou com ela.
-  let holder = changes.length ? changes[0].de : task.assigneeId ?? null;
-  let since = Date.parse(task.createdAt);
-  const segments: { memberId: string | null; from: number; to: number }[] = [];
+  const initial = changes.length ? changes[0].from : task.assigneeId;
+  let producer = initial && eligible.has(initial) ? initial : null;
   for (const change of changes) {
-    segments.push({ memberId: holder, from: since, to: change.at });
-    holder = change.para;
-    since = change.at;
+    if (change.at > endAt) break;
+    if (change.to && eligible.has(change.to)) producer = change.to;
   }
-  segments.push({ memberId: holder, from: since, to: endAt });
-  return segments;
+  return producer;
 }
 
-export function creditedProducer(task: Task, eligible: Set<string>, endAt: number): string | null {
-  const held = new Map<string, number>();
-  let ultimo: string | null = null;
-  for (const segment of assignmentSegments(task, endAt)) {
-    const to = Math.min(segment.to, endAt);
-    if (!segment.memberId || !eligible.has(segment.memberId) || to <= segment.from) continue;
-    held.set(segment.memberId, (held.get(segment.memberId) ?? 0) + (to - segment.from));
-    ultimo = segment.memberId;
-  }
-  if (!held.size) return null;
-  const maior = Math.max(...held.values());
-  const empatados = [...held.entries()].filter(([, tempo]) => tempo === maior).map(([id]) => id);
-  // Empate desempata em quem estava com a tarefa no fim: quem finalizou leva.
-  if (empatados.length === 1) return empatados[0];
-  return ultimo && empatados.includes(ultimo) ? ultimo : [...empatados].sort()[0];
-}
+const DELIVERY_STATUSES = new Set<Task["status"]>(["para_aprovacao", "aprovado", "finalizado"]);
 
 // `rule` guarda por que a peça custa o que custa. Sem isso o extrato mostra um
 // valor e ninguém consegue conferir de onde ele saiu — e conferência que não dá
 // para refazer na mão não é conferência, é confiança.
 export type PriceRule = { pack: boolean; packSize: number; unit: number; extraCards: number; extraCardValue: number };
-export type ProductionLine = { taskStatus?: Task["status"]; taskId: string; name: string; projectId: string; memberId?: string; producerId: string | null; rateKey: RateKey | null; package: boolean; cards: number; dueDate: string; deliveredDate: string | null; late: boolean; qualityProblem: boolean; base: number; total: number; penalty: boolean; ready: boolean; pendencia: string | null; rule: PriceRule | null };
+export type ProductionLine = { taskStatus?: Task["status"]; taskId: string; name: string; projectId: string; memberId?: string; producerId: string | null; rateKey: RateKey | null; package: boolean; cards: number; dueDate: string; deliveredDate: string | null; late: boolean; deliveredLate: boolean; qualityProblem: boolean; base: number; total: number; penalty: boolean; ready: boolean; pendencia: string | null; rule: PriceRule | null };
 
 export function productionLines(tasks: Task[], tags: Tag[], reviews: ProductionReview[], settings: Settings, members: Member[]): ProductionLine[] {
   const labels = new Map(tags.map((tag) => [tag.id, tag.label]));
@@ -184,19 +156,30 @@ export function productionLines(tasks: Task[], tags: Tag[], reviews: ProductionR
     const review = reviewById.get(task.id);
     const format = [...task.formatTagIds.map((id) => labels.get(id) || ""), task.name].join(" ").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
     const rateKey: RateKey | null = review?.rateKey || (/manual.*marca/.test(format) ? "manual" : /canva|apresentacao/.test(format) ? "canva" : /carross/.test(format) ? "carrossel" : /reels?|video/.test(format) ? "reels" : /estatico|feed|story/.test(format) ? "estatico" : null);
-    const deliveryEvent = task.statusHistory.find((event) => ["para_aprovacao", "aprovado", "finalizado"].includes(event.status));
-    const delivered = review?.deliveredDate || (deliveryEvent ? localDate(deliveryEvent.enteredAt) : null);
-    const fim = deliveryEvent ? Date.parse(deliveryEvent.enteredAt) : Date.now();
-    const producerId = creditedProducer(task, produzem, fim);
+    const deliveryEvent = task.statusHistory
+      .filter((event) => DELIVERY_STATUSES.has(event.status) && Number.isFinite(Date.parse(event.enteredAt)))
+      .sort((a, b) => Date.parse(a.enteredAt) - Date.parse(b.enteredAt))[0];
+    // Atividades antigas também são evidência quando o histórico está incompleto.
+    const deliveryActivity = task.comments
+      .filter((comment) => comment.kind === "activity" && comment.fieldKey === "status" && DELIVERY_STATUSES.has(comment.newValue as Task["status"]) && Number.isFinite(Date.parse(comment.createdAt)))
+      .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))[0];
+    const deliveredAt = deliveryEvent?.enteredAt || deliveryActivity?.createdAt;
+    const delivered = review?.deliveredDate || (deliveredAt ? localDate(deliveredAt) : null);
+    const endAt = deliveredAt ? Date.parse(deliveredAt) : delivered ? Date.parse(`${delivered}T23:59:59.999-03:00`) : Date.now();
+    const snapshot = deliveryEvent?.assigneeId;
+    const producerId = delivered
+      ? snapshot && produzem.has(snapshot) ? snapshot : creditedProducer(task, produzem, endAt)
+      : task.assigneeId && produzem.has(task.assigneeId) ? task.assigneeId : null;
     const dueDate = daysAdd(localDate(task.createdAt), task.captacaoId ? settings.packageDays : settings.soloDays, settings.deadlineMode === "business");
-    const late = Boolean(delivered && delivered > dueDate);
+    const deliveredLate = Boolean(delivered && delivered > dueDate);
+    const late = !delivered && task.status === "em_criacao" && dueDate < localDate(new Date().toISOString());
     const qualityProblem = review?.qualityProblem || false;
     const pendencia = !rateKey ? "Sem formato reconhecido: confira o tipo da peça."
-      : !delivered ? "Sem evidência de entrega: a tarefa ainda não passou por aprovação."
+      : !delivered ? DELIVERY_STATUSES.has(task.status) ? "Tarefa entregue sem data registrada: informe a data na conferência." : "Sem evidência de entrega: a tarefa ainda não passou por aprovação."
       : !producerId ? "Sem diretor criativo na tarefa: ninguém que produz peça foi responsável por ela."
       : null;
     return { taskStatus: task.status, taskId: task.id, name: task.name, projectId: task.projectId, memberId: task.assigneeId, producerId, rateKey, package: Boolean(task.captacaoId), cards: review?.cards ?? 8, dueDate, deliveredDate: delivered,
-      late, qualityProblem, base: 0, total: 0, penalty: settings.penaltyMode === "both" ? late && qualityProblem : late || qualityProblem, ready: !pendencia, pendencia, rule: null as PriceRule | null,
+      late, deliveredLate, qualityProblem, base: 0, total: 0, penalty: settings.penaltyMode === "both" ? deliveredLate && qualityProblem : deliveredLate || qualityProblem, ready: !pendencia, pendencia, rule: null as PriceRule | null,
       group: `${task.projectId}:${task.captacaoId || task.id}:${producerId}:${rateKey}` };
   });
   const groups = new Map<string, typeof rows>();
@@ -363,8 +346,8 @@ export function productionRoster(lines: ProductionLine[], entries: Entry[], memb
     const done = delivered.filter((line) => line.producerId === member.id);
     const closing = closings.get(member.id);
     return { memberId: member.id, name: member.name, active: member.active,
-      delivered: done.length, awaitingReview: done.filter((line) => !line.ready).length,
-      inProgress: own.filter((line) => !line.deliveredDate && line.taskStatus !== "problema" && line.taskStatus !== "finalizado").length,
+      delivered: done.length, awaitingDate: own.filter((line) => !line.deliveredDate && line.taskStatus && DELIVERY_STATUSES.has(line.taskStatus)).length, awaitingReview: done.filter((line) => !line.ready).length,
+      inProgress: own.filter((line) => !line.deliveredDate && line.taskStatus !== "problema" && (!line.taskStatus || !DELIVERY_STATUSES.has(line.taskStatus))).length,
       lastDelivery: done.map((line) => line.deliveredDate!).sort().at(-1) ?? null,
       total: closing?.total ?? 0, launched: closing?.launched ?? 0, pending: closing?.pending ?? 0,
       pendingPieces: closing?.pendingTaskIds.length ?? 0,

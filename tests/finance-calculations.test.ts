@@ -88,7 +88,7 @@ describe("produção e precificação", () => {
 
 // ---------- Quem recebe pela peça ----------
 // A regra do dono: uma peça gera um pagamento só, e vai para o diretor criativo
-// que mais trabalhou nela. Social media e dono nunca entram na conta.
+// responsável na entrega. Social media e dono nunca entram na conta.
 describe("crédito da produção", () => {
   it("ignora quem não é diretor criativo e avisa em vez de pagar errado", () => {
     const [line] = productionLines([task(1, { assigneeId: "social" })], [], [], DEFAULT_SETTINGS, equipe);
@@ -106,10 +106,10 @@ describe("crédito da produção", () => {
     expect(line.ready).toBe(true);
   });
 
-  it("credita quem segurou a tarefa por mais tempo, não quem entregou", () => {
+  it("credita quem entregou, mesmo tendo ficado menos tempo responsável", () => {
     // "a" fica do dia 1 ao 3 (dois dias), "b" fica do 3 ao 4 (um dia) e entrega.
     const t = task(1, { assigneeId: "b", comments: [troca("a", "b", "2026-09-03T12:00:00Z")] });
-    expect(productionLines([t], [], [], DEFAULT_SETTINGS, equipe)[0].producerId).toBe("a");
+    expect(productionLines([t], [], [], DEFAULT_SETTINGS, equipe)[0].producerId).toBe("b");
   });
 
   it("no empate, fica com quem estava com ela no fim", () => {
@@ -312,4 +312,51 @@ it("resumo por diretor inclui quem não entregou e separa pendências, produçã
   expect(roster.find(r => r.name === "Josiano")).toMatchObject({ delivered: 1, awaitingReview: 1, pending: 0 });
   expect(roster.find(r => r.name === "Luís")).toMatchObject({ delivered: 0, inProgress: 1 });
   expect(roster.find(r => r.name === "Novo")).toMatchObject({ delivered: 0, total: 0 });
+});
+
+describe("entrega encerra a etapa do diretor", () => {
+  it("Erika fica três dias, Luís assume e entrega em um: Luís recebe", () => {
+    const t = task(1, { assigneeId: "b", comments: [troca("a", "b", "2026-09-04T12:00:00Z")], statusHistory: [{ status: "para_aprovacao", enteredAt: "2026-09-05T12:00:00Z", exitedAt: null }] });
+    const [line] = productionLines([t], [], [], DEFAULT_SETTINGS, equipe);
+    expect(line).toMatchObject({ producerId: "b", ready: true, deliveredDate: "2026-09-05" });
+  });
+  it("enviar para social media ou outro diretor após entrega não transfere o valor", () => {
+    const t = task(1, { assigneeId: "a", comments: [troca("b", "social", "2026-09-04T12:00:00Z"), troca("social", "a", "2026-09-10T12:00:00Z")] });
+    expect(productionLines([t], [], [], DEFAULT_SETTINGS, equipe)[0]).toMatchObject({ producerId: "b", ready: true });
+  });
+  it("responsável gravado na entrega prevalece sobre histórico antigo incompleto", () => {
+    const t = task(1, { assigneeId: "a", statusHistory: [{ status: "aprovado", enteredAt: "2026-09-04T12:00:00Z", exitedAt: null, assigneeId: "b" }] });
+    expect(productionLines([t], [], [], DEFAULT_SETTINGS, equipe)[0]).toMatchObject({ producerId: "b", ready: true });
+  });
+  it("troca no mesmo instante da entrega vale para o novo diretor", () => {
+    const t = task(1, { assigneeId: "b", comments: [troca("a", "b", "2026-09-04T12:00:00Z")] });
+    expect(productionLines([t], [], [], DEFAULT_SETTINGS, equipe)[0].producerId).toBe("b");
+  });
+  it.each(["para_aprovacao", "aprovado", "finalizado"] as const)("%s já habilita recebimento sem esperar publicação", status => {
+    const t = task(1, { assigneeId: "b", status, statusHistory: [{ status, enteredAt: "2026-09-04T12:00:00Z", exitedAt: null }] });
+    expect(productionLines([t], [], [], DEFAULT_SETTINGS, equipe)[0]).toMatchObject({ producerId: "b", ready: true, deliveredDate: "2026-09-04" });
+  });
+  it("aprovação no mês seguinte mantém a competência da entrega para aprovação", () => {
+    const t = task(1, { statusHistory: [{ status: "aprovado", enteredAt: "2026-10-08T12:00:00Z", exitedAt: null }, { status: "para_aprovacao", enteredAt: "2026-09-04T12:00:00Z", exitedAt: "2026-10-08T12:00:00Z" }] });
+    expect(productionLines([t], [], [], DEFAULT_SETTINGS, equipe)[0]).toMatchObject({ deliveredDate: "2026-09-04", late: false, ready: true });
+  });
+  it("recupera a data por atividade de status quando falta histórico", () => {
+    const t = task(1, { statusHistory: [], comments: [{ id: "status", kind: "activity", fieldKey: "status", newValue: "aprovado", author: "Sistema", text: "", createdAt: "2026-09-04T12:00:00Z" }] });
+    expect(productionLines([t], [], [], DEFAULT_SETTINGS, equipe)[0]).toMatchObject({ deliveredDate: "2026-09-04", ready: true });
+  });
+  it("sem entrega, a carteira em produção pertence ao responsável atual", () => {
+    const t = task(1, { assigneeId: "b", status: "em_criacao", statusHistory: [], comments: [troca("a", "b", "2026-09-18T12:00:00Z")] });
+    const lines = productionLines([t], [], [], DEFAULT_SETTINGS, equipe);
+    expect(productionRoster(lines, [], equipe, "2026-09").find(r => r.memberId === "b")?.inProgress).toBe(1);
+  });
+});
+
+it("entrega atrasada não segue em atraso ativo enquanto aguarda cliente", () => {
+  const [line] = productionLines([task(1, { captacaoId: undefined })], [], [], DEFAULT_SETTINGS, equipe);
+  expect(line).toMatchObject({ ready: true, late: false, deliveredLate: true, total: 7000 });
+});
+it("aprovada sem data aparece para conferência, não como trabalho em produção", () => {
+  const lines = productionLines([task(1, { assigneeId: "b", status: "aprovado", statusHistory: [] })], [], [], DEFAULT_SETTINGS, equipe);
+  expect(lines[0].pendencia).toContain("informe a data");
+  expect(productionRoster(lines, [], equipe, "2026-09").find(r => r.memberId === "b")).toMatchObject({ delivered: 0, awaitingDate: 1, inProgress: 0 });
 });

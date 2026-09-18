@@ -1,7 +1,7 @@
-import { DONE_STATUSES, type StatusHistoryEntry, type TaskStatus } from "./types";
+import { OVERDUE_STATUSES, type StatusHistoryEntry, type TaskStatus } from "./types";
 
 const TZ = "America/Sao_Paulo";
-const DONE_SET = new Set<TaskStatus>(DONE_STATUSES);
+const OVERDUE_SET = new Set<TaskStatus>(OVERDUE_STATUSES);
 
 // Reutiliza os formatadores, não a data: virada do dia continua correta sem
 // recriar Intl.DateTimeFormat a cada célula, filtro ou comparação de ordenação.
@@ -55,7 +55,7 @@ export function formatDateTime(iso: string): string {
 }
 
 export function isOverdue(dueDate: string | undefined, status: TaskStatus): boolean {
-  if (!dueDate || DONE_SET.has(status)) return false;
+  if (!dueDate || !OVERDUE_SET.has(status)) return false;
   return dueDate < todayIso();
 }
 
@@ -91,7 +91,7 @@ export function overdueDays(dueDate: string | undefined, status: TaskStatus, tod
   // A comparação é feita aqui, e não via isOverdue(), porque aquela função lê
   // o dia de hoje por conta própria e ignoraria o `today` recebido — o que
   // torna esta impossível de testar com data fixa.
-  if (!dueDate || DONE_SET.has(status) || dueDate >= today) return 0;
+  if (!dueDate || !OVERDUE_SET.has(status) || dueDate >= today) return 0;
   const [ay, am, ad] = today.split("-").map(Number);
   const [by, bm, bd] = dueDate!.split("-").map(Number);
   const MS_PER_DAY = 86_400_000;

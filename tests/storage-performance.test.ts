@@ -48,7 +48,7 @@ describe("consultas proporcionais à tela", () => {
     expect(requests[0].searchParams.get("select")).toBe("id,name,due_date,assignee_id");
     expect(requests[0].searchParams.get("due_date")).toBe("lt.2026-09-16");
     expect(requests[0].searchParams.get("assignee_id")).toBe("not.is.null");
-    expect(requests[0].searchParams.get("status")).toBe("not.in.(aprovado,problema,finalizado)");
+    expect(requests[0].searchParams.get("status")).toBe("in.(em_criacao)");
   });
   it("busca links e itens de planos simultaneamente", async () => {
     let release!: () => void;

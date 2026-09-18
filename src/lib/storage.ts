@@ -7,7 +7,7 @@ import { parseDescription } from "./description-sections";
 import { getSupabase } from "./supabase-client";
 import { activityEventsFromComments, createActivityComments } from "./task-activity";
 import { questionsForTemplate, type SurveyTemplate } from "./survey-templates";
-import { BRAND_STAGES, DEFAULT_STATUS_COLORS, DONE_STATUSES, TASK_STATUSES } from "./types";
+import { BRAND_STAGES, DEFAULT_STATUS_COLORS, OVERDUE_STATUSES, TASK_STATUSES } from "./types";
 import type {
   Announcement,
   AnnouncementScope,
@@ -445,19 +445,19 @@ function dedupeIds(ids: string[]): string[] {
   return Array.from(new Set(ids.filter(Boolean)));
 }
 
-function openStatusHistory(status: TaskStatus, at: string): StatusHistoryEntry[] {
-  return [{ status, enteredAt: at, exitedAt: null }];
+function openStatusHistory(status: TaskStatus, at: string, assigneeId: string | null): StatusHistoryEntry[] {
+  return [{ status, enteredAt: at, exitedAt: null, assigneeId }];
 }
 
 // Fecha a entrada aberta (exitedAt === null) e cria uma nova entrada aberta pro
 // próximo status. Funciona tanto pra avançar quanto pra voltar, e revisitar um
 // status já visto vira uma entrada nova — assim a soma por status (ver
 // summarizeStatusDurations em lib/dates.ts) acumula o tempo de todas as visitas.
-function transitionStatusHistory(history: StatusHistoryEntry[], next: TaskStatus, at: string): StatusHistoryEntry[] {
+function transitionStatusHistory(history: StatusHistoryEntry[], next: TaskStatus, at: string, assigneeId: string | null): StatusHistoryEntry[] {
   const copy = [...history];
   const openIndex = copy.findIndex((entry) => entry.exitedAt === null);
   if (openIndex !== -1) copy[openIndex] = { ...copy[openIndex], exitedAt: at };
-  copy.push({ status: next, enteredAt: at, exitedAt: null });
+  copy.push({ status: next, enteredAt: at, exitedAt: null, assigneeId });
   return copy;
 }
 
@@ -508,7 +508,7 @@ export async function listTasks(options: TaskQueryScope & { all?: boolean; proje
   const tasks = options.projection === "list" ? mapped.map((task) => ({
     ...task, preview: true, comments: [], images: [],
   })) : options.projection === "production" ? mapped.map((task) => ({
-    ...task, comments: task.comments.filter((comment) => comment.kind === "activity" && comment.fieldKey === "assigneeId"),
+    ...task, comments: task.comments.filter((comment) => comment.kind === "activity" && ["assigneeId", "status"].includes(comment.fieldKey || "")),
   })) : await attachPlanKind(mapped);
   return tasks.sort((a, b) => (a.dueDate || "9999-99-99").localeCompare(b.dueDate || "9999-99-99"));
 }
@@ -566,7 +566,7 @@ export async function createTask(input: TaskInput): Promise<Task> {
         // então nem aceitamos ele aqui (ver deriveListsForStatus acima).
         lists: deriveListsForStatus(status),
         status,
-        status_history: openStatusHistory(status, now),
+        status_history: openStatusHistory(status, now, assigneeId),
         // A autoria mora no histórico da tarefa para manter a implantação
         // retrocompatível com bancos que ainda não têm uma coluna dedicada.
         // Também evita confundir a primeira edição com a criação real.
@@ -632,7 +632,8 @@ export async function updateTask(
   // junto e replanejar é obrigatório. O atraso continua registrado no aviso ao
   // lado do prazo e no histórico de status, que é onde ele tem que aparecer.
 
-  const update: Record<string, unknown> = { updated_at: nowIso() };
+  const changedAt = nowIso();
+  const update: Record<string, unknown> = { updated_at: changedAt };
   if (patch.projectId !== undefined) update.project_id = patch.projectId;
   if (patch.name !== undefined) update.name = patch.name.trim();
   if (patch.kind !== undefined) update.kind = patch.kind;
@@ -663,7 +664,7 @@ export async function updateTask(
 
   if (patch.status !== undefined && patch.status !== current.status) {
     update.status = patch.status;
-    update.status_history = transitionStatusHistory(current.statusHistory, patch.status, nowIso());
+    update.status_history = transitionStatusHistory(current.statusHistory, patch.status, changedAt, update.assignee_id !== undefined ? update.assignee_id as string | null : current.assigneeId ?? null);
     // lists é sempre recalculado a partir do novo status — nunca aceito
     // manualmente (ver deriveListsForStatus).
     update.lists = deriveListsForStatus(patch.status);
@@ -683,7 +684,7 @@ export async function updateTask(
   ];
   const changes = tracked.filter(([, before, after]) => JSON.stringify(before) !== JSON.stringify(after));
   if (changes.length) {
-    const createdAt = nowIso();
+    const createdAt = changedAt;
     const comments = [...updated.comments, ...createActivityComments(changes, actorMemberId, createdAt, newId)];
     const activityRow = unwrap(await getSupabase().from("tasks").update({ comments }).eq("id", id).select().maybeSingle());
     if (activityRow) [updated] = await attachPlanKind([mapTask(activityRow as TaskRow)]);
@@ -888,7 +889,7 @@ export async function createDailyOverdueNotifications(date = todayIso()): Promis
     const overdue = unwrap(await getSupabase().from("tasks")
       .select("id, name, due_date, assignee_id")
       .not("assignee_id", "is", null).lt("due_date", date)
-      .not("status", "in", `(${DONE_STATUSES.join(",")})`)
+      .in("status", OVERDUE_STATUSES)
       .order("id").range(offset, offset + 499)) as { id: string; name: string; due_date: string; assignee_id: string }[];
     await createNotifications(overdue.map((task) => ({ recipientMemberId: task.assignee_id, type: "task_overdue" as const, taskId: task.id, title: "Tarefa atrasada", body: `${task.name} venceu em ${task.due_date}`, actionUrl: `/tarefas/${task.id}`, dedupeKey: `overdue:${date}:${task.id}:${task.assignee_id}` })));
     total += overdue.length;
