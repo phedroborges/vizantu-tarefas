@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { CheckSquare, Plus } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
   isOverdue,
   overdueDays,
@@ -29,7 +29,7 @@ import { Button, Card, EmptyState, Input, PageHeader } from "@/components/vz";
 import { DatePicker } from "@/components/vz/date-picker";
 import { PlanCalendar } from "@/components/plan-calendar";
 
-const TaskModal = dynamic(() => import("@/components/task-modal").then((module) => module.TaskModal));
+const TaskModal = dynamic(() => import("@/components/task-detail-loader").then((module) => module.TaskDetailLoader));
 const QuickTaskModal = dynamic(() => import("@/components/quick-task-modal").then((module) => module.QuickTaskModal));
 
 const NO_ASSIGNEE = "none";
@@ -202,6 +202,20 @@ export function TarefasView({
   }, [hasSavedPreferences, replacePreferences]);
   const { taskView: view, taskColumns: visibleColumns, taskColumnWidths, dateFormat, showFinalized, taskFilters, calendarCardFields } = preferences;
   const { query, projectId: projectFilter, assigneeId: assigneeFilter, status: statusFilter, list: listFilter } = taskFilters;
+  const needsCounts = view === "calendario" && calendarCardFields.includes("comentarios") && tasks.some((task) => task.preview && task.commentCount === undefined);
+  useEffect(() => {
+    if (!needsCounts) return;
+    const controller = new AbortController();
+    fetch("/api/tasks?view=counts", { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)]) })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(await responseError(response, "carregar contagens do calendário"));
+        const data = await response.json();
+        if (controller.signal.aborted) return;
+        const counts = new Map<string, { commentCount: number; imageCount: number }>(data.counts.map((item: { id: string; commentCount: number; imageCount: number }) => [item.id, item]));
+        setTasks((current) => current.map((task) => counts.has(task.id) ? { ...task, ...counts.get(task.id) } : task));
+      }).catch(() => { if (!controller.signal.aborted) setToast("Não foi possível carregar as contagens do calendário."); });
+    return () => controller.abort();
+  }, [needsCounts]);
 
   // Largura de coluna: o título da tarefa NUNCA quebra em duas linhas — ele
   // trunca — e quem precisa de mais espaço arrasta a divisória do cabeçalho.
@@ -233,8 +247,9 @@ export function TarefasView({
   const activeMembers = useMemo(() => initialMembers.filter((member) => member.active), [initialMembers]);
   const colorByStatus = useMemo(() => new Map(statusColors.map((entry) => [entry.status, entry.color])), [statusColors]);
 
+  const deferredQuery = useDeferredValue(query);
   const filteredTasks = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
+    const normalized = deferredQuery.trim().toLowerCase();
     return tasks.filter((task) => {
       // Finalizadas e descartadas saem da fila, mas continuam acessíveis
       // pelo filtro de status, pelo histórico ou pelo link direto.
@@ -250,7 +265,7 @@ export function TarefasView({
       }
       return true;
     });
-  }, [tasks, query, projectFilter, assigneeFilter, statusFilter, listFilter, showFinalized, memberById, channelTagById]);
+  }, [tasks, deferredQuery, projectFilter, assigneeFilter, statusFilter, listFilter, showFinalized, memberById, channelTagById]);
 
   // A tarefa aberta no modal nunca some da lista por baixo dele. Trocar o
   // status ou o responsável dentro do modal faz a tarefa deixar de casar com
@@ -274,6 +289,14 @@ export function TarefasView({
     const pinned = tasks.find((task) => task.id === selectedTask.id);
     return pinned ? [pinned, ...sortedTasks] : sortedTasks;
   }, [sortedTasks, selectedTask, tasks]);
+
+  // Todos os resultados continuam filtráveis e no calendário. A tabela monta
+  // apenas 50 linhas por página, não milhares de seletores de uma vez.
+  const [tablePage, setTablePage] = useState({ key: "", page: 0 });
+  const pageKey = JSON.stringify([deferredQuery, projectFilter, assigneeFilter, statusFilter, listFilter, showFinalized]);
+  const pageCount = Math.max(1, Math.ceil(visibleTasks.length / 50));
+  const currentPage = tablePage.key === pageKey ? Math.min(tablePage.page, pageCount - 1) : 0;
+  const tableTasks = visibleTasks.slice(currentPage * 50, (currentPage + 1) * 50);
 
   const pageDetail = useMemo(() => {
     if (selectedTask && selectedTask !== "new") {
@@ -569,7 +592,7 @@ export function TarefasView({
                       </tr>
                     </thead>
                     <tbody>
-                      {visibleTasks.map((task) => (
+                      {tableTasks.map((task) => (
                         <tr key={task.id} className={isOverdue(task.dueDate, task.status) ? "is-overdue" : ""}>
                           <td className="task-name-cell" onClick={() => setSelectedTask(task)}>
                             <span className="task-name">{task.name}</span>
@@ -616,9 +639,15 @@ export function TarefasView({
             </>
           )}
         </Card>
+      {view === "lista" && pageCount > 1 ? <nav className="toolbar-actions" aria-label="Páginas de tarefas">
+        <Button variant="secondary" disabled={currentPage === 0} onClick={() => setTablePage({ key: pageKey, page: currentPage - 1 })}>Anterior</Button>
+        <span>Página {currentPage + 1} de {pageCount} · {visibleTasks.length} tarefas</span>
+        <Button variant="secondary" disabled={currentPage + 1 === pageCount} onClick={() => setTablePage({ key: pageKey, page: currentPage + 1 })}>Próxima</Button>
+      </nav> : null}
       </main>
       {/* Criar = modal enxuto (nome/descrição + pílulas). Abrir uma tarefa
           existente = modal completo, com comentários e tempo por status. */}
+
       {selectedTask === "new" ? (
         <QuickTaskModal
           projects={initialProjects}
@@ -635,6 +664,7 @@ export function TarefasView({
       ) : null}
       {selectedTask && selectedTask !== "new" ? (
         <TaskModal
+          key={selectedTask.id}
           task={selectedTask}
           projects={initialProjects}
           members={initialMembers}

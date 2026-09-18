@@ -488,20 +488,41 @@ export async function listTaskSummaries(scope: TaskQueryScope = {}): Promise<Tas
   }
 }
 
-export async function listTasks(options: TaskQueryScope & { all?: boolean } = {}): Promise<Task[]> {
+const TASK_LIST_COLUMNS = "id,project_id,name,kind,due_date,assignee_id,assignee_source,drive_link,format_tag_ids,channel_tag_ids,category_tag_ids,lists,status,plan_id,captacao_id,sequence_order,seasonal,created_at,updated_at";
+const TASK_PRODUCTION_COLUMNS = "id,project_id,name,kind,assignee_id,format_tag_ids,status,status_history,comments,captacao_id,created_at,updated_at";
+
+export async function listTasks(options: TaskQueryScope & { all?: boolean; projection?: "list" | "production" } = {}): Promise<Task[]> {
   if (Array.isArray(options.projectIds) && !options.projectIds.length) return [];
+  const columns = options.projection === "list" ? TASK_LIST_COLUMNS : options.projection === "production" ? TASK_PRODUCTION_COLUMNS : "*";
   const rows: TaskRow[] = [];
   if (options.all) {
     for (let offset = 0; ; offset += 1000) {
-      const page = unwrap(await tasksQuery("*", options).order("id").range(offset, offset + 999)) as TaskRow[];
+      const page = unwrap(await tasksQuery(columns, options).order("id").range(offset, offset + 999)) as TaskRow[];
       rows.push(...page);
       if (page.length < 1000) break;
     }
   } else {
-    rows.push(...unwrap(await tasksQuery("*", options)) as TaskRow[]);
+    rows.push(...unwrap(await tasksQuery(columns, options)) as TaskRow[]);
   }
-  const tasks = await attachPlanKind(rows.map(mapTask));
+  const mapped = rows.map(mapTask);
+  const tasks = options.projection === "list" ? mapped.map((task) => ({
+    ...task, preview: true, comments: [], images: [],
+  })) : options.projection === "production" ? mapped.map((task) => ({
+    ...task, comments: task.comments.filter((comment) => comment.kind === "activity" && comment.fieldKey === "assigneeId"),
+  })) : await attachPlanKind(mapped);
   return tasks.sort((a, b) => (a.dueDate || "9999-99-99").localeCompare(b.dueDate || "9999-99-99"));
+}
+
+// Contagens são opcionais no calendário. A fila principal nunca baixa os JSONs
+// de comentários/anexos só para mostrar nomes, prazos e responsáveis.
+export async function listTaskCounts(scope: TaskQueryScope) {
+  if (Array.isArray(scope.projectIds) && !scope.projectIds.length) return [];
+  const counts: { id: string; commentCount: number; imageCount: number }[] = [];
+  for (let offset = 0; ; offset += 500) {
+    const rows = unwrap(await tasksQuery("id,comments,images", scope).order("id").range(offset, offset + 499)) as Pick<TaskRow, "id" | "comments" | "images">[];
+    counts.push(...rows.map((row) => ({ id: row.id, commentCount: (row.comments ?? []).filter((comment) => comment.kind !== "activity").length, imageCount: (row.images ?? []).length })));
+    if (rows.length < 500) return counts;
+  }
 }
 
 export async function getTask(id: string): Promise<Task | undefined> {

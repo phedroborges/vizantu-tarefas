@@ -20,6 +20,14 @@ import { NextResponse } from "next/server";
 // bonita e errada.
 const KNOWN_CAUSES: { match: RegExp; reason: (match: RegExpMatchArray) => string }[] = [
   {
+    match: /could not find the table ['"]?(?:public\.)?([^'" ]+)|relation ['"]?(?:public\.)?([^'" ]+)['"]? does not exist/i,
+    reason: (m) => `A tabela ${m[1] || m[2]} ainda não existe no banco. É necessário aplicar as migrations do aplicativo no Supabase.`,
+  },
+  {
+    match: /timeout|timed out|aborterror|aborted/i,
+    reason: () => "O banco demorou para responder. Tente novamente; se persistir, confira os logs do servidor.",
+  },
+  {
     match: /could not find the '([^']+)' column|column "?([\w.]+)"? does not exist/i,
     reason: (m) => `O banco de dados está sem a coluna ${m[1] || m[2]}. Falta rodar uma migration no Supabase.`,
   },

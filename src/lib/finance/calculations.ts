@@ -1,9 +1,10 @@
 import { derivedFields, parseFaixas } from "../contract-render";
-import type { Contract, Member, Project, Tag, Task } from "../types";
+import type { Contract, Member, Tag, Task } from "../types";
 import { CARGOS_QUE_PRODUZEM, CATEGORIES, type ClientMargin, type ContractSummary, type Entry, type EntryInput, type FinanceData, type ProductionReview, type RateKey, type Settings } from "./types";
 
+const localDateFormatter = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" });
 function localDate(timestamp: string): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(timestamp));
+  return localDateFormatter.format(new Date(timestamp));
 }
 export const brl = (cents: number) => (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 export function money(value: string): number {
@@ -173,7 +174,7 @@ export function creditedProducer(task: Task, eligible: Set<string>, endAt: numbe
 // valor e ninguém consegue conferir de onde ele saiu — e conferência que não dá
 // para refazer na mão não é conferência, é confiança.
 export type PriceRule = { pack: boolean; packSize: number; unit: number; extraCards: number; extraCardValue: number };
-export type ProductionLine = { taskId: string; name: string; projectId: string; memberId?: string; producerId: string | null; rateKey: RateKey | null; package: boolean; cards: number; dueDate: string; deliveredDate: string | null; late: boolean; qualityProblem: boolean; base: number; total: number; penalty: boolean; ready: boolean; pendencia: string | null; rule: PriceRule | null };
+export type ProductionLine = { taskStatus?: Task["status"]; taskId: string; name: string; projectId: string; memberId?: string; producerId: string | null; rateKey: RateKey | null; package: boolean; cards: number; dueDate: string; deliveredDate: string | null; late: boolean; qualityProblem: boolean; base: number; total: number; penalty: boolean; ready: boolean; pendencia: string | null; rule: PriceRule | null };
 
 export function productionLines(tasks: Task[], tags: Tag[], reviews: ProductionReview[], settings: Settings, members: Member[]): ProductionLine[] {
   const labels = new Map(tags.map((tag) => [tag.id, tag.label]));
@@ -194,7 +195,7 @@ export function productionLines(tasks: Task[], tags: Tag[], reviews: ProductionR
       : !delivered ? "Sem evidência de entrega: a tarefa ainda não passou por aprovação."
       : !producerId ? "Sem diretor criativo na tarefa: ninguém que produz peça foi responsável por ela."
       : null;
-    return { taskId: task.id, name: task.name, projectId: task.projectId, memberId: task.assigneeId, producerId, rateKey, package: Boolean(task.captacaoId), cards: review?.cards ?? 8, dueDate, deliveredDate: delivered,
+    return { taskStatus: task.status, taskId: task.id, name: task.name, projectId: task.projectId, memberId: task.assigneeId, producerId, rateKey, package: Boolean(task.captacaoId), cards: review?.cards ?? 8, dueDate, deliveredDate: delivered,
       late, qualityProblem, base: 0, total: 0, penalty: settings.penaltyMode === "both" ? late && qualityProblem : late || qualityProblem, ready: !pendencia, pendencia, rule: null as PriceRule | null,
       group: `${task.projectId}:${task.captacaoId || task.id}:${producerId}:${rateKey}` };
   });
@@ -349,4 +350,24 @@ export function producerClosing(lines: ProductionLine[], entries: Entry[]): Prod
       launched, pending, total: launched + pending, pendingTaskIds,
     };
   }).sort((a, b) => b.total - a.total);
+}
+
+
+// Todos os diretores aparecem, inclusive quem tem zero entregas ou itens sem
+// formato. Pendências ficam separadas do valor disponível para fechamento.
+export function productionRoster(lines: ProductionLine[], entries: Entry[], members: Member[], month: string) {
+  const delivered = lines.filter((line) => line.deliveredDate?.startsWith(month));
+  const closings = new Map(producerClosing(delivered, entries).map((closing) => [closing.producerId, closing]));
+  return members.filter((member) => (CARGOS_QUE_PRODUZEM as readonly string[]).includes(member.role)).map((member) => {
+    const own = lines.filter((line) => line.producerId === member.id);
+    const done = delivered.filter((line) => line.producerId === member.id);
+    const closing = closings.get(member.id);
+    return { memberId: member.id, name: member.name, active: member.active,
+      delivered: done.length, awaitingReview: done.filter((line) => !line.ready).length,
+      inProgress: own.filter((line) => !line.deliveredDate && line.taskStatus !== "problema" && line.taskStatus !== "finalizado").length,
+      lastDelivery: done.map((line) => line.deliveredDate!).sort().at(-1) ?? null,
+      total: closing?.total ?? 0, launched: closing?.launched ?? 0, pending: closing?.pending ?? 0,
+      pendingPieces: closing?.pendingTaskIds.length ?? 0,
+    };
+  }).sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "pt-BR"));
 }

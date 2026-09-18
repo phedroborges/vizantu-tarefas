@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({ db: vi.fn(), contracts: vi.fn(), projects: vi.
 vi.mock("@/lib/supabase-client", () => ({ getSupabase: mocks.db }));
 vi.mock("@/lib/storage", () => ({ listContracts: mocks.contracts, listProjects: mocks.projects, listMembers: mocks.members, listTasks: mocks.tasks, listTags: mocks.tags, createNotifications: mocks.notifications }));
 vi.mock("@/lib/finance/calculations", async (importOriginal) => ({ ...await importOriginal<object>(), contractEntries: mocks.generated }));
-import { loadFinance } from "@/lib/finance/storage";
+import { loadFinance, loadFinanceProduction } from "@/lib/finance/storage";
 import { varrerAvisosFinanceiros } from "@/lib/finance/alerts";
 import { DEFAULT_SETTINGS } from "@/lib/finance/types";
 let writes: unknown[];
@@ -47,4 +47,20 @@ describe("carregamento financeiro", () => {
     expect(mocks.tasks).not.toHaveBeenCalled();
     expect(mocks.db).not.toHaveBeenCalled();
   });
+});
+
+it("visão geral não depende das tarefas nem das conferências de produção", async () => {
+  mocks.tasks.mockRejectedValue(new Error("Tarefas indisponíveis"));
+  const result = await loadFinance("owner", { includeProduction: false });
+  expect(result.entries).toHaveLength(1);
+  expect(mocks.tasks).not.toHaveBeenCalled();
+  expect(mocks.tags).not.toHaveBeenCalled();
+});
+it("produção funciona sem consultar ou importar contratos", async () => {
+  mocks.contracts.mockRejectedValue(new Error("Contratos indisponíveis"));
+  const result = await loadFinanceProduction();
+  expect(result.members[0].id).toBe("owner");
+  expect(mocks.tasks).toHaveBeenCalledWith({ all: true, projection: "production" });
+  expect(mocks.contracts).not.toHaveBeenCalled();
+  expect(writes).toEqual([]);
 });

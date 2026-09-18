@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createClient } from "@supabase/supabase-js";
-import { createDailyOverdueNotifications, listContracts, listPlanStages, listProjectPlanItems, listTaskSummaries, listTasks } from "@/lib/storage";
+import { createDailyOverdueNotifications, listContracts, listPlanStages, listProjectPlanItems, listTaskSummaries, listTaskCounts, listTasks } from "@/lib/storage";
 
 const { getDb } = vi.hoisted(() => ({ getDb: vi.fn() }));
 vi.mock("@/lib/supabase-client", () => ({ getSupabase: getDb }));
@@ -72,4 +72,33 @@ describe("consultas proporcionais à tela", () => {
     finally { release(); }
     expect(await result).toHaveLength(1);
   });
+});
+
+it("lista completa usa só campos leves e não consulta planos", async () => {
+  respond = (url) => Array.from({ length: url.searchParams.get("offset") === "0" ? 1000 : 1 }, (_, i) => ({ id: `task-${i}`, name: "Reels", plan_id: "plan", lists: [] }));
+  const tasks = await listTasks({ all: true, projection: "list" });
+  expect(tasks).toHaveLength(1001);
+  expect(tasks.every((task) => task.preview && task.comments.length === 0)).toBe(true);
+  expect(requests).toHaveLength(2);
+  for (const url of requests) {
+    expect(table(url)).toBe("tasks");
+    const columns = url.searchParams.get("select")!.split(",");
+    for (const field of ["description", "comments", "images", "status_history"]) expect(columns).not.toContain(field);
+  }
+});
+it("produção mantém evidências de autoria sem enviar descrições ao painel", async () => {
+  const assignment = { kind: "activity", fieldKey: "assigneeId", oldValue: "a", newValue: "b" };
+  respond = () => [{ id: "task", comments: [assignment, { kind: "activity", fieldKey: "description", newValue: "roteiro extenso" }, { text: "conversa" }], status_history: [{ status: "aprovado" }] }];
+  const [task] = await listTasks({ all: true, projection: "production" });
+  expect(task.comments).toEqual([assignment]);
+  expect(task.statusHistory).toEqual([{ status: "aprovado" }]);
+  expect(requests[0].searchParams.get("select")!.split(",")).not.toContain("description");
+  expect(requests).toHaveLength(1);
+});
+
+it("contagens opcionais preservam o acesso e não enviam comentários ou anexos", async () => {
+  respond = () => [{ id: "t", comments: [{ text: "Conversa" }, { kind: "activity", text: "Histórico" }], images: ["file"] }];
+  expect(await listTaskCounts({ projectIds: ["p"], listKinds: ["criativa"] })).toEqual([{ id: "t", commentCount: 1, imageCount: 1 }]);
+  expect(requests[0].searchParams.get("project_id")).toBe("in.(p)");
+  expect(requests[0].searchParams.get("or")).toContain("criativa");
 });

@@ -6,7 +6,7 @@ import { listMembers, listProjects, listStatusColors, listTags, listTasks } from
 // acesso, pra não divergir entre as duas rotas.
 export async function loadTarefasData(user: CurrentUser) {
   const [tasks, projects, members, tags, statusColors] = await Promise.all([
-    listTasks({ projectIds: user.accessibleProjectIds, listKinds: user.accessibleListKinds }),
+    listTasks({ all: true, projection: "list", projectIds: user.accessibleProjectIds, listKinds: user.accessibleListKinds }),
     listProjects(),
     listMembers(),
     listTags(),

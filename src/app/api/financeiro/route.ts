@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiFailure } from "@/lib/api-error";
 import { isResponse, requireUser } from "@/lib/authz";
-import { FinanceInputError, loadFinance, mutateFinance } from "@/lib/finance/storage";
+import { FinanceInputError, loadFinance, loadFinanceProduction, mutateFinance } from "@/lib/finance/storage";
 
 export const dynamic = "force-dynamic";
-export async function GET() {
+export async function GET(request?: NextRequest) {
   const auth = await requireUser(["dono"]);
   if (isResponse(auth)) return auth;
-  try { return NextResponse.json(await loadFinance(auth.id), { headers: { "Cache-Control": "private, no-store" } }); }
+  try { return NextResponse.json(request?.nextUrl.searchParams.get("section") === "production" ? await loadFinanceProduction() : await loadFinance(auth.id, { includeProduction: false }), { headers: { "Cache-Control": "private, no-store" } }); }
   catch (error) { return apiFailure(error, "carregar o financeiro"); }
 }
 export async function POST(request: NextRequest) {

@@ -2,12 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { apiFailure } from "@/lib/api-error";
 import { filterTasksByAccess, filterTasksByListAccess, isResponse, requireUser } from "@/lib/authz";
 import { ROLES_DO_TIME } from "@/lib/permissions";
-import { createTask, listTasks, notifyTaskAssigned } from "@/lib/storage";
+import { createTask, listTaskCounts, listTasks, notifyTaskAssigned } from "@/lib/storage";
 import { TASK_KINDS, TASK_STATUSES } from "@/lib/types";
 
-export async function GET() {
+export async function GET(request?: NextRequest) {
   const auth = await requireUser();
   if (isResponse(auth)) return auth;
+  if (request?.nextUrl.searchParams.get("view") === "counts") {
+    const counts = await listTaskCounts({ projectIds: auth.accessibleProjectIds, listKinds: auth.accessibleListKinds });
+    return NextResponse.json({ counts }, { headers: { "Cache-Control": "private, no-store" } });
+  }
   const tasks = await listTasks({ projectIds: auth.accessibleProjectIds, listKinds: auth.accessibleListKinds });
   const byProject = filterTasksByAccess(tasks, auth.accessibleProjectIds);
   return NextResponse.json({ tasks: filterTasksByListAccess(byProject, auth.accessibleListKinds) });

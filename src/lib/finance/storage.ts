@@ -8,10 +8,14 @@ function checked<T>(result: { data: T; error: { message: string } | null }): T {
   return result.data;
 }
 // PostgREST tem limite por página. Histórico financeiro não pode ser truncado.
-async function allRows(table: string, order = "id") {
+async function allRows(table: string, order = "id", category?: string) {
   const rows: Record<string, unknown>[] = [];
   for (let offset = 0; ; offset += 1000) {
-    const page = checked(await getSupabase().from(table).select("*").order(order).range(offset, offset + 999)) ?? [];
+    let query = getSupabase().from(table).select("*").order(order).range(offset, offset + 999);
+    if (category) query = query.eq("category", category);
+    const result = await query;
+    if (result.error) throw new Error(`${table}: ${result.error.message}`);
+    const page = result.data ?? [];
     rows.push(...page);
     if (page.length < 1000) return rows;
   }
@@ -19,11 +23,12 @@ async function allRows(table: string, order = "id") {
 const mapEntry = (r: Record<string, unknown>): Entry => ({ id: String(r.id), direction: r.direction as Entry["direction"], category: r.category as Entry["category"], description: String(r.description), amount: Number(r.amount), competence: String(r.competence), projectId: r.project_id as string | null, memberId: r.member_id as string | null, recurring: Boolean(r.recurring), seriesId: r.series_id as string | null, sourceKey: r.source_key as string | null, cancelled: Boolean(r.cancelled), notes: String(r.notes || ""), createdAt: String(r.created_at) });
 const toRow = (e: EntryInput, actor: string) => ({ direction: e.direction, category: e.category, description: e.description, amount: e.amount, due_date: `${e.competence}-01`, competence: e.competence, project_id: e.projectId, member_id: e.memberId, recurring: e.recurring, series_id: e.seriesId, source_key: e.sourceKey, notes: e.notes, updated_by: actor });
 
-export async function loadFinance(actor: string): Promise<FinanceData> {
+export async function loadFinance(actor: string, options: { includeProduction?: boolean } = {}): Promise<FinanceData> {
+  const includeProduction = options.includeProduction !== false;
   const db = getSupabase();
   const [contracts, projects, members, tasks, tags, settingsRow, storedEntries, blockRows, reviewRows, scoreRows, auditRows] = await Promise.all([
-    listContracts(), listProjects(), listMembers(), listTasks({ all: true }), listTags(), db.from("finance_settings").select("data").eq("id", true).maybeSingle().then(checked),
-    allRows("finance_entries"), allRows("finance_project_blocks", "project_id"), allRows("finance_production_reviews", "task_id"), allRows("client_satisfaction_scores"),
+    listContracts(), listProjects(), listMembers(), includeProduction ? listTasks({ all: true, projection: "production" }) : Promise.resolve([]), includeProduction ? listTags() : Promise.resolve([]), db.from("finance_settings").select("data").eq("id", true).maybeSingle().then(checked),
+    allRows("finance_entries"), allRows("finance_project_blocks", "project_id"), includeProduction ? allRows("finance_production_reviews", "task_id") : Promise.resolve([]), allRows("client_satisfaction_scores"),
     db.from("finance_audit").select("id,entity_id,action,actor_id,created_at").order("created_at", { ascending: false }).limit(100).then(checked),
   ]);
   const settings: Settings = { ...DEFAULT_SETTINGS, ...settingsRow?.data, rates: { ...DEFAULT_SETTINGS.rates, ...settingsRow?.data?.rates } };
@@ -65,6 +70,20 @@ export async function loadFinance(actor: string): Promise<FinanceData> {
     scores: scoreRows.map((r) => ({ projectId: String(r.project_id), score: Number(r.score), createdAt: String(r.created_at) })),
     audit: (visibleAuditRows ?? []).map((r) => ({ id: r.id, entityId: r.entity_id, action: r.action, actorId: r.actor_id, createdAt: r.created_at })),
   };
+}
+
+// Produção não depende de contratos, NPS, bloqueios ou auditoria. Falha em uma
+// dessas integrações não impede consultar a equipe e fechar suas entregas.
+export async function loadFinanceProduction(): Promise<FinanceData> {
+  const [projects, members, tasks, tags, settingsRow, entryRows, reviewRows] = await Promise.all([
+    listProjects(), listMembers(), listTasks({ all: true, projection: "production" }), listTags(),
+    getSupabase().from("finance_settings").select("data").eq("id", true).maybeSingle().then(checked),
+    allRows("finance_entries", "id", "producao"), allRows("finance_production_reviews", "task_id"),
+  ]);
+  const settings: Settings = { ...DEFAULT_SETTINGS, ...settingsRow?.data, rates: { ...DEFAULT_SETTINGS.rates, ...settingsRow?.data?.rates } };
+  return { projects, members, tasks, tags, settings, entries: entryRows.map(mapEntry),
+    reviews: reviewRows.map((row) => ({ ...(row.data as ProductionReview), taskId: String(row.task_id) })),
+    contracts: [], blocks: [], scores: [], audit: [], warnings: [] };
 }
 
 export class FinanceInputError extends Error {}
@@ -139,7 +158,7 @@ export async function mutateFinance(body: Record<string, unknown>, actor: string
     const review: ProductionReview = { taskId, rateKey: raw.rateKey, cards: raw.cards, deliveredDate: raw.deliveredDate ? date(raw.deliveredDate) : null, qualityProblem: raw.qualityProblem, notes: String(raw.notes || "").slice(0, 1000) };
     checked(await db.from("finance_production_reviews").upsert({ task_id: taskId, data: review, updated_by: actor, updated_at: new Date().toISOString() }));
   } else if (body.action === "production" || body.action === "productionClosing") {
-    const data = await loadFinance(actor);
+    const data = await loadFinanceProduction();
     const todas = productionLines(data.tasks, data.tags, data.reviews, data.settings, data.members);
     let alvo: typeof todas;
     if (body.action === "production") {

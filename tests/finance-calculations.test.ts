@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clientMargins, contractAlerts, contractEntries, contractSummaries, contractedByMonth, creditedProducer, growthProjection, metrics, monthAdd, producerClosing, productionLines, priceSuggestion, recurringEntries, validDate } from "../src/lib/finance/calculations";
+import { clientMargins, contractAlerts, contractEntries, contractSummaries, contractedByMonth, creditedProducer, growthProjection, metrics, monthAdd, producerClosing, productionLines, productionRoster, priceSuggestion, recurringEntries, validDate } from "../src/lib/finance/calculations";
 import { DEFAULT_SETTINGS, type Entry } from "../src/lib/finance/types";
 import type { Comment, Contract, Member, Project, Task, UserRole } from "../src/lib/types";
 const entry = (patch: Partial<Entry> = {}): Entry => ({ id: "e1", direction: "income", category: "servicos", description: "Mensalidade", amount: 100000, competence: "2026-09", projectId: "p1", memberId: null, recurring: true, seriesId: "s1", sourceKey: null, cancelled: false, notes: "", createdAt: "2026-09-01", ...patch });
@@ -295,4 +295,21 @@ describe("regra de preço registrada na linha", () => {
     expect(fechamento.lines).toHaveLength(5);
     expect(fechamento.lines.every((linha) => linha.rule !== null && linha.producerId === "a")).toBe(true);
   });
+});
+
+it("resumo por diretor inclui quem não entregou e separa pendências, produção e mês", () => {
+  const members = [quem("Erika"), quem("Josiano"), quem("Luís"), quem("Novo"), quem("social", "social_media")];
+  const lines = productionLines([
+    task(1, { assigneeId: "Erika", captacaoId: undefined }),
+    task(2, { assigneeId: "Josiano", name: "Peça desconhecida" }),
+    task(3, { assigneeId: "Luís", status: "em_criacao", statusHistory: [] }),
+    task(4, { assigneeId: "Luís", status: "problema", statusHistory: [] }),
+    task(5, { assigneeId: "Erika", statusHistory: [{ status: "aprovado", enteredAt: "2026-10-01T12:00:00Z", exitedAt: null }] }),
+  ], [], [], DEFAULT_SETTINGS, members);
+  const roster = productionRoster(lines, [], members, "2026-09");
+  expect(roster).toHaveLength(4);
+  expect(roster.find(r => r.name === "Erika")).toMatchObject({ delivered: 1, pending: 7000, pendingPieces: 1 });
+  expect(roster.find(r => r.name === "Josiano")).toMatchObject({ delivered: 1, awaitingReview: 1, pending: 0 });
+  expect(roster.find(r => r.name === "Luís")).toMatchObject({ delivered: 0, inProgress: 1 });
+  expect(roster.find(r => r.name === "Novo")).toMatchObject({ delivered: 0, total: 0 });
 });

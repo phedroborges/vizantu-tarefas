@@ -5,7 +5,12 @@ export function timedSupabaseFetch(service: "database" | "auth", baseFetch: type
     const started = performance.now();
     let status: number | undefined;
     try {
-      const response = await baseFetch(input, init);
+      // Uma conexão pendurada não deve deixar a tela carregando para sempre.
+      const method = (init?.method || (input instanceof Request ? input.method : "GET")).toUpperCase();
+      // Escritas e uploads têm mais tempo para terminar sem interromper arquivos.
+      const timeout = AbortSignal.timeout(method === "GET" || method === "HEAD" ? 15_000 : 60_000);
+      const signal = init?.signal || (input instanceof Request ? input.signal : undefined);
+      const response = await baseFetch(input, { ...init, signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
       status = response.status;
       return response;
     } finally {

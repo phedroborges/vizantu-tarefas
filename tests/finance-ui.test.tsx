@@ -56,8 +56,23 @@ describe("painel financeiro",()=>{
   });
   it("não fecha o formulário quando a API falha",async()=>{
     await mount();await click(button("Novo lançamento"));
-    fetchMock.mockResolvedValue({ok:false,json:async()=>({error:"Valor inválido."})});
+    fetchMock.mockImplementation(async()=>new Response(JSON.stringify({error:"Valor inválido."}),{status:400,headers:{"Content-Type":"application/json"}}));
     await act(async()=>document.querySelector('.fin-modal form')!.dispatchEvent(new Event("submit",{bubbles:true,cancelable:true})));
     expect(document.querySelector('.fin-modal')).not.toBeNull();expect(document.querySelector('.fin-modal [role="alert"]')?.textContent).toContain("Valor inválido");
   });
+});
+
+it("erro na visão geral não bloqueia a equipe e permite tentar novamente", async () => {
+  fetchMock.mockImplementation(async (url: string) => url.includes("production") ? Response.json(financeFixture) : Response.json({ error: "Contratos indisponíveis" }, { status: 500 }));
+  await act(async () => { root.render(<FinanceDashboard />); });
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
+  expect(container.textContent).toContain("Contratos indisponíveis");
+  await click(button("Produção da equipe"));
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
+  expect(container.textContent).toContain("Fechamento por diretor criativo");
+  expect(container.textContent).not.toContain("Contratos indisponíveis");
+  fetchMock.mockImplementation(async () => Response.json(financeFixture));
+  await click(button("Contratos"));
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
+  expect(container.textContent).toContain("Aurora Clínica");
 });

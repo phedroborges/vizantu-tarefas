@@ -4,8 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { BadgeDollarSign, CalendarDays, Check, ChevronRight, Download, FileSignature, Landmark, LockKeyhole, Plus, RefreshCw, Settings2, ShieldCheck, TrendingUp, Users, X } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/vz";
+import { responseError } from "@/lib/request-error";
 import { useConfirm } from "@/components/confirm-dialog";
-import { brl, clientMargins, contractAlerts, contractSummaries, contractedByMonth, growthProjection, metrics, monthAdd, priceSuggestion, producerClosing, productionLines, money, type ProductionLine } from "@/lib/finance/calculations";
+import { brl, clientMargins, contractAlerts, contractSummaries, contractedByMonth, growthProjection, metrics, monthAdd, priceSuggestion, producerClosing, productionLines, productionRoster, money, type ProductionLine } from "@/lib/finance/calculations";
 import { CARGOS_QUE_PRODUZEM, CATEGORIES, RATE_LABELS, type Entry, type FinanceData, type ProductionReview, type RateKey, type Settings } from "@/lib/finance/types";
 import "@/app/financeiro/finance.css";
 
@@ -17,52 +18,66 @@ const inputMoney = (value: number) => (value / 100).toFixed(2).replace(".", ",")
 type Tab = "contracts" | "oneoff" | "costs" | "overview" | "production" | "settings";
 const TABS: { id: Tab; label: string }[] = [{ id: "contracts", label: "Contratos" }, { id: "oneoff", label: "Avulsos" }, { id: "costs", label: "Custos" }, { id: "overview", label: "Visão geral" }, { id: "production", label: "Produção da equipe" }, { id: "settings", label: "Configurações" }];
 
+async function fetchFinance(section: "overview" | "production", signal?: AbortSignal): Promise<FinanceData> {
+  const timeout = AbortSignal.timeout(30_000);
+  const response = await fetch(`/api/financeiro?section=${section}`, { cache: "no-store", signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
+  if (!response.ok) throw new Error(await responseError(response, "carregar o financeiro"));
+  return response.json();
+}
+const financeError = (error: unknown) => error instanceof Error && ["TimeoutError", "AbortError"].includes(error.name)
+  ? "O financeiro demorou para responder. Tente novamente." : error instanceof Error ? error.message : "Não foi possível carregar o financeiro.";
+
 export function FinanceDashboard({ initialData }: { initialData?: FinanceData }) {
-  const [data, setData] = useState<FinanceData | null>(initialData || null);
+  const [overviewData, setOverviewData] = useState<FinanceData | null>(initialData || null);
+  const [productionData, setProductionData] = useState<FinanceData | null>(initialData || null);
   const [tab, setTab] = useState<Tab>("contracts");
   const [month, setMonth] = useState(() => today().slice(0, 7));
-  const [error, setError] = useState("");
+  const [overviewError, setOverviewError] = useState("");
+  const [productionError, setProductionError] = useState("");
   const [notice, setNotice] = useState("");
-  const [loading, setLoading] = useState(!initialData);
+  const [overviewLoading, setOverviewLoading] = useState(!initialData);
+  const [productionLoading, setProductionLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [entryOpen, setEntryOpen] = useState(false);
   const [entryProject, setEntryProject] = useState("");
   const [editEntry, setEditEntry] = useState<Entry | null>(null);
   const [reviewLine, setReviewLine] = useState<ProductionLine | null>(null);
   const { confirm, ConfirmDialog } = useConfirm();
+  const section = tab === "production" ? "production" : "overview";
+  const data = section === "production" ? productionData : overviewData;
+  const error = section === "production" ? productionError : overviewError;
+  const loading = section === "production" ? productionLoading : overviewLoading;
+  const setData = section === "production" ? setProductionData : setOverviewData;
+  const setError = section === "production" ? setProductionError : setOverviewError;
+  const setLoading = section === "production" ? setProductionLoading : setOverviewLoading;
   const load = useCallback(async () => {
     setLoading(true); setError("");
-    try {
-      const response = await fetch("/api/financeiro", { cache: "no-store" });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Não foi possível carregar o financeiro.");
-      setData(result);
-    } catch (error) { setError(error instanceof Error ? error.message : "Não foi possível carregar o financeiro."); }
+    try { setData(await fetchFinance(section)); }
+    catch (error) { setError(financeError(error)); }
     finally { setLoading(false); }
-  }, []);
+  }, [section, setData, setError, setLoading]);
+  const hasData = Boolean(data);
   useEffect(() => {
-    if (initialData) return;
+    if (hasData) return;
     const controller = new AbortController();
-    async function initialLoad() {
+    const timer = setTimeout(async () => {
+      setLoading(true); setError("");
       try {
-        const response = await fetch("/api/financeiro", { cache: "no-store", signal: controller.signal });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || "Não foi possível carregar o financeiro.");
+        const result = await fetchFinance(section, controller.signal);
         if (!controller.signal.aborted) setData(result);
-      } catch (error) {
-        if (!controller.signal.aborted) setError(error instanceof Error ? error.message : "Não foi possível carregar o financeiro.");
-      } finally { if (!controller.signal.aborted) setLoading(false); }
-    }
-    void initialLoad();
-    return () => controller.abort();
-  }, [initialData]);
+      } catch (error) { if (!controller.signal.aborted) setError(financeError(error)); }
+      finally { if (!controller.signal.aborted) setLoading(false); }
+    }, 0);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [section, hasData, setData, setError, setLoading]);
   async function mutate(payload: Record<string, unknown>) {
     if (busy) return false;
     setBusy(true); setError(""); setNotice("");
     try {
       const response = await fetch("/api/financeiro", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Não foi possível salvar.");
+      if (!response.ok) throw new Error(await responseError(response, "salvar o financeiro"));
+      // Um fechamento altera os custos; uma configuração altera a produção.
+      if (section === "production") setOverviewData(null); else setProductionData(null);
       await load(); setNotice("Alteração registrada."); return true;
     } catch (error) { setError(error instanceof Error ? error.message : "Não foi possível salvar."); return false; }
     finally { setBusy(false); }
@@ -76,7 +91,7 @@ export function FinanceDashboard({ initialData }: { initialData?: FinanceData })
     <nav className="fin-tabs" aria-label="Seções do financeiro">{TABS.map((item) => <button key={item.id} aria-current={tab === item.id ? "page" : undefined} onClick={() => setTab(item.id)}>{item.label}</button>)}</nav>
     {error ? <div className="fin-message is-error" role="alert">{error}<button onClick={load} disabled={loading}>Tentar novamente</button></div> : null}
     {notice ? <p className="fin-message" role="status">{notice}</p> : null}
-    {loading && !data ? <div className="fin-empty">Carregando lançamentos e contratos…</div> : null}
+    {loading && !data ? <div className="fin-empty">{section === "production" ? "Carregando produção da equipe…" : "Carregando lançamentos e contratos…"}</div> : null}
     {data && stats ? <>
       {data.warnings.length ? <details className="fin-warning"><summary>{data.warnings.length} pendências na integração de contratos</summary><ul>{data.warnings.map((warning, i) => <li key={i}>{warning}</li>)}</ul></details> : null}
       {data.settings.taxRate === null ? <div className="fin-warning">Configure a alíquota de imposto para calcular o resultado e os preços com margem. <button onClick={() => setTab("settings")}>Configurar <ChevronRight size={13} /></button></div> : null}
@@ -216,13 +231,20 @@ function Contracts({ data, month, busy, onRevenue, onBlock }: { data: FinanceDat
 
 function Production({ data, month, busy, onReview, onBook, onClose }: { data: FinanceData; month: string; busy: boolean; onReview: (line: ProductionLine) => void; onBook: (line: ProductionLine) => void; onClose: (memberId: string, name: string, pending: number, pieces: number) => void }) {
   const [member, setMember] = useState(""); const [all, setAll] = useState(false);
-  const doMes = productionLines(data.tasks, data.tags, data.reviews, data.settings, data.members).filter((line) => line.deliveredDate?.startsWith(month));
+  const allLines = useMemo(() => productionLines(data.tasks, data.tags, data.reviews, data.settings, data.members), [data]);
+  const doMes = allLines.filter((line) => line.deliveredDate?.startsWith(month));
+  const roster = productionRoster(allLines, data.entries, data.members, month);
   const fechamentos = producerClosing(doMes, data.entries);
   const semDiretor = doMes.filter((line) => !line.producerId);
-  const lines = productionLines(data.tasks, data.tags, data.reviews, data.settings, data.members).filter((line) => (all || (line.deliveredDate || line.dueDate).startsWith(month)) && (!member || line.producerId === member));
+  const lines = allLines.filter((line) => (all || (line.deliveredDate || line.dueDate).startsWith(month)) && (!member || line.producerId === member));
   const total = lines.reduce((sum, line) => sum + line.total, 0);
   return <>
     <section className="fin-panel"><div className="fin-panel-title"><div><span className="fin-eyebrow">Quanto cada um fecha em {month}</span><h2>Fechamento por diretor criativo</h2></div><Users size={20} /></div>
+      <div className="fin-table-scroll"><table className="fin-table"><thead><tr><th>Diretor criativo</th><th>Entregas no mês</th><th>A conferir</th><th>Em produção</th><th>Última entrega</th><th>Valor apurado</th><th>Já lançado</th><th>Falta lançar</th><th>Fechamento</th></tr></thead><tbody>
+        {roster.map((person) => <tr key={person.memberId}><td><strong>{person.name}</strong>{!person.active ? <small>Inativo · histórico preservado</small> : null}</td><td>{person.delivered}</td><td>{person.awaitingReview}</td><td>{person.inProgress}</td><td>{person.lastDelivery ? dateLabel(person.lastDelivery) : "Sem entrega no mês"}</td><td>{brl(person.total)}</td><td>{brl(person.launched)}</td><td>{brl(person.pending)}</td><td><Button size="sm" disabled={busy || !person.pendingPieces} onClick={() => onClose(person.memberId, person.name, person.pending, person.pendingPieces)}>Fechar mês</Button><Button size="sm" variant="secondary" onClick={() => { setMember(person.memberId); setAll(false); document.getElementById("production-tasks")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>Ver tarefas</Button></td></tr>)}
+      </tbody></table></div>
+      {!roster.length ? <Empty text="Nenhum diretor criativo cadastrado. Confira os cargos na equipe." /> : null}
+      <p className="fin-footnote">Entregas e valores são da competência selecionada. Itens a conferir não entram no fechamento. Em produção mostra a carteira ainda sem entrega registrada. Lançado significa despesa registrada; o pagamento é acompanhado no Asaas.</p>
       {fechamentos.length > 1 ? <div className="fin-chart" role="img" aria-label="Comparação do valor fechado por diretor criativo">{fechamentos.map((fechamento) => {
         const maior = Math.max(1, ...fechamentos.map((item) => item.total));
         return <div className="fin-chart-row" key={fechamento.producerId}><span>{(data.members.find((m) => m.id === fechamento.producerId)?.name || "—").split(" ")[0]}</span><div><i style={{ width: `${fechamento.launched / maior * 100}%` }} /><i className="is-cost" style={{ width: `${fechamento.pending / maior * 100}%` }} /></div><small>{brl(fechamento.total)} · {fechamento.pieces} peças</small></div>;
@@ -257,7 +279,7 @@ function Production({ data, month, busy, onReview, onBook, onClose }: { data: Fi
     })}
 
     <section className="fin-panel"><div className="fin-panel-title"><div><span className="fin-eyebrow">Valores da produção</span><h2>Tabela da equipe</h2></div><BadgeDollarSign size={20} /></div><div className="fin-table-scroll"><table className="fin-table"><thead><tr><th>Entrega</th><th>Unidade</th><th>Pacote de 5</th></tr></thead><tbody>{Object.entries(data.settings.rates).map(([key, rate]) => <tr key={key}><td>{RATE_LABELS[key as RateKey]}</td><td>{brl(rate.unit)}</td><td>{rate.pack === null ? "—" : brl(rate.pack)}</td></tr>)}</tbody></table></div><p className="fin-footnote">Carrosséis: +{brl(data.settings.extraCard)} por card acima de 8. Grupos de cinco no mesmo pacote, formato e diretor criativo recebem preço de pacote; excedentes usam preço unitário. Prazo desde o cadastro: {data.settings.soloDays} dia(s) para avulsas e {data.settings.packageDays} para pacotes, {data.settings.deadlineMode === "business" ? "úteis (segunda a sexta, sem calendário de feriados)" : "corridos"}. Pagamento de 50% com {data.settings.penaltyMode === "both" ? "atraso e problema confirmado" : "atraso ou problema confirmado"}.</p></section>
-    <section className="fin-panel"><div className="fin-panel-title"><div><span className="fin-eyebrow">Conferência antes de pagar</span><h2>Produção · {brl(total)}</h2></div><span>{lines.length} tarefas</span></div><div className="fin-filters"><select aria-label="Diretor criativo" value={member} onChange={(e) => setMember(e.target.value)}><option value="">Todos os diretores criativos</option>{data.members.filter((m) => (CARGOS_QUE_PRODUZEM as readonly string[]).includes(m.role)).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select><label><input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} /> Todos os meses</label></div>
+    <section id="production-tasks" className="fin-panel"><div className="fin-panel-title"><div><span className="fin-eyebrow">Conferência antes de pagar</span><h2>Produção · {brl(total)}</h2></div><span>{lines.length} tarefas</span></div><div className="fin-filters"><select aria-label="Diretor criativo" value={member} onChange={(e) => setMember(e.target.value)}><option value="">Todos os diretores criativos</option>{data.members.filter((m) => (CARGOS_QUE_PRODUZEM as readonly string[]).includes(m.role)).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select><label><input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} /> Todos os meses</label></div>
       <div className="fin-table-scroll"><table className="fin-table"><thead><tr><th>Tarefa</th><th>Responsável</th><th>Prazo / entrega</th><th>Base</th><th>A pagar</th><th>Conferência</th></tr></thead><tbody>{lines.map((line) => {
         const entry = data.entries.find((e) => e.sourceKey === `production:${line.taskId}`);
         return <tr key={line.taskId}><td><strong>{line.name}</strong><small>{line.rateKey ? RATE_LABELS[line.rateKey] : "Classificar formato"} · {line.package ? "Pacote" : "Avulsa"}</small></td><td>{data.members.find((m) => m.id === line.producerId)?.name || <span className="fin-negative">Sem diretor criativo</span>}</td><td>{dateLabel(line.dueDate)}<small>{line.deliveredDate ? `Entregue em ${dateLabel(line.deliveredDate)}` : "Entrega não registrada"}</small>{line.late ? <span className="fin-badge is-late">Atraso</span> : null}</td><td>{brl(line.base)}</td><td>{entry ? brl(entry.amount) : brl(line.total)}<small>{entry ? "Valor registrado" : line.penalty ? "50% do valor" : "Integral"}</small></td><td><div className="fin-row-actions"><Button size="sm" variant="secondary" onClick={() => onReview(line)} disabled={busy || Boolean(entry)}>Conferir</Button>{entry ? <span className="fin-badge">{entry.cancelled ? "Lançamento cancelado" : "Já lançado"}</span> : <Button size="sm" onClick={() => onBook(line)} disabled={busy || !line.ready}>Lançar a pagar</Button>}</div>{line.pendencia && !entry ? <small className="fin-negative">{line.pendencia}</small> : null}</td></tr>;

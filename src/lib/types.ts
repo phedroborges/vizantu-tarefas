@@ -217,6 +217,10 @@ export const TASK_KINDS: { value: TaskKind; label: string }[] = [
 // em mãos, e a descrição precisa saber se a entrega é conteúdo ou marca.
 
 export type Task = {
+  /** Lista leve: abrir exige buscar a versão completa antes de editar. */
+  preview?: boolean;
+  commentCount?: number;
+  imageCount?: number;
   id: string;
   projectId: string;
   /** Membro que criou a tarefa. Tarefas anteriores à adoção deste campo não

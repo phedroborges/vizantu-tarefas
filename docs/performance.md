@@ -51,3 +51,16 @@ Esta revisão local não teve credenciais de produção nem acesso SSH/EasyPanel
 - Navegador: tabela, abertura do modal sob demanda, calendário e dashboard com oito indicadores, usando os dados de demonstração da prévia. Sem erros de execução nas telas verificadas.
 - Servidor standalone: fonte retornou 200 `font/woff2`, sem redirect; APIs de tarefas, notificações e financeiro retornaram 401 JSON sem sessão; `/tarefas` redirecionou ao login.
 - Testes de persistência garantem que parcelas já importadas não são reescritas e que parcelas novas retornam com sua auditoria atualizada.
+
+
+## Revisão de tarefas e financeiro — 18/09/2026
+
+A lista de tarefas ainda usava a consulta completa. Esta revisão remove descrições, comentários, anexos e histórico da leitura inicial, evita a consulta adicional de tipos de plano e preserva todos os resultados com lotes de 1.000. A tabela monta 50 linhas por página; filtros e calendário continuam considerando o conjunto completo. O modal busca a tarefa completa com autorização antes de permitir edição. Contagens de comentários/anexos são opcionais e carregadas somente quando exibidas no calendário.
+
+O financeiro agora carrega contratos/indicadores e produção separadamente. A visão geral não lê tarefas; a aba de produção não depende de contratos, NPS, bloqueios ou auditoria. A consulta de produção mantém histórico de status e autoria para apurar as entregas, mas não envia descrições nem anexos. O cálculo de produção ocorre uma vez por conjunto de dados. O resumo mensal mostra todos os diretores criativos, inclusive sem entregas, com pendências de conferência, carteira em produção e valores apurados/lançados/pendentes. O fechamento continua recalculado no servidor, com chave única por tarefa.
+
+Leituras do Supabase têm limite de 15 segundos por requisição; escritas e uploads têm 60 segundos. O painel financeiro permite nova tentativa e trata respostas de erro sem JSON. Esses limites evitam espera indefinida; não são uma garantia de tempo total de carregamento.
+
+Validação: 461 testes passaram e 5 permaneceram pulados pela configuração existente. Cobertura de consulta leve com mais de 1.000 tarefas, paginação/busca fora da primeira página, autorização de detalhes e financeiro, preservação do conteúdo antes da edição, independência entre contratos e produção, cancelamento de requisições e resumo por diretor. Interface conferida em navegador com os dados de demonstração. Build de produção e TypeScript passaram.
+
+Uma consulta sem leitura de linhas (`limit=0`) confirmou a existência das tabelas financeiras no banco configurado; o acesso anônimo às tabelas financeiras permanece recusado. Não há sessão autenticada de produção nem acesso ao EasyPanel neste ambiente: a causa exata da falha financeira e o tempo das telas internas na VPS precisam ser confirmados nos logs e no navegador após o deploy. Nenhuma migration nova é exigida por esta revisão.

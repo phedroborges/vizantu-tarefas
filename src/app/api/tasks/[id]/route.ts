@@ -54,9 +54,12 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     if (!task) return NextResponse.json({ error: "Tarefa não encontrada." }, { status: 404 });
     if (auth.accessibleProjectIds !== "all" && !auth.accessibleProjectIds.includes(task.projectId)) return NextResponse.json({ error: "Sem acesso." }, { status: 403 });
     if (auth.accessibleListKinds !== "all" && task.lists.length && !task.lists.some((list) => auth.accessibleListKinds.includes(list))) return NextResponse.json({ error: "Sem acesso." }, { status: 403 });
+    // A lista pede o conteúdo completo só ao abrir o modal. Histórico continua
+    // disponível pela mesma rota, sem acrescentar sua consulta à abertura.
+    if (_request.nextUrl.searchParams.get("detail") === "1") return NextResponse.json({ task }, { headers: { "Cache-Control": "private, no-store" } });
     return NextResponse.json({ activity: await listTaskActivity(id) });
   } catch (error) {
-    return apiFailure(error, "carregar o histórico da tarefa");
+    return apiFailure(error, _request.nextUrl.searchParams.get("detail") === "1" ? "abrir a tarefa" : "carregar o histórico da tarefa");
   }
 }
 
