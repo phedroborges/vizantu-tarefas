@@ -12,7 +12,7 @@
 // 3. O vazio é visível. Barra de progresso por bloco e no topo, porque ficha
 //    vazia que não aparece continua vazia.
 
-import { BookOpen, Check, ChevronDown, FileText, Loader2, Plus, Sparkles, Trash2, TriangleAlert } from "lucide-react";
+import { BookOpen, Check, ChevronDown, FileText, Loader2, Mic, Plus, Sparkles, Trash2, TriangleAlert } from "lucide-react";
 import { useRef, useState } from "react";
 import { useConfirm } from "@/components/confirm-dialog";
 import { CLIENT_GUIDE_BLOCKS, guideCompletion, type GuideField } from "@/lib/client-guide";
@@ -21,6 +21,10 @@ import { PROJECT_SOURCE_KINDS, type ProjectProfile, type ProjectSource, type Pro
 import { Button, Callout, Card, EmptyState, Field, Input, Progress, Select, Tag, Textarea } from "@/components/vz";
 
 const AUTOSAVE_MS = 700;
+
+// Mesmo teto da rota de transcrição (src/app/api/assistant/transcribe/route.ts),
+// que por sua vez existe por causa do limite de 25MB do whisper.
+const MAX_AUDIO_BYTES = 24 * 1024 * 1024;
 
 export function ClientGuideView({
   projectId,
@@ -273,6 +277,44 @@ function FontesDoGuia({
     title: "", kind: "reuniao", happenedOn: "", content: "",
   });
   const [salvando, setSalvando] = useState(false);
+  const [transcrevendo, setTranscrevendo] = useState(false);
+  const audioRef = useRef<HTMLInputElement | null>(null);
+
+  // Whisper recusa acima de 25MB e a rota corta em 24MB. Uma reunião de uma
+  // hora em mp3 de 128kbps passa de 50MB, então a checagem é no navegador:
+  // esperar o upload inteiro pra receber erro é o pior jeito de descobrir.
+  async function transcrever(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    if (file.size > MAX_AUDIO_BYTES) {
+      const mb = Math.round(file.size / 1024 / 1024);
+      return setErro(
+        `O áudio tem ${mb}MB e o limite é 24MB. Comprima o arquivo ou corte em partes, salvando uma fonte por parte. A IA junta tudo depois.`,
+      );
+    }
+
+    setTranscrevendo(true);
+    setErro("");
+    try {
+      const formData = new FormData();
+      formData.append("audio", file, file.name);
+      const response = await fetch("/api/assistant/transcribe", { method: "POST", body: formData });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Falha ao transcrever o áudio.");
+      setForm((atual) => ({
+        ...atual,
+        title: atual.title || file.name.replace(/\.[^.]+$/, ""),
+        kind: "transcricao",
+        content: atual.content.trim() ? `${atual.content.trim()}\n\n${result.text}` : result.text,
+      }));
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao transcrever o áudio.");
+    } finally {
+      setTranscrevendo(false);
+    }
+  }
 
   async function salvar() {
     if (!form.title.trim() || !form.content.trim()) {
@@ -337,6 +379,14 @@ function FontesDoGuia({
           <Field label="Quando aconteceu"><Input type="date" value={form.happenedOn} onChange={(e) => setForm({ ...form, happenedOn: e.target.value })} /></Field>
           <Field label="Conteúdo" hint="Cole a transcrição ou a sua anotação. Pode ser bagunçado, a IA organiza.">
             <Textarea rows={8} value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} />
+            <div className="guia-fonte-form__audio">
+              <input ref={audioRef} type="file" accept="audio/*" hidden onChange={transcrever} />
+              <Button variant="soft" size="sm" onClick={() => audioRef.current?.click()} disabled={transcrevendo}>
+                {transcrevendo ? <Loader2 size={13} className="vz-spin" /> : <Mic size={13} />}
+                {transcrevendo ? "Transcrevendo..." : "Enviar o áudio da reunião"}
+              </Button>
+              <span className="vz-caption">Até 24MB. A transcrição entra no campo acima e você pode editar antes de salvar.</span>
+            </div>
           </Field>
           <div className="guia-fonte-form__acoes">
             <Button variant="ghost" onClick={() => setAberto(false)}>Cancelar</Button>

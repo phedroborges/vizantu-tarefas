@@ -2449,3 +2449,4 @@ a.upcoming-item { color: inherit; text-decoration: none; }
   .guia-bloco__head { flex-direction: column; }
   .guia-fontes__acoes { width: 100%; }
 }
+.guia-fonte-form__audio { display: flex; align-items: center; gap: var(--vz-s-3); margin-top: var(--vz-s-2); flex-wrap: wrap; }
