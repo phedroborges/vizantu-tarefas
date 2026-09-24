@@ -4,6 +4,7 @@ import { canReviewItem, derivePlanStage, formatRequiresCapture, nextApprovalRevi
 import { mergePreferences, normalizePreferences, type MemberPreferences } from "./preferences";
 import { inheritsCaptureEditor } from "./assignee-inheritance";
 import { parseDescription } from "./description-sections";
+import { isGuideFieldKey } from "./client-guide";
 import { getSupabase } from "./supabase-client";
 import { activityEventsFromComments, createActivityComments } from "./task-activity";
 import { questionsForTemplate, type SurveyTemplate } from "./survey-templates";
@@ -48,6 +49,8 @@ import type {
   SurveyAnswer,
   SurveyQuestion,
   UserRole,
+  ProjectSource,
+  ProjectSourceKind,
 } from "./types";
 
 function newId() {
@@ -2074,8 +2077,9 @@ type ProfileRow = {
   cidade: string | null; segmento: string | null; site: string | null;
   responsavel_nome: string | null; responsavel_telefone: string | null; responsavel_email: string | null;
   objetivos: string | null; publico: string | null; historico: string | null; observacoes: string | null;
+  guide_manual_fields: string[] | null; guide_generated_at: string | null;
   updated_at: string;
-};
+} & Record<string, unknown>;
 
 const PROFILE_FIELDS = [
   ["razaoSocial", "razao_social"], ["documento", "documento"], ["endereco", "endereco"],
@@ -2083,14 +2087,25 @@ const PROFILE_FIELDS = [
   ["responsavelNome", "responsavel_nome"], ["responsavelTelefone", "responsavel_telefone"],
   ["responsavelEmail", "responsavel_email"], ["objetivos", "objetivos"], ["publico", "publico"],
   ["historico", "historico"], ["observacoes", "observacoes"],
+  // Guia do cliente — ver CLIENT_GUIDE_BLOCKS em src/lib/client-guide.ts.
+  ["quemEh", "quem_eh"], ["deOndeVeio", "de_onde_veio"], ["oQueFaz", "o_que_faz"],
+  ["produtoServico", "produto_servico"], ["historiaDele", "historia_dele"], ["comoTrabalha", "como_trabalha"],
+  ["desejo", "desejo"], ["porQueNosProcurou", "por_que_nos_procurou"],
+  ["perfilDoCliente", "perfil_do_cliente"], ["pontosDePrecisao", "pontos_de_precisao"],
+  ["problemasAnteriores", "problemas_anteriores"],
+  ["estrategia", "estrategia"], ["comoExecutar", "como_executar"], ["temasSugeridos", "temas_sugeridos"],
+  ["formatosSugeridos", "formatos_sugeridos"], ["referencias", "referencias"],
+  ["tamanhoCamiseta", "tamanho_camiseta"], ["gostosPessoais", "gostos_pessoais"],
 ] as const;
 
 function mapProfile(row: ProfileRow): ProjectProfile {
   const profile: ProjectProfile = { projectId: row.project_id, updatedAt: row.updated_at };
   for (const [chave, coluna] of PROFILE_FIELDS) {
     const valor = row[coluna];
-    if (valor) profile[chave] = valor;
+    if (valor) profile[chave] = valor as string;
   }
+  profile.guideManualFields = row.guide_manual_fields ?? [];
+  if (row.guide_generated_at) profile.guideGeneratedAt = row.guide_generated_at;
   return profile;
 }
 
@@ -2101,13 +2116,80 @@ export async function getProjectProfile(projectId: string): Promise<ProjectProfi
 
 // Upsert: o perfil nasce no primeiro salvamento, sem alguém precisar "criar
 // ficha" antes de escrever nela.
+//
+// Edição humana marca o campo como manual. A partir daí a geração por IA não
+// encosta mais nele (ver saveGeneratedGuide): quem corrigiu à mão corrigiu
+// porque a IA errou, e regerar em cima disso seria desfazer o trabalho.
 export async function saveProjectProfile(projectId: string, patch: Partial<ProjectProfile>): Promise<ProjectProfile> {
   const update: Record<string, unknown> = { project_id: projectId, updated_at: nowIso() };
   for (const [chave, coluna] of PROFILE_FIELDS) {
     if (patch[chave] !== undefined) update[coluna] = String(patch[chave] ?? "").trim() || null;
   }
+
+  const tocados = Object.keys(patch).filter((chave) => isGuideFieldKey(chave));
+  if (tocados.length) {
+    const atual = await getProjectProfile(projectId);
+    update.guide_manual_fields = dedupeIds([...(atual?.guideManualFields ?? []), ...tocados]);
+  }
+
   const row = unwrap(await getSupabase().from("project_profiles").upsert(update, { onConflict: "project_id" }).select().single());
   return mapProfile(row as ProfileRow);
+}
+
+// Grava o guia que a IA montou a partir das fontes. Só escreve nos campos que
+// ninguém corrigiu à mão, e só quando a IA de fato trouxe conteúdo — campo em
+// branco na resposta não apaga o que já estava lá.
+export async function saveGeneratedGuide(projectId: string, guia: Partial<ProjectProfile>): Promise<ProjectProfile> {
+  const atual = await getProjectProfile(projectId);
+  const manuais = new Set(atual?.guideManualFields ?? []);
+  const update: Record<string, unknown> = { project_id: projectId, updated_at: nowIso(), guide_generated_at: nowIso() };
+
+  for (const [chave, coluna] of PROFILE_FIELDS) {
+    if (!isGuideFieldKey(chave) || manuais.has(chave)) continue;
+    const valor = String(guia[chave] ?? "").trim();
+    if (valor) update[coluna] = valor;
+  }
+
+  const row = unwrap(await getSupabase().from("project_profiles").upsert(update, { onConflict: "project_id" }).select().single());
+  return mapProfile(row as ProfileRow);
+}
+
+// ---------- Fontes do guia ----------
+
+type SourceRow = {
+  id: string; project_id: string; title: string; kind: ProjectSourceKind;
+  content: string; happened_on: string | null; created_by: string | null; created_at: string;
+};
+
+function mapSource(row: SourceRow): ProjectSource {
+  return {
+    id: row.id, projectId: row.project_id, title: row.title, kind: row.kind,
+    content: row.content, happenedOn: row.happened_on ?? undefined,
+    createdBy: row.created_by ?? undefined, createdAt: row.created_at,
+  };
+}
+
+export async function listProjectSources(projectId: string): Promise<ProjectSource[]> {
+  const rows = unwrap(await getSupabase().from("project_sources").select("*").eq("project_id", projectId).order("created_at", { ascending: true }));
+  return ((rows ?? []) as SourceRow[]).map(mapSource);
+}
+
+export async function createProjectSource(input: {
+  projectId: string; title: string; kind?: ProjectSourceKind; content: string; happenedOn?: string; createdBy?: string;
+}): Promise<ProjectSource> {
+  const row = unwrap(await getSupabase().from("project_sources").insert({
+    project_id: input.projectId,
+    title: input.title.trim(),
+    kind: input.kind ?? "reuniao",
+    content: input.content,
+    happened_on: input.happenedOn || null,
+    created_by: input.createdBy || null,
+  }).select().single());
+  return mapSource(row as SourceRow);
+}
+
+export async function deleteProjectSource(id: string): Promise<void> {
+  unwrap(await getSupabase().from("project_sources").delete().eq("id", id));
 }
 
 type CredentialRow = {

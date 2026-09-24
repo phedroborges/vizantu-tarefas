@@ -8,12 +8,13 @@ import { useConfirm } from "@/components/confirm-dialog";
 import { networkError, responseError } from "@/lib/request-error";
 import type { ProjectTab } from "@/lib/permissions";
 import { CREDENTIAL_KINDS, type Contract, type Plan, type Project, type ProjectCredential, type ProjectProfile, type Survey } from "@/lib/types";
-import type { ClientSatisfactionScore, Member, Tag as TaskTag, Task } from "@/lib/types";
+import type { ClientSatisfactionScore, Member, ProjectSource, Tag as TaskTag, Task } from "@/lib/types";
 import { Avatar } from "@/components/avatar";
 import { ProjectTaskHub } from "@/components/project-task-hub";
 import { ProjectSurveyResults } from "@/components/project-survey-results";
 import { ProjectDocuments } from "@/components/project-documents";
-import { Button, Card, EmptyState, Field, Input, Progress, Tag, Textarea } from "@/components/vz";
+import { ClientGuideView } from "@/components/client-guide-view";
+import { Button, Card, EmptyState, Field, Input, Progress, Tag } from "@/components/vz";
 
 const AUTOSAVE_MS = 700;
 
@@ -34,12 +35,6 @@ const CAMPOS: { key: keyof ProjectProfile; label: string; hint?: string; longo?:
   { key: "responsavelEmail", label: "E-mail" },
 ];
 
-const TEXTOS: { key: keyof ProjectProfile; label: string; hint: string }[] = [
-  { key: "objetivos", label: "Objetivos", hint: "O que esse cliente quer que aconteça" },
-  { key: "publico", label: "Público", hint: "Quem ele precisa alcançar" },
-  { key: "historico", label: "Histórico", hint: "O que já foi feito, o que funcionou e o que não funcionou" },
-  { key: "observacoes", label: "Observações", hint: "O que a equipe precisa saber antes de falar com ele" },
-];
 
 export function ProjectProfileView({
   project,
@@ -60,6 +55,8 @@ export function ProjectProfileView({
   initialPlans,
   initialSurveys,
   initialContracts,
+  initialSources,
+  aiEnabled,
 }: {
   project: Project;
   initialProfile: ProjectProfile | null;
@@ -79,6 +76,8 @@ export function ProjectProfileView({
   initialPlans: Plan[];
   initialSurveys: Survey[];
   initialContracts: Contract[];
+  initialSources: ProjectSource[];
+  aiEnabled: boolean;
 }) {
   const [profile, setProfile] = useState<Partial<ProjectProfile>>(initialProfile ?? {});
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -133,11 +132,10 @@ export function ProjectProfileView({
   }
 
   function setCampo(key: keyof ProjectProfile, value: string) {
-    const next = { ...profile, [key]: value };
-    setProfile(next);
+    setProfile((atual) => ({ ...atual, [key]: value }));
     if (!canEditProfile) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => persist(next), AUTOSAVE_MS);
+    debounceRef.current = setTimeout(() => persist({ [key]: value }), AUTOSAVE_MS);
   }
 
   async function removerCredencial(credential: ProjectCredential) {
@@ -176,35 +174,27 @@ export function ProjectProfileView({
           <Card><div className="vz-metric"><div className="vz-metric__top"><span className="vz-metric__icon vz-metric__icon--blue"><Target size={18} /></span><div><strong className="vz-metric__value">{nps === null ? "—" : nps > 0 ? `+${nps}` : nps}</strong><span className="vz-metric__label">NPS · {satisfactionScores.length} resposta{satisfactionScores.length === 1 ? "" : "s"}</span></div></div></div></Card>
         </div>
 
-        <div className="project-profile-grid">
-          <Card className="project-context-card">
-            <div className="project-section-head"><div><span className="vz-eyebrow">Conhecimento compartilhado</span><h2 className="vz-h2">Contexto do cliente</h2><p className="vz-caption">Salvo automaticamente enquanto você escreve.</p></div></div>
-            <div className="project-context-body">
-              <div className="project-fields-grid">
-                {CAMPOS.map((campo) => (
-                  <Field label={campo.label} hint={campo.hint} key={campo.key}>
-                    <Input
-                      disabled={!canEditProfile}
-                      value={(profile[campo.key] as string) || ""}
-                      onChange={(e) => setCampo(campo.key, e.target.value)}
-                      placeholder={campo.hint}
-                    />
-                  </Field>
-                ))}
-              </div>
-
-              {TEXTOS.map((campo) => (
+        <ClientGuideView
+          projectId={project.id}
+          initialProfile={profile}
+          initialSources={initialSources}
+          canEdit={canEditProfile}
+          aiEnabled={aiEnabled}
+          cadastro={
+            <div className="project-fields-grid">
+              {CAMPOS.map((campo) => (
                 <Field label={campo.label} hint={campo.hint} key={campo.key}>
-                  <Textarea rows={5}
+                  <Input
                     disabled={!canEditProfile}
                     value={(profile[campo.key] as string) || ""}
                     onChange={(e) => setCampo(campo.key, e.target.value)}
+                    placeholder={campo.hint}
                   />
                 </Field>
               ))}
             </div>
-          </Card>
-        </div></> : null}
+          }
+        /></> : null}
         {tab === "calendario" ? <ProjectTaskHub tasks={initialTasks} formatTags={formatTags} channelTags={channelTags} members={members} canEdit={canEditTasks} initialView="calendario" /> : null}
         {tab === "planos" ? <Card><div className="project-section-head"><div><span className="vz-eyebrow">Planejamento</span><h2 className="vz-h2">Planos do cliente</h2><p>{initialPlans.length} plano{initialPlans.length === 1 ? "" : "s"}</p></div><Link className="vz-button vz-button--primary" href={`/planos?projectId=${project.id}`}><Plus size={14} /> Novo plano</Link></div><div className="project-plan-list">{initialPlans.map((plan) => <Link href={`/planos/${plan.id}`} key={plan.id}><strong>{plan.title}</strong><span>{plan.kind === "content" ? "Conteúdo" : plan.kind === "brand" ? "Marca" : plan.kind === "process" ? "Processo" : "Apresentação"} · {plan.status}</span></Link>)}</div>{!initialPlans.length ? <EmptyState icon={<BarChart3 size={24} />} title="Nenhum plano" description="Os planos criados para este cliente aparecerão aqui." /> : null}</Card> : null}
         {tab === "pesquisas" ? <ProjectSurveyResults surveys={initialSurveys} /> : null}

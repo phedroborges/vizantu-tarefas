@@ -2382,3 +2382,70 @@ a.upcoming-item { color: inherit; text-decoration: none; }
 .tag-popover-confirm button { padding: 5px 8px; border: 1px solid var(--line); background: var(--vz-panel); cursor: pointer; }
 .tag-popover-confirm button:last-child { color: var(--vz-danger, #b42318); }
 .tag-popover-error { padding: 8px 10px; font-size: 12px; color: var(--vz-danger, #b42318); }
+
+/* ---------- Guia do cliente ---------- */
+/* A aba Contexto é um documento que a equipe lê, não um formulário. Por isso
+   a resposta é texto até alguém clicar nela, e o campo vazio mostra a ajuda
+   em vez de uma caixa em branco: caixa em branco não diz o que escrever, e
+   foi assim que treze de catorze clientes ficaram sem ficha nenhuma. */
+.guia { display: grid; gap: var(--vz-s-4); }
+
+.guia-topo { display: flex; gap: var(--vz-s-5); align-items: center; justify-content: space-between; padding: var(--vz-s-5); flex-wrap: wrap; }
+.guia-topo__texto h2 { margin: 2px 0 4px; }
+.guia-topo__texto p { margin: 0; }
+.guia-topo__progresso { display: grid; gap: 6px; min-width: 240px; justify-items: end; }
+.guia-topo__progresso strong { font-size: var(--vz-t-lg, 18px); }
+.guia-topo__progresso .vz-progress { width: 100%; }
+
+.guia-bloco { padding: var(--vz-s-5); }
+.guia-bloco__head { display: flex; gap: var(--vz-s-4); align-items: flex-start; justify-content: space-between; margin-bottom: var(--vz-s-5); }
+.guia-bloco__head h3 { display: flex; align-items: center; gap: 6px; margin: 0 0 4px; font-size: var(--vz-t-md, 15px); }
+.guia-bloco__head p { margin: 0; max-width: 62ch; }
+
+.guia-campos { display: grid; gap: var(--vz-s-5); }
+.guia-campo { display: grid; gap: 6px; padding-left: var(--vz-s-4); border-left: 2px solid var(--vz-line); }
+.guia-campo--vazio { border-left-color: var(--vz-line-strong, var(--vz-line)); opacity: .82; }
+.guia-campo__pergunta { display: flex; align-items: center; gap: 8px; }
+.guia-campo__pergunta strong { font-size: var(--vz-t-sm, 14px); }
+
+/* A resposta é um botão para virar editável com um clique, mas precisa parecer
+   texto corrido: sem borda, sem fundo, alinhada à esquerda e com quebra de
+   linha preservada, porque temas e formatos vêm um por linha. */
+.guia-campo__resposta {
+  appearance: none; border: 0; background: none; padding: 2px 0; margin: 0;
+  font: inherit; color: var(--vz-text); text-align: left; white-space: pre-wrap;
+  cursor: text; border-radius: var(--vz-r-sm); transition: background .12s ease;
+}
+.guia-campo__resposta:hover:not(:disabled) { background: var(--vz-panel-hover); box-shadow: 0 0 0 6px var(--vz-panel-hover); }
+.guia-campo__resposta:disabled { cursor: default; }
+.guia-campo__placeholder { color: var(--vz-text-faint); font-style: italic; }
+
+.guia-fontes { padding: var(--vz-s-5); }
+.guia-fontes__acoes { display: flex; gap: var(--vz-s-2); flex-shrink: 0; }
+.guia-fonte-form { display: grid; gap: var(--vz-s-4); padding: var(--vz-s-4); margin-bottom: var(--vz-s-4); border: 1px solid var(--vz-line); border-radius: var(--vz-r-md); background: var(--vz-bg-sunken); }
+.guia-fonte-form__acoes { display: flex; justify-content: flex-end; gap: var(--vz-s-2); }
+
+.guia-fonte-lista { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.guia-fonte-lista li { display: flex; align-items: center; gap: var(--vz-s-3); padding: var(--vz-s-3); border-radius: var(--vz-r-md); }
+.guia-fonte-lista li:hover { background: var(--vz-panel-hover); }
+.guia-fonte-lista li > div { flex: 1; min-width: 0; }
+.guia-fonte-lista strong { display: block; font-size: var(--vz-t-sm, 14px); }
+.guia-fonte-lista button { display: grid; place-items: center; border: 0; background: none; padding: 6px; border-radius: var(--vz-r-sm); color: var(--vz-text-muted); cursor: pointer; }
+.guia-fonte-lista button:hover { color: var(--vz-danger, #b42318); background: var(--vz-panel-active); }
+
+.guia-cadastro { border: 1px solid var(--vz-line); border-radius: var(--vz-r-lg); background: var(--vz-panel); }
+.guia-cadastro > summary { display: flex; align-items: center; gap: var(--vz-s-2); padding: var(--vz-s-4) var(--vz-s-5); cursor: pointer; font-weight: 600; font-size: var(--vz-t-sm, 14px); list-style: none; }
+.guia-cadastro > summary::-webkit-details-marker { display: none; }
+.guia-cadastro > summary svg { transition: transform .15s ease; color: var(--vz-text-muted); }
+.guia-cadastro[open] > summary svg { transform: rotate(180deg); }
+.guia-cadastro > summary .vz-caption { margin-left: auto; font-weight: 400; }
+.guia-cadastro__corpo { padding: 0 var(--vz-s-5) var(--vz-s-5); }
+
+.vz-spin { animation: vz-spin 1s linear infinite; }
+@keyframes vz-spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 640px) {
+  .guia-topo__progresso { min-width: 0; width: 100%; justify-items: start; }
+  .guia-bloco__head { flex-direction: column; }
+  .guia-fontes__acoes { width: 100%; }
+}

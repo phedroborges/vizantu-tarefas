@@ -5,7 +5,7 @@ import { requirePageAccess } from "@/lib/page-guard";
 import { abasDoProjeto, podeGerenciarCredenciais, podePlanejar, podeVerCredenciais } from "@/lib/permissions";
 import { filterTasksByListAccess } from "@/lib/authz";
 import { secretsAvailable } from "@/lib/crypto-secrets";
-import { getProject, getProjectProfile, listContracts, listMembers, listPlans, listProjectCredentials, listProjectTeam, listSatisfactionScores, listSurveys, listTags, listTasks } from "@/lib/storage";
+import { getProject, getProjectProfile, listContracts, listMembers, listPlans, listProjectCredentials, listProjectSources, listProjectTeam, listSatisfactionScores, listSurveys, listTags, listTasks } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +21,7 @@ export default async function ProjetoPage({ params }: { params: Promise<{ id: st
   const abas = abasDoProjeto(user.role);
   const veCredenciais = podeVerCredenciais(user.role);
   const veContratos = abas.includes("documentos");
-  const [profile, credentials, allTasks, satisfactionScores, tags, members, plans, surveys, team, allContracts] = await Promise.all([
+  const [profile, credentials, allTasks, satisfactionScores, tags, members, plans, surveys, team, allContracts, sources] = await Promise.all([
     getProjectProfile(id),
     veCredenciais ? listProjectCredentials(id) : Promise.resolve([]),
     listTasks({ projectIds: [id], listKinds: user.accessibleListKinds }),
@@ -32,6 +32,7 @@ export default async function ProjetoPage({ params }: { params: Promise<{ id: st
     listSurveys(id),
     abas.includes("equipe") ? listProjectTeam(id) : Promise.resolve([]),
     veContratos ? listContracts(id) : Promise.resolve([]),
+    listProjectSources(id),
   ]);
 
   return (
@@ -55,6 +56,8 @@ export default async function ProjetoPage({ params }: { params: Promise<{ id: st
         initialPlans={plans}
         initialSurveys={surveys}
         initialContracts={allContracts.filter((contract) => contract.projectId === id)}
+        initialSources={sources}
+        aiEnabled={user.aiEnabled}
       />
     </AdminShell>
   );

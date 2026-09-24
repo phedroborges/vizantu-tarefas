@@ -487,11 +487,61 @@ export type ProjectProfile = {
   responsavelNome?: string;
   responsavelTelefone?: string;
   responsavelEmail?: string;
+  // As quatro caixas genéricas da ficha antiga. Continuam no banco como
+  // backup do que já foi escrito, mas a tela não mostra mais nenhuma delas —
+  // o conteúdo virou fonte do guia na migration 20260924100000.
   objetivos?: string;
   publico?: string;
   historico?: string;
   observacoes?: string;
+  // O guia do cliente. Os rótulos, a ordem e os blocos moram em
+  // src/lib/client-guide.ts, não aqui.
+  quemEh?: string;
+  deOndeVeio?: string;
+  oQueFaz?: string;
+  produtoServico?: string;
+  historiaDele?: string;
+  comoTrabalha?: string;
+  desejo?: string;
+  porQueNosProcurou?: string;
+  perfilDoCliente?: string;
+  pontosDePrecisao?: string;
+  problemasAnteriores?: string;
+  estrategia?: string;
+  comoExecutar?: string;
+  temasSugeridos?: string;
+  formatosSugeridos?: string;
+  referencias?: string;
+  tamanhoCamiseta?: string;
+  gostosPessoais?: string;
+  // Campos corrigidos à mão. A geração relê todas as fontes e reescreve o
+  // guia inteiro, então sem esta lista a correção de ontem sumiria hoje.
+  guideManualFields?: string[];
+  guideGeneratedAt?: string;
   updatedAt: string;
+};
+
+export const PROJECT_SOURCE_KINDS = [
+  { value: "reuniao", label: "Reunião" },
+  { value: "transcricao", label: "Transcrição" },
+  { value: "anotacao", label: "Anotação" },
+  { value: "documento", label: "Documento" },
+  { value: "migrado", label: "Migrado da ficha antiga" },
+] as const;
+
+export type ProjectSourceKind = (typeof PROJECT_SOURCE_KINDS)[number]["value"];
+
+// A matéria-prima do guia. O dono faz três ou quatro reuniões antes de o
+// trabalho começar; cada uma entra aqui e a geração relê todas de uma vez.
+export type ProjectSource = {
+  id: string;
+  projectId: string;
+  title: string;
+  kind: ProjectSourceKind;
+  content: string;
+  happenedOn?: string;
+  createdBy?: string;
+  createdAt: string;
 };
 
 export const CREDENTIAL_KINDS = [
