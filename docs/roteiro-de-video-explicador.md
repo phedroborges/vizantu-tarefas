@@ -32,9 +32,14 @@ O ritmo de referência é 205 palavras por minuto, contra as 150 de uma conversa
 | 40 segundos | 135 |
 | 60 segundos | 205 |
 | 90 segundos | 300 |
-| 3 minutos | 615 |
+| 2 minutos | 410 |
+| **3 minutos** | **615** |
 
 Conte as palavras do roteiro antes de mandar para aprovação. Roteiro de 400 palavras não é um vídeo de um minuto.
+
+**O alvo é 3 minutos.** Os quatro vídeos da referência têm exatamente isso, e não é por acaso. Um assunto que precisa de definição, exemplo e ressalva não cabe em um minuto sem virar manchete. Vídeo curto funciona para provocar, não para ensinar, e este documento é sobre ensinar.
+
+Na prática, 3 minutos são 12 blocos de mais ou menos 15 segundos cada, com um quadro por bloco.
 
 ## Os seis mecanismos
 
@@ -197,11 +202,15 @@ Números são falados por extenso e escritos em algarismo. Quem fala diz "cinque
 
 Nem todo vídeo do mês deve ser explicador. Ele constrói autoridade e não vende.
 
-**Pista autoridade.** Um ou dois por mês, de 90 segundos a 3 minutos, formato completo deste documento, fechando com pergunta aberta e sem CTA de venda.
+As duas pistas se diferenciam pelo FECHAMENTO, e não pela duração. As duas têm 3 minutos e as duas usam os seis mecanismos.
 
-**Pista produto.** O resto, de 40 a 60 segundos, dor e solução, com CTA de agendamento. Continua usando os mecanismos 1, 2, 3 e 4 deste documento, mas troca o fechamento.
+**Pista autoridade.** Fecha com pergunta aberta e não pede nada. Constrói audiência e é o que faz o lead ficar barato depois.
 
-Um mês inteiro em pista autoridade não gera lead. Um mês inteiro em pista produto não constrói audiência para o lead ficar barato.
+**Pista produto.** Fecha com CTA de agendamento nos últimos 10 segundos, depois de já ter explicado o assunto inteiro de graça. O CTA só é aceito porque veio depois da entrega, nunca no lugar dela.
+
+Proporção sugerida: sete de autoridade para três de produto a cada dez vídeos. Um mês inteiro em pista autoridade não gera lead. Um mês inteiro em pista produto não constrói audiência para o lead ficar barato.
+
+O erro a evitar é encurtar a pista produto achando que CTA pede vídeo curto. É o contrário: quanto mais o vídeo entrega antes de pedir, mais o pedido é ouvido.
 
 ## Checklist antes de mandar para aprovação
 
