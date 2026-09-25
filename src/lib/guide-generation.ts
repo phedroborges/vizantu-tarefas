@@ -13,9 +13,9 @@
 // Uma chamada por BLOCO, não uma para o guia inteiro. A primeira versão fazia
 // tudo de uma vez e o resultado foram campos de 26 caracteres: com dezoito
 // perguntas na mesma resposta, o modelo distribui pouco para cada uma e
-// entrega manchete em vez de contexto. Cinco chamadas em paralelo custam mais
+// entrega rótulo em vez de explicação. Cinco chamadas em paralelo custam mais
 // entrada e resolvem isso, porque cada uma tem duas a seis perguntas e espaço
-// para responder de verdade.
+// para responder inteiro.
 //
 // O que ela NÃO toca: campo corrigido à mão (ver saveGeneratedGuide em
 // storage.ts). Esse filtro acontece na gravação, não aqui.
@@ -34,7 +34,7 @@ const MAX_CHARS_POR_FONTE = 24_000;
 const MAX_CHARS_TOTAL = 160_000;
 
 // Teto por bloco. O padrão do gpt-4o é 4096 e um bloco de seis perguntas
-// respondidas com profundidade passa disso, o que cortaria o JSON no meio.
+// respondidas por inteiro passa disso, o que cortaria o JSON no meio.
 const MAX_TOKENS_POR_BLOCO = 6_000;
 
 function recortar(texto: string, limite: number): string {
@@ -66,24 +66,55 @@ function montarDossie(sources: ProjectSource[]): string {
   return partes.join("\n\n---\n\n");
 }
 
-// As regras de profundidade. São o coração do prompt, porque o erro da
-// primeira versão não foi alucinação, foi brevidade: o modelo resumia quando
-// a tarefa é transferir. Pedir "seja concreto" não resolve, precisa dizer o
-// que fazer com cada tipo de campo e o que conta como resposta pronta.
-const REGRAS_DE_PROFUNDIDADE = `
+// A regra central, e a mais fácil de errar nos dois sentidos.
+//
+// A primeira versão do prompt cobrava só "não invente" e o resultado foram
+// campos de 26 caracteres. A correção óbvia seria pedir profundidade, e ela
+// está errada também: pedir mais texto é pedir para encher linguiça, e
+// linguiça vazia se preenche inventando.
+//
+// O que se pede não é mais FATO, é o mesmo fato dito inteiro. A diferença é a
+// de escrever "2+2=4" e escrever "a soma de 2 mais 2 é 4, porque...". Nenhuma
+// informação nova entrou, e a segunda é utilizável por quem não estava na
+// reunião. Por isso não existe alvo de parágrafo aqui: alvo de tamanho é o que
+// empurra o modelo a preencher espaço.
+const REGRAS_DE_COMPLETUDE = `
 Esta tarefa é EXTRAÇÃO e ORGANIZAÇÃO, não resumo. Você não está condensando as
-fontes, está transferindo para o campo certo tudo que elas dizem sobre aquela
+fontes, está transferindo para o campo certo o que elas dizem sobre aquela
 pergunta. Se a fonte traz dez detalhes sobre um campo, os dez entram.
 
-Nunca responda com uma frase só quando a fonte permite mais. Campo de uma linha
-não serve para a equipe: quem lê está prestes a produzir conteúdo e precisa
-saber o suficiente para decidir sozinho.
+A regra mais importante: não acrescente FATO, acrescente EXPLICAÇÃO. Escreva
+cada informação de forma completa, como quem explica para alguém que não estava
+na reunião, em vez de anotar um lembrete para si mesmo.
 
-Alvo por tipo de campo:
+Compare "2+2=4" com "a soma de 2 mais 2 é 4, porque...". As duas dizem a mesma
+coisa e só a segunda serve. É isso que se espera de cada resposta: o mesmo
+conteúdo da fonte, dito inteiro.
 
-- Campo de texto longo: de dois a cinco parágrafos curtos quando a fonte
-  sustenta. Cada parágrafo traz uma informação nova, sem repetir o anterior com
-  outras palavras.
+Como fica na prática:
+
+- Ruim: "É exigente com a marca."
+- Bom: "É exigente com a marca, e o que ele repara é a marca aparecer legível
+  mesmo quando a arte usa a cor da atlética."
+- Ruim: "Quer encher o ginásio."
+- Bom: "Quer encher o ginásio nas seis rodadas, e a aposta dele para isso é a
+  rivalidade entre atléticas, porque quem leva torcida é a atlética e não o
+  anúncio do evento."
+
+Quando a fonte diz o porquê de algo, o porquê entra junto. É ele que faz a
+equipe decidir sozinha em vez de perguntar.
+
+Nunca deixe uma resposta em forma de rótulo ou fragmento. Frase inteira,
+compreensível sozinha.
+
+E o limite, que vale mais que tudo acima: se a fonte traz pouco sobre um campo,
+a resposta é curta. Resposta curta e completa é certa. Nunca alongue um campo
+para ele parecer mais trabalhado, porque texto inventado para ocupar espaço é
+pior do que campo vazio.
+
+Por tipo de campo:
+
+- Campo de texto longo: quantos parágrafos a fonte sustentar, nem um a mais.
 - Campo de lista (temas, formatos, referências): TODOS os itens que aparecem
   nas fontes, um por linha, sem numerar. Não escolha os melhores, traga todos.
   Se a fonte diz que algo foi testado e não funcionou, diga isso na linha.
@@ -92,8 +123,7 @@ Alvo por tipo de campo:
 
 Puxe o detalhe concreto sempre que existir: nome de pessoa, nome de lugar,
 data, horário, número, preço, quantidade, nome de concorrente, nome de produto.
-É o detalhe que faz a equipe acertar. Adjetivo genérico ("é exigente", "quer
-crescer") sem o fato que o sustenta não vale nada.
+É o detalhe que faz a equipe acertar.
 
 Quando o cliente disse algo de um jeito marcante, cite a frase dele entre
 aspas dentro da resposta. A forma como ele fala é informação.
@@ -143,7 +173,7 @@ Campos deste bloco:
 
 ${campos}
 
-${REGRAS_DE_PROFUNDIDADE}
+${REGRAS_DE_COMPLETUDE}
 
 ${REGRAS_DE_HONESTIDADE}
 
