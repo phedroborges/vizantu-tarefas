@@ -56,6 +56,7 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
       profile: atualizado,
       camposPreenchidos: resultado.camposPreenchidos,
       fontesLidas: resultado.fontesLidas,
+      blocosComErro: resultado.blocosComErro,
     });
   } catch (error) {
     return apiFailure(error, "montar o guia do cliente");

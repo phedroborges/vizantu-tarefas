@@ -96,7 +96,12 @@ export function ClientGuideView({
       const data = await response.json();
       setProfile(data.profile);
       const n = data.camposPreenchidos?.length ?? 0;
-      setAviso(`A IA leu ${data.fontesLidas} fonte${data.fontesLidas === 1 ? "" : "s"} e preencheu ${n} campo${n === 1 ? "" : "s"}. Revise antes de tratar como verdade.`);
+      const falhou: string[] = data.blocosComErro ?? [];
+      setAviso(
+        `A IA leu ${data.fontesLidas} fonte${data.fontesLidas === 1 ? "" : "s"} e preencheu ${n} campo${n === 1 ? "" : "s"}. Revise antes de tratar como verdade.`
+        + (falhou.length ? ` Não consegui gerar ${falhou.length === 1 ? "o bloco" : "os blocos"} ${falhou.join(" e ")}, tente montar de novo.` : "")
+        + (n < 10 ? " Se ficou raso, o problema costuma ser falta de material: adicione mais reuniões e monte outra vez." : ""),
+      );
     } catch {
       setErro(networkError("montar o guia"));
     } finally {
