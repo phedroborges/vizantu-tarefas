@@ -1,11 +1,12 @@
 "use client";
 
-import { CalendarDays, Eye, EyeOff, List, Settings2, SlidersHorizontal } from "lucide-react";
+import { CalendarDays, ChevronDown, Eye, EyeOff, List, Settings2, SlidersHorizontal } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Button, Check, IconButton, SearchInput, Segmented, Select as VzSelect, Toolbar } from "@/components/vz";
+import { Button, Check, IconButton, SearchInput, Segmented, Toolbar } from "@/components/vz";
 import { StatusColorPicker } from "@/components/status-color-picker";
 import { DATE_FORMATS, type DateFormatKey } from "@/lib/date-format";
-import { STATUS_GROUPS, TASK_COLUMNS, TASK_LIST_KINDS, TASK_STATUSES, type StatusColor, type TaskColumnKey, type TaskListKind } from "@/lib/types";
+import { STATUS_GROUPS, TASK_COLUMNS, TASK_LIST_KINDS, TASK_STATUSES, type StatusColor, type TaskColumnKey } from "@/lib/types";
+import type { SavedTaskFilters } from "@/lib/preferences";
 import type { Member, Project } from "@/lib/types";
 
 // A barra tinha 4 selects soltos + busca + colunas + cores + 2 grupos de botões
@@ -13,19 +14,57 @@ import type { Member, Project } from "@/lib/types";
 // se usa), um botão de filtros com contador do que está ativo, e uma
 // engrenagem com o que é preferência de exibição. Mesma barra nas duas visões.
 
-export type TaskFilters = {
-  query: string;
-  projectId: string;
-  assigneeId: string;
-  status: string;
-  list: TaskListKind | "";
-  showFinalized: boolean;
-};
+export type TaskFilters = SavedTaskFilters & { showFinalized: boolean };
+
+type FilterOption = { value: string; label: string; group?: string };
+
+function MultiFilterField({
+  label,
+  values,
+  options,
+  onChange,
+}: {
+  label: string;
+  values: string[];
+  options: FilterOption[];
+  onChange: (values: string[]) => void;
+}) {
+  const selectedLabels = options.filter((option) => values.includes(option.value)).map((option) => option.label);
+  const summary = values.length === 0
+    ? "Todos"
+    : selectedLabels.length === 0
+      ? `${values.length} ${values.length === 1 ? "selecionado" : "selecionados"}`
+    : selectedLabels.length <= 2
+      ? selectedLabels.join(", ")
+      : `${selectedLabels.length} selecionados`;
+  return (
+    <details className="toolbar-multifilter">
+      <summary>
+        <span><b>{label}</b><small>{summary}</small></span>
+        <ChevronDown size={15} />
+      </summary>
+      <div className="toolbar-multifilter__options" role="group" aria-label={`Opções de ${label}`}>
+        {values.length ? <button type="button" onClick={() => onChange([])}>Limpar seleção</button> : null}
+        {options.map((option, index) => {
+          const groupLabel = option.group && option.group !== options[index - 1]?.group ? option.group : null;
+          return <div key={option.value}>
+            {groupLabel ? <span className="toolbar-multifilter__group">{groupLabel}</span> : null}
+            <Check
+              label={option.label}
+              checked={values.includes(option.value)}
+              onChange={() => onChange(values.includes(option.value) ? values.filter((value) => value !== option.value) : [...values, option.value])}
+            />
+          </div>;
+        })}
+      </div>
+    </details>
+  );
+}
 
 export function countActiveFilters(filters: TaskFilters): number {
   // A busca não conta: ela já está visível na barra, com o texto à mostra.
   // "Mostrar finalizadas e descartadas" conta, porque muda o que aparece e fica escondido.
-  return [filters.projectId, filters.assigneeId, filters.status, filters.list].filter(Boolean).length + (filters.showFinalized ? 1 : 0);
+  return filters.projectIds.length + filters.assigneeIds.length + filters.statuses.length + filters.lists.length + (filters.showFinalized ? 1 : 0);
 }
 
 export function TaskToolbar({
@@ -81,41 +120,18 @@ export function TaskToolbar({
           </PopoverTrigger>
           <PopoverContent className="!w-72 !p-0 !gap-0" align="end">
             <div className="toolbar-menu">
-              <label className="toolbar-field">
-                <span>Projeto</span>
-                <VzSelect value={filters.projectId} onChange={(e) => onFiltersChange({ projectId: e.target.value })}>
-                  <option value="">Todos os projetos</option>
-                  {projects.map((project) => <option value={project.id} key={project.id}>{project.name}</option>)}
-                </VzSelect>
-              </label>
-              <label className="toolbar-field">
-                <span>Responsável</span>
-                <VzSelect value={filters.assigneeId} onChange={(e) => onFiltersChange({ assigneeId: e.target.value })}>
-                  <option value="">Todos os responsáveis</option>
-                  {members.map((member) => <option value={member.id} key={member.id}>{member.name}</option>)}
-                </VzSelect>
-              </label>
-              <label className="toolbar-field">
-                <span>Status</span>
-                <VzSelect value={filters.status} onChange={(e) => onFiltersChange({ status: e.target.value })}>
-                  <option value="">Todos os status</option>
-                  {STATUS_GROUPS.map((group) => (
-                    <optgroup label={group.label} key={group.value}>
-                      {TASK_STATUSES.filter((status) => status.group === group.value).map((status) => (
-                        <option value={status.value} key={status.value}>{status.label}</option>
-                      ))}
-                    </optgroup>
-                  ))}
-                  <option value="atrasada">Atrasada</option>
-                </VzSelect>
-              </label>
-              <label className="toolbar-field">
-                <span>Lista</span>
-                <VzSelect value={filters.list} onChange={(e) => onFiltersChange({ list: e.target.value as TaskListKind | "" })}>
-                  <option value="">Todas as listas</option>
-                  {TASK_LIST_KINDS.map((kind) => <option value={kind.value} key={kind.value}>{kind.label}</option>)}
-                </VzSelect>
-              </label>
+              <MultiFilterField label="Projeto" values={filters.projectIds} options={projects.map((project) => ({ value: project.id, label: project.name }))} onChange={(projectIds) => onFiltersChange({ projectIds })} />
+              <MultiFilterField label="Responsável" values={filters.assigneeIds} options={members.map((member) => ({ value: member.id, label: member.name }))} onChange={(assigneeIds) => onFiltersChange({ assigneeIds })} />
+              <MultiFilterField
+                label="Status"
+                values={filters.statuses}
+                options={[
+                  { value: "atrasada", label: "Atrasada", group: "Prazo" },
+                  ...STATUS_GROUPS.flatMap((group) => TASK_STATUSES.filter((status) => status.group === group.value).map((status) => ({ value: status.value, label: status.label, group: group.label }))),
+                ]}
+                onChange={(statuses) => onFiltersChange({ statuses: statuses as SavedTaskFilters["statuses"] })}
+              />
+              <MultiFilterField label="Lista" values={filters.lists} options={TASK_LIST_KINDS.map((kind) => ({ value: kind.value, label: kind.label }))} onChange={(lists) => onFiltersChange({ lists: lists as SavedTaskFilters["lists"] })} />
               <Button type="button" variant={filters.showFinalized ? "soft" : "secondary"} onClick={() => onFiltersChange({ showFinalized: !filters.showFinalized })} aria-pressed={filters.showFinalized}>
                 {filters.showFinalized ? <EyeOff size={14} /> : <Eye size={14} />}
                 {filters.showFinalized ? "Ocultar finalizadas e descartadas" : "Mostrar finalizadas e descartadas"}
@@ -124,7 +140,7 @@ export function TaskToolbar({
                 <Button
                   type="button"
                   variant="ghost"
-                  onClick={() => onFiltersChange({ projectId: "", assigneeId: "", status: "", list: "", showFinalized: false })}
+                  onClick={() => onFiltersChange({ projectIds: [], assigneeIds: [], statuses: [], lists: [], showFinalized: false })}
                 >
                   Limpar filtros
                 </Button>

@@ -35,6 +35,7 @@
 
 :root,
 .vz-root {
+  color-scheme: light;
   /* ---------- Marca ---------- */
   --vz-brand: #9147ff;
   --vz-brand-strong: #6435e7;
@@ -160,7 +161,9 @@
    Só os tokens mudam. Nenhum componente abaixo sabe que o tema existe — se um
    componente precisar de regra própria no escuro, o token dele está errado. */
 :root[data-vz-theme="dark"],
+:root[data-vz-theme="dark"] .vz-root,
 .vz-root[data-vz-theme="dark"] {
+  color-scheme: dark;
   --vz-brand: #a370ff;
   --vz-brand-strong: #8b57f5;
   --vz-brand-deep: #b48cff;
@@ -182,7 +185,8 @@
   --vz-text: #f2f2f6;
   --vz-text-soft: #c3c6d2;
   --vz-text-muted: #9296a6;
-  --vz-text-faint: #6c7082;
+  /* Texto auxiliar ainda precisa ser legível nos fundos de painel/hover. */
+  --vz-text-faint: #828698;
   --vz-text-invert: #0e0e14;
 
   --vz-violet-bg: #271c42;  --vz-violet-line: #3d2c67;  --vz-violet-ink: #c0a3ff;  --vz-violet-solid: #8b5cf6;
@@ -216,7 +220,7 @@
 .vz-body { margin: 0; font-size: var(--vz-t-base); line-height: 1.55; color: var(--vz-text-soft); }
 .vz-small { margin: 0; font-size: var(--vz-t-sm); line-height: 1.5; color: var(--vz-text-muted); }
 .vz-caption { margin: 0; font-size: var(--vz-t-xs); line-height: 1.45; color: var(--vz-text-muted); }
-.vz-eyebrow { display: block; font-size: var(--vz-t-tiny); font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--vz-brand-strong); }
+.vz-eyebrow { display: block; font-size: var(--vz-t-tiny); font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--vz-brand-deep); }
 .vz-mono { font-family: var(--vz-font-mono); font-size: var(--vz-t-xs); letter-spacing: -0.01em; }
 .vz-strong { color: var(--vz-text); font-weight: 600; }
 .vz-numeric { font-variant-numeric: tabular-nums; }
@@ -731,6 +735,7 @@
   --vz-chart-grid: var(--vz-line);
 }
 :root[data-vz-theme="dark"],
+:root[data-vz-theme="dark"] .vz-root,
 .vz-root[data-vz-theme="dark"] {
   --vz-chart-1: #8c60eb;
   --vz-chart-2: #32a96b;

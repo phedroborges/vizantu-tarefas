@@ -6,7 +6,7 @@ const db = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_
 
 // O jeito de ver é de cada pessoa; as cores são do time. Estes testes travam
 // as duas metades contra o servidor de verdade.
-const PADRAO = { taskView: "lista", taskColumns: null, dateFormat: "inteligente", showFinalized: false, taskFilters: { query: "", projectId: "", assigneeId: "", status: "", list: "" } };
+const PADRAO = { taskView: "lista", taskColumns: null, dateFormat: "inteligente", showFinalized: false, taskFilters: { query: "", projectIds: [], assigneeIds: [], statuses: [], lists: [] } };
 
 test.describe("preferências de exibição", () => {
   test("1. seguem a conta, não o navegador", async ({ page }) => {
@@ -144,11 +144,48 @@ test.describe("preferências de exibição", () => {
 
   test("9. filtros voltam depois de recarregar e são individuais", async ({ page }) => {
     await loginAsTestDono(page);
-    const filters = { query: "reels", projectId: "projeto-teste", assigneeId: "membro-teste", status: "atrasada", list: "criativa" };
+    const { projectId, memberId } = fixtures();
+    const filters = { query: "reels", projectIds: [projectId], assigneeIds: [memberId], statuses: ["atrasada", "em_criacao"], lists: ["criativa"] };
     const saved = await page.request.patch("/api/preferences", { data: { taskFilters: filters } });
     expect(saved.ok()).toBeTruthy();
     expect((await saved.json()).preferences.taskFilters).toEqual(filters);
     const reread = await (await page.request.get("/api/preferences")).json();
     expect(reread.preferences.taskFilters).toEqual(filters);
+  });
+
+  test("10. seleciona vários status, combina os resultados e mantém após recarregar", async ({ page }) => {
+    await loginAsTestDono(page);
+    const { projectId } = fixtures();
+    await page.request.patch("/api/preferences", { data: { taskFilters: PADRAO.taskFilters, showFinalized: false } });
+
+    const names = {
+      creating: `[E2E] Multi em criação ${Date.now()}`,
+      review: `[E2E] Multi revisão ${Date.now()}`,
+      approved: `[E2E] Multi aprovado ${Date.now()}`,
+    };
+    for (const [name, status] of [[names.creating, "em_criacao"], [names.review, "revisao"], [names.approved, "aprovado"]]) {
+      expect((await page.request.post("/api/tasks", { data: { projectId, name, status } })).ok()).toBeTruthy();
+    }
+
+    await page.goto("/tarefas");
+    await page.getByRole("button", { name: "Filtros" }).click();
+    const statusFilter = page.locator("details.toolbar-multifilter").filter({ hasText: "Status" });
+    await statusFilter.locator("summary").click();
+    const preferencesSaved = page.waitForResponse((response) => response.url().endsWith("/api/preferences") && response.request().method() === "PATCH");
+    await statusFilter.getByLabel("Em criação").check();
+    await statusFilter.getByLabel("Revisão").check();
+    await preferencesSaved;
+
+    await expect(page.locator(".toolbar-count")).toHaveText("2");
+    await expect(page.getByText(names.creating, { exact: true })).toBeVisible();
+    await expect(page.getByText(names.review, { exact: true })).toBeVisible();
+    await expect(page.getByText(names.approved, { exact: true })).toBeHidden();
+
+    await page.reload();
+    await expect(page.getByText(names.creating, { exact: true })).toBeVisible();
+    await expect(page.getByText(names.review, { exact: true })).toBeVisible();
+    await expect(page.getByText(names.approved, { exact: true })).toBeHidden();
+    await page.getByRole("button", { name: "Filtros" }).click();
+    await expect(page.locator("details.toolbar-multifilter").filter({ hasText: "Status" }).locator("summary small")).toHaveText("Em criação, Revisão");
   });
 });

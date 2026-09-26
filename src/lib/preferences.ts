@@ -11,10 +11,17 @@
 // recorte recorrente, então zerá-lo a cada recarga só obriga a refazer trabalho.
 
 import { DEFAULT_DATE_FORMAT, isDateFormatKey, type DateFormatKey } from "./date-format";
-import { TASK_COLUMNS, TASK_LIST_KINDS, type TaskColumnKey, type TaskListKind } from "./types";
+import { TASK_COLUMNS, TASK_LIST_KINDS, TASK_STATUSES, type TaskColumnKey, type TaskListKind, type TaskStatus } from "./types";
 
 export type TaskView = "lista" | "calendario";
-export type SavedTaskFilters = { query: string; projectId: string; assigneeId: string; status: string; list: TaskListKind | "" };
+export type TaskFilterStatus = TaskStatus | "atrasada";
+export type SavedTaskFilters = {
+  query: string;
+  projectIds: string[];
+  assigneeIds: string[];
+  statuses: TaskFilterStatus[];
+  lists: TaskListKind[];
+};
 export type CalendarCardField = "formato" | "etapa" | "responsavel" | "canal" | "link" | "comentarios";
 
 export type MemberPreferences = {
@@ -41,7 +48,7 @@ export function defaultPreferences(): MemberPreferences {
     taskColumnWidths: {},
     dateFormat: DEFAULT_DATE_FORMAT,
     showFinalized: false,
-    taskFilters: { query: "", projectId: "", assigneeId: "", status: "", list: "" },
+    taskFilters: { query: "", projectIds: [], assigneeIds: [], statuses: [], lists: [] },
     calendarCardFields: ["formato", "etapa", "responsavel", "link"],
   };
 }
@@ -71,12 +78,24 @@ function normalizeWidths(value: unknown): MemberPreferences["taskColumnWidths"] 
 }
 
 function normalizeFilters(value: unknown): SavedTaskFilters {
-  const empty: SavedTaskFilters = { query: "", projectId: "", assigneeId: "", status: "", list: "" };
+  const empty: SavedTaskFilters = { query: "", projectIds: [], assigneeIds: [], statuses: [], lists: [] };
   if (!value || typeof value !== "object" || Array.isArray(value)) return empty;
   const raw = value as Record<string, unknown>;
-  const text = (key: keyof SavedTaskFilters, max: number) => typeof raw[key] === "string" ? raw[key].slice(0, max) : "";
-  const list = text("list", 40);
-  return { query: text("query", 200), projectId: text("projectId", 80), assigneeId: text("assigneeId", 80), status: text("status", 80), list: TASK_LIST_KINDS.some((item) => item.value === list) ? list as TaskListKind : "" };
+  const text = (key: string, max: number) => typeof raw[key] === "string" ? raw[key].slice(0, max) : "";
+  const strings = (pluralKey: string, legacyKey: string, max: number) => {
+    const plural = raw[pluralKey];
+    const source = Array.isArray(plural) ? plural : text(legacyKey, max) ? [text(legacyKey, max)] : [];
+    return Array.from(new Set(source.filter((item): item is string => typeof item === "string" && item.length > 0).map((item) => item.slice(0, max)))).slice(0, 100);
+  };
+  const knownStatuses = new Set<string>([...TASK_STATUSES.map((item) => item.value), "atrasada"]);
+  const knownLists = new Set<string>(TASK_LIST_KINDS.map((item) => item.value));
+  return {
+    query: text("query", 200),
+    projectIds: strings("projectIds", "projectId", 80),
+    assigneeIds: strings("assigneeIds", "assigneeId", 80),
+    statuses: strings("statuses", "status", 80).filter((status): status is TaskFilterStatus => knownStatuses.has(status)),
+    lists: strings("lists", "list", 40).filter((list): list is TaskListKind => knownLists.has(list)),
+  };
 }
 
 const CALENDAR_FIELDS = new Set<CalendarCardField>(["formato", "etapa", "responsavel", "canal", "link", "comentarios"]);

@@ -28,6 +28,17 @@ function assinar(callback: () => void) {
 export function ThemeSwitch() {
   const tema = React.useSyncExternalStore(assinar, readTheme, () => "system" as Theme);
 
+  React.useEffect(() => {
+    const media = window.matchMedia?.("(prefers-color-scheme: dark)");
+    if (!media) return;
+    const acompanharSistema = () => {
+      if (readTheme() === "system") applyTheme("system");
+    };
+    acompanharSistema();
+    media.addEventListener("change", acompanharSistema);
+    return () => media.removeEventListener("change", acompanharSistema);
+  }, []);
+
   function trocar(proximo: Theme) {
     applyTheme(proximo);
     // localStorage não avisa a própria aba, só as outras — o evento próprio é

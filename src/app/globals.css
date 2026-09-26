@@ -115,7 +115,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, a:focus-visible { outline: 3px solid color-mix(in srgb, var(--brand) 70%, transparent); outline-offset: 2px; }
 h1, h2, h3, p { margin-top: 0; }
 h1 { margin-bottom: 8px; font-size: var(--vz-t-xl); font-weight: 660; line-height: 1.2; letter-spacing: -0.02em; }
-.eyebrow { display: block; color: var(--vz-brand-strong); font-size: var(--vz-t-tiny); font-weight: 700; text-transform: uppercase; letter-spacing: .1em; margin-bottom: 8px; }
+.eyebrow { display: block; color: var(--vz-brand-deep); font-size: var(--vz-t-tiny); font-weight: 700; text-transform: uppercase; letter-spacing: .1em; margin-bottom: 8px; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
 .ghost-button, .icon-button, .primary-button, .secondary-button, .danger-button {
@@ -417,7 +417,7 @@ a.upcoming-item { color: inherit; text-decoration: none; }
 .dash-alert-grid a:hover { border-color: var(--vz-brand-line); box-shadow: var(--vz-shadow-xs); }
 .dash-alert-grid a > span { display: grid; place-items: center; width: 30px; height: 30px; border-radius: var(--vz-r-sm); color: var(--vz-amber-ink); background: var(--vz-amber-bg); }
 .dash-alert-grid a.is-critical { border-color: var(--vz-red-line); background: var(--vz-red-bg); }
-.dash-alert-grid a.is-critical > span { color: var(--vz-red-ink); background: color-mix(in srgb, var(--vz-red-bg), white 32%); }
+.dash-alert-grid a.is-critical > span { color: var(--vz-red-ink); background: color-mix(in srgb, var(--vz-red-bg), var(--vz-panel) 32%); }
 .dash-alert-grid a > div { min-width: 0; display: flex; flex-direction: column; }
 .dash-alert-grid strong { color: var(--vz-amber-ink); font-size: 8px; font-weight: 770; letter-spacing: .04em; text-transform: uppercase; }
 .dash-alert-grid .is-critical strong { color: var(--vz-red-ink); }
@@ -860,6 +860,20 @@ a.upcoming-item { color: inherit; text-decoration: none; }
 .toolbar-menu { display: grid; gap: 12px; max-height: 70vh; overflow-y: auto; padding: 12px; }
 .toolbar-field { display: grid; gap: 5px; color: var(--muted-text); font-size: 9.5px; font-weight: 720; text-transform: uppercase; letter-spacing: .06em; }
 .toolbar-field select { width: 100%; text-transform: none; letter-spacing: normal; }
+.toolbar-multifilter { border: 1px solid var(--line); border-radius: var(--vz-r-sm); background: var(--vz-panel); }
+.toolbar-multifilter[open] { border-color: var(--vz-brand-line); }
+.toolbar-multifilter summary { min-height: 44px; padding: 8px 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--dark); cursor: pointer; list-style: none; }
+.toolbar-multifilter summary::-webkit-details-marker { display: none; }
+.toolbar-multifilter summary > span { min-width: 0; display: grid; gap: 2px; }
+.toolbar-multifilter summary b { color: var(--muted-text); font-size: 9.5px; font-weight: 720; letter-spacing: .06em; text-transform: uppercase; }
+.toolbar-multifilter summary small { overflow: hidden; color: var(--dark); font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.toolbar-multifilter summary > svg { flex: none; color: var(--muted-text); transition: transform var(--vz-fast) var(--vz-ease); }
+.toolbar-multifilter[open] summary > svg { transform: rotate(180deg); }
+.toolbar-multifilter__options { max-height: 190px; padding: 6px 10px 10px; display: grid; gap: 7px; overflow-y: auto; border-top: 1px solid var(--line); }
+.toolbar-multifilter__options > button { width: fit-content; padding: 4px 0; border: 0; background: none; color: var(--brand-strong); font: inherit; font-size: 10px; font-weight: 700; cursor: pointer; }
+.toolbar-multifilter__options > div { display: grid; gap: 7px; }
+.toolbar-multifilter__group { padding-top: 5px; color: var(--muted-text); font-size: 9px; font-weight: 720; letter-spacing: .06em; text-transform: uppercase; }
+.toolbar-multifilter__options .vz-check { font-size: 11px; }
 .toolbar-section { display: grid; gap: 3px; }
 .toolbar-section + .toolbar-section { padding-top: 11px; border-top: 1px solid var(--line); }
 .toolbar-section-label { padding-bottom: 3px; color: var(--muted-text); font-size: 9.5px; font-weight: 720; text-transform: uppercase; letter-spacing: .06em; }

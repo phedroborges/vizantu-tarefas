@@ -47,11 +47,6 @@ function dueLabel(task: Task): string {
   return isOverdue(task.dueDate, task.status) ? `${task.dueDate} (atrasada)` : task.dueDate;
 }
 
-// Filtro = status exato (dos 12) ou "atrasada" — mais preciso que filtrar só por grupo.
-function statusFilterValue(task: Task): string {
-  return isOverdue(task.dueDate, task.status) ? "atrasada" : task.status;
-}
-
 function InlineStatusCell({ task, colorByStatus, onChange }: { task: Task; colorByStatus: Map<TaskStatus, string>; onChange: (status: TaskStatus, origin?: HTMLElement | null) => void }) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   return (
@@ -201,7 +196,7 @@ export function TarefasView({
     return () => { active = false; };
   }, [hasSavedPreferences, replacePreferences]);
   const { taskView: view, taskColumns: visibleColumns, taskColumnWidths, dateFormat, showFinalized, taskFilters, calendarCardFields } = preferences;
-  const { query, projectId: projectFilter, assigneeId: assigneeFilter, status: statusFilter, list: listFilter } = taskFilters;
+  const { query, projectIds: projectFilters, assigneeIds: assigneeFilters, statuses: statusFilters, lists: listFilters } = taskFilters;
   const needsCounts = view === "calendario" && calendarCardFields.includes("comentarios") && tasks.some((task) => task.preview && task.commentCount === undefined);
   useEffect(() => {
     if (!needsCounts) return;
@@ -253,11 +248,11 @@ export function TarefasView({
     return tasks.filter((task) => {
       // Finalizadas e descartadas saem da fila, mas continuam acessíveis
       // pelo filtro de status, pelo histórico ou pelo link direto.
-      if (CLOSED_TASK_STATUSES.includes(task.status) && !showFinalized && statusFilter !== task.status) return false;
-      if (projectFilter && task.projectId !== projectFilter) return false;
-      if (assigneeFilter && task.assigneeId !== assigneeFilter) return false;
-      if (statusFilter && statusFilterValue(task) !== statusFilter) return false;
-      if (listFilter && !task.lists.includes(listFilter)) return false;
+      if (CLOSED_TASK_STATUSES.includes(task.status) && !showFinalized && !statusFilters.includes(task.status)) return false;
+      if (projectFilters.length && !projectFilters.includes(task.projectId)) return false;
+      if (assigneeFilters.length && (!task.assigneeId || !assigneeFilters.includes(task.assigneeId))) return false;
+      if (statusFilters.length && !statusFilters.some((status) => status === "atrasada" ? isOverdue(task.dueDate, task.status) : task.status === status)) return false;
+      if (listFilters.length && !task.lists.some((list) => listFilters.includes(list))) return false;
       if (normalized) {
         const assigneeName = task.assigneeId ? memberById.get(task.assigneeId)?.name || "" : "";
         const channelNames = task.channelTagIds.map((id) => channelTagById.get(id)?.label || "").join(" ");
@@ -265,7 +260,7 @@ export function TarefasView({
       }
       return true;
     });
-  }, [tasks, deferredQuery, projectFilter, assigneeFilter, statusFilter, listFilter, showFinalized, memberById, channelTagById]);
+  }, [tasks, deferredQuery, projectFilters, assigneeFilters, statusFilters, listFilters, showFinalized, memberById, channelTagById]);
 
   // A tarefa aberta no modal nunca some da lista por baixo dele. Trocar o
   // status ou o responsável dentro do modal faz a tarefa deixar de casar com
@@ -293,7 +288,7 @@ export function TarefasView({
   // Todos os resultados continuam filtráveis e no calendário. A tabela monta
   // apenas 50 linhas por página, não milhares de seletores de uma vez.
   const [tablePage, setTablePage] = useState({ key: "", page: 0 });
-  const pageKey = JSON.stringify([deferredQuery, projectFilter, assigneeFilter, statusFilter, listFilter, showFinalized]);
+  const pageKey = JSON.stringify([deferredQuery, projectFilters, assigneeFilters, statusFilters, listFilters, showFinalized]);
   const pageCount = Math.max(1, Math.ceil(visibleTasks.length / 50));
   const currentPage = tablePage.key === pageKey ? Math.min(tablePage.page, pageCount - 1) : 0;
   const tableTasks = visibleTasks.slice(currentPage * 50, (currentPage + 1) * 50);
@@ -308,12 +303,12 @@ export function TarefasView({
       return "O usuário está com o modal de criação de uma nova tarefa aberto, ainda sem nome definido.";
     }
     const filterParts: string[] = [];
-    if (projectFilter) filterParts.push(`projeto ${projectById.get(projectFilter)?.name || projectFilter}`);
-    if (assigneeFilter) filterParts.push(`responsável ${memberById.get(assigneeFilter)?.name || assigneeFilter}`);
-    if (statusFilter) filterParts.push(`status ${statusFilter}`);
+    if (projectFilters.length) filterParts.push(`projetos ${projectFilters.map((id) => projectById.get(id)?.name || id).join(" ou ")}`);
+    if (assigneeFilters.length) filterParts.push(`responsáveis ${assigneeFilters.map((id) => memberById.get(id)?.name || id).join(" ou ")}`);
+    if (statusFilters.length) filterParts.push(`status ${statusFilters.join(" ou ")}`);
     const filterText = filterParts.length ? ` filtrada por ${filterParts.join(", ")}` : "";
     return `O usuário está vendo a lista de tarefas${filterText}, na visão de ${view === "lista" ? "lista" : "calendário"}.`;
-  }, [selectedTask, projectFilter, assigneeFilter, statusFilter, view, projectById, memberById]);
+  }, [selectedTask, projectFilters, assigneeFilters, statusFilters, view, projectById, memberById]);
   useSetPageDetail(pageDetail);
 
   function showToast(message: string) {
@@ -390,7 +385,7 @@ export function TarefasView({
   async function quickAdd(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const name = quickAddTitle.trim();
-    const projectId = projectFilter || initialProjects[0]?.id;
+    const projectId = projectFilters[0] || initialProjects[0]?.id;
     if (!name || !projectId || isQuickAdding) return;
     setIsQuickAdding(true);
     const response = await fetch("/api/tasks", {
@@ -531,14 +526,14 @@ export function TarefasView({
 
         <Card className="task-workspace">
           <TaskToolbar
-            filters={{ query, projectId: projectFilter, assigneeId: assigneeFilter, status: statusFilter, list: listFilter, showFinalized }}
+            filters={{ query, projectIds: projectFilters, assigneeIds: assigneeFilters, statuses: statusFilters, lists: listFilters, showFinalized }}
             onFiltersChange={(next) => {
               const filterPatch: Partial<MemberPreferences["taskFilters"]> = {};
               if (next.query !== undefined) filterPatch.query = next.query;
-              if (next.projectId !== undefined) filterPatch.projectId = next.projectId;
-              if (next.assigneeId !== undefined) filterPatch.assigneeId = next.assigneeId;
-              if (next.status !== undefined) filterPatch.status = next.status;
-              if (next.list !== undefined) filterPatch.list = next.list;
+              if (next.projectIds !== undefined) filterPatch.projectIds = next.projectIds;
+              if (next.assigneeIds !== undefined) filterPatch.assigneeIds = next.assigneeIds;
+              if (next.statuses !== undefined) filterPatch.statuses = next.statuses;
+              if (next.lists !== undefined) filterPatch.lists = next.lists;
               if (Object.keys(filterPatch).length) setTaskFilters(filterPatch);
               if (next.showFinalized !== undefined) setShowFinalized(next.showFinalized);
             }}
@@ -655,7 +650,7 @@ export function TarefasView({
           formatTags={formatTags}
           channelTags={channelTags}
           statusColors={statusColors}
-          defaultProjectId={projectFilter || initialProjects[0]?.id || ""}
+          defaultProjectId={projectFilters[0] || initialProjects[0]?.id || ""}
           currentUserId={currentUserId}
           onClose={() => setSelectedTask(null)}
           onCreated={handleCreated}
@@ -671,7 +666,7 @@ export function TarefasView({
           formatTags={formatTags}
           channelTags={channelTags}
           statusColors={statusColors}
-          defaultProjectId={projectFilter || initialProjects[0]?.id || ""}
+          defaultProjectId={projectFilters[0] || initialProjects[0]?.id || ""}
           canEdit={canEdit}
           canDelete={canDelete}
           currentUserId={currentUserId}
