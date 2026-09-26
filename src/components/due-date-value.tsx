@@ -5,8 +5,8 @@ import { formatTaskDate, type DateFormatKey } from "@/lib/date-format";
 import { overdueDays } from "@/lib/dates";
 import type { TaskStatus } from "@/lib/types";
 
-// Atraso só é cobrado enquanto a demanda está em criação. Enviar para
-// aprovação encerra a etapa do diretor, mesmo se a publicação acontecer depois.
+// Atraso é cobrado em toda etapa ainda não entregue. Enviar para aprovação
+// encerra o prazo operacional, mesmo se a publicação acontecer depois.
 export function DueDateValue({
   dueDate,
   status,

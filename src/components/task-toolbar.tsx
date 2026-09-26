@@ -119,7 +119,7 @@ export function TaskToolbar({
             {activeCount ? <span className="toolbar-count">{activeCount}</span> : null}
           </PopoverTrigger>
           <PopoverContent className="!w-72 !p-0 !gap-0" align="end">
-            <div className="toolbar-menu">
+            <div className="toolbar-menu task-filter-menu">
               <MultiFilterField label="Projeto" values={filters.projectIds} options={projects.map((project) => ({ value: project.id, label: project.name }))} onChange={(projectIds) => onFiltersChange({ projectIds })} />
               <MultiFilterField label="Responsável" values={filters.assigneeIds} options={members.map((member) => ({ value: member.id, label: member.name }))} onChange={(assigneeIds) => onFiltersChange({ assigneeIds })} />
               <MultiFilterField
@@ -134,7 +134,7 @@ export function TaskToolbar({
               <MultiFilterField label="Lista" values={filters.lists} options={TASK_LIST_KINDS.map((kind) => ({ value: kind.value, label: kind.label }))} onChange={(lists) => onFiltersChange({ lists: lists as SavedTaskFilters["lists"] })} />
               <Button type="button" variant={filters.showFinalized ? "soft" : "secondary"} onClick={() => onFiltersChange({ showFinalized: !filters.showFinalized })} aria-pressed={filters.showFinalized}>
                 {filters.showFinalized ? <EyeOff size={14} /> : <Eye size={14} />}
-                {filters.showFinalized ? "Ocultar finalizadas e descartadas" : "Mostrar finalizadas e descartadas"}
+                <span>{filters.showFinalized ? "Ocultar finalizadas e descartadas" : "Mostrar finalizadas e descartadas"}</span>
               </Button>
               {activeCount ? (
                 <Button

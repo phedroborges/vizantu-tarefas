@@ -46,7 +46,7 @@ describe("atraso mora no prazo, não no status", () => {
 
   it("5. nos status já entregues a data vencida não vira atraso", () => {
     // Mesma regra de DONE_STATUSES: o que falta é fator externo.
-    for (const status of ["aprovado", "problema", "finalizado"] as TaskStatus[]) {
+    for (const status of ["para_aprovacao", "aprovado", "problema", "finalizado"] as TaskStatus[]) {
       expect(prazo(VENCIDA, status), status).not.toContain("atrasada");
     }
   });

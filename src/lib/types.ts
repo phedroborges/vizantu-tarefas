@@ -104,11 +104,15 @@ export const TASK_STATUSES: { value: TaskStatus; label: string; group: StatusGro
   { value: "finalizado", label: "Finalizado", group: "feita" },
 ];
 
-// Encerradas saem da fila padrão. A produção termina ao enviar para aprovação;
-// aprovação e publicação posteriores não prolongam o atraso do diretor.
+// Encerradas saem da fila padrão. Para prazo, a tarefa fica em aberto até ser
+// enviada para aprovação: fila, captação, criação, revisão e ajuste podem
+// atrasar. Antes só "em_criacao" era cobrado, então uma tarefa vencida em
+// Ajuste ou Aguardando informação parecia estar em dia na lista inteira.
 export const CLOSED_TASK_STATUSES: TaskStatus[] = ["problema", "finalizado"];
 export const DONE_STATUSES: TaskStatus[] = ["para_aprovacao", "aprovado", "problema", "finalizado"];
-export const OVERDUE_STATUSES: TaskStatus[] = ["em_criacao"];
+export const OVERDUE_STATUSES: TaskStatus[] = TASK_STATUSES
+  .map(({ value }) => value)
+  .filter((status) => !DONE_STATUSES.includes(status));
 
 // ---------- Cor por etapa do status (customizável, ver status_colors) ----------
 // Uma escala por grupo, escurecendo conforme a etapa avança dentro dele:
