@@ -7,6 +7,7 @@ import { useState } from "react";
 import { AiAssistantLauncher } from "@/components/ai-assistant-launcher";
 import { AnnouncementComposer } from "@/components/announcement-composer";
 import { AnnouncementGate } from "@/components/announcement-gate";
+import { LiveStatus } from "@/components/live-status";
 import { NotificationBell } from "@/components/notification-bell";
 import { ThemeSwitch } from "@/components/theme-switch";
 import { Avatar } from "@/components/avatar";
@@ -113,7 +114,7 @@ export function AdminShell({
         </div>
       </aside>
       <div className="admin-main">
-        <div className="admin-global-actions"><NotificationBell />{podeGerenciarEquipe(user.role) ? <AnnouncementComposer currentUserRole={user.role} /> : null}</div>
+        <div className="admin-global-actions"><LiveStatus /><NotificationBell />{podeGerenciarEquipe(user.role) ? <AnnouncementComposer currentUserRole={user.role} /> : null}</div>
         {/* Enviar aviso é ação de qualquer lugar, não de uma tela específica. */}
         <header className="admin-mobile-bar">
           <button type="button" aria-label="Abrir menu" onClick={() => setMenuOpen(true)}><Menu size={21} /></button>

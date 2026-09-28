@@ -2499,3 +2499,24 @@ a.upcoming-item { color: inherit; text-decoration: none; }
   .guia-fontes__acoes { width: 100%; }
 }
 .guia-fonte-form__audio { display: flex; align-items: center; gap: var(--vz-s-3); margin-top: var(--vz-s-2); flex-wrap: wrap; }
+
+/* ---------- Indicador de dados ao vivo ---------- */
+/* Fica ao lado do sino porque é informação de estado da tela inteira, não de
+   uma seção. Discreto por padrão: só ganha cor quando está atualizando. */
+.live-status {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 30px; padding: 0 10px;
+  border: 1px solid var(--vz-line); border-radius: var(--vz-r-pill);
+  background: var(--vz-panel); color: var(--vz-text-muted);
+  font-size: var(--vz-t-tiny, 11px); font-weight: 600; white-space: nowrap;
+  cursor: pointer; transition: color .15s ease, border-color .15s ease;
+}
+.live-status:hover:not(:disabled) { color: var(--vz-text); border-color: var(--vz-line-strong, var(--vz-line)); }
+.live-status:disabled { cursor: default; }
+.live-status--pending { color: var(--vz-brand); border-color: var(--vz-brand-line, var(--vz-line)); }
+.live-status--pending svg { animation: vz-spin 1s linear infinite; }
+
+@media (max-width: 640px) {
+  .live-status span { display: none; }
+  .live-status { padding: 0 8px; }
+}
