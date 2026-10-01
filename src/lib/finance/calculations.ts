@@ -1,6 +1,6 @@
 import { derivedFields, parseFaixas } from "../contract-render";
 import type { Contract, Member, Tag, Task } from "../types";
-import { CARGOS_QUE_PRODUZEM, CATEGORIES, type ClientMargin, type ContractSummary, type Entry, type EntryInput, type FinanceData, type ProductionReview, type RateKey, type Settings } from "./types";
+import { CARGOS_QUE_PRODUZEM, CATEGORIES, type ClientMargin, type ContractSummary, type Entry, type EntryInput, type FinanceData, type RateKey, type Settings } from "./types";
 
 const localDateFormatter = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" });
 function localDate(timestamp: string): string {
@@ -122,71 +122,91 @@ export function priceSuggestion(cost: number, tax: number | null, margin: number
   return { floor, suggested: Math.ceil(floor * (score !== null && score >= 9 ? 1 + promoterPremium / 100 : 1)), note: score === null ? "Sem avaliação: preço por custo e margem." : score <= 6 ? "Priorize corrigir a experiência antes de reajustar." : "Simulação comercial; não altera o contrato." };
 }
 
-// ---------- Quem recebe pela tarefa ----------
-// O crédito é do último diretor responsável até a entrega. Tempo de posse não
-// mede produção. A passagem posterior para social media não transfere o crédito.
-export function creditedProducer(task: Task, eligible: Set<string>, endAt: number): string | null {
-  const changes = task.comments
-    .filter((comment) => comment.kind === "activity" && comment.fieldKey === "assigneeId")
-    .map((comment) => ({ at: Date.parse(comment.createdAt), to: comment.newValue as string | null, from: comment.oldValue as string | null }))
-    .filter((change) => Number.isFinite(change.at))
-    .sort((a, b) => a.at - b.at);
-  const initial = changes.length ? changes[0].from : task.assigneeId;
-  let producer = initial && eligible.has(initial) ? initial : null;
-  for (const change of changes) {
-    if (change.at > endAt) break;
-    if (change.to && eligible.has(change.to)) producer = change.to;
+// Uma tarefa só entra no financeiro quando o estado ATUAL é Aprovado ou
+// Finalizado. O favorecido também é sempre o responsável ATUAL. Isso mantém o
+// painel explicável olhando a própria tarefa, sem reconstruir uma autoria
+// histórica que pode divergir do responsável visível hoje.
+const PAYABLE_STATUSES = new Set<Task["status"]>(["aprovado", "finalizado"]);
+
+// A competência começa quando a tarefa entrou na sequência final em que está
+// hoje. Aprovado -> Finalizado é a mesma sequência; Aprovado -> Problema ->
+// Aprovado começa outra e usa a segunda aprovação.
+function payableEnteredAt(task: Task): string | undefined {
+  if (!PAYABLE_STATUSES.has(task.status)) return undefined;
+  const history = task.statusHistory
+    .filter((event) => Number.isFinite(Date.parse(event.enteredAt)))
+    .sort((a, b) => Date.parse(a.enteredAt) - Date.parse(b.enteredAt));
+  let index = -1;
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (history[i].status === task.status) { index = i; break; }
   }
-  return producer;
+  if (index < 0) {
+    for (let i = history.length - 1; i >= 0; i--) {
+      if (PAYABLE_STATUSES.has(history[i].status)) { index = i; break; }
+    }
+  }
+  if (index >= 0) {
+    while (index > 0 && PAYABLE_STATUSES.has(history[index - 1].status)) index--;
+    return history[index].enteredAt;
+  }
+
+  // Atividades antigas são o fallback quando o status_history está incompleto.
+  const activities = task.comments
+    .filter((comment) => comment.kind === "activity" && comment.fieldKey === "status" && Number.isFinite(Date.parse(comment.createdAt)))
+    .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+  index = -1;
+  for (let i = activities.length - 1; i >= 0; i--) {
+    if (activities[i].newValue === task.status) { index = i; break; }
+  }
+  if (index < 0) {
+    for (let i = activities.length - 1; i >= 0; i--) {
+      if (PAYABLE_STATUSES.has(activities[i].newValue as Task["status"])) { index = i; break; }
+    }
+  }
+  if (index < 0) return undefined;
+  while (index > 0 && PAYABLE_STATUSES.has(activities[index - 1].newValue as Task["status"])) index--;
+  return activities[index].createdAt;
 }
 
-const DELIVERY_STATUSES = new Set<Task["status"]>(["para_aprovacao", "aprovado", "finalizado"]);
-
-// `rule` guarda por que a peça custa o que custa. Sem isso o extrato mostra um
-// valor e ninguém consegue conferir de onde ele saiu — e conferência que não dá
-// para refazer na mão não é conferência, é confiança.
+// `rule` guarda por que a peça custa o que custa, para o extrato explicar o
+// valor sem depender de cálculo manual.
 export type PriceRule = { pack: boolean; packSize: number; unit: number; extraCards: number; extraCardValue: number };
-export type ProductionLine = { taskStatus?: Task["status"]; taskId: string; name: string; projectId: string; memberId?: string; producerId: string | null; rateKey: RateKey | null; package: boolean; cards: number; dueDate: string; deliveredDate: string | null; late: boolean; deliveredLate: boolean; qualityProblem: boolean; base: number; total: number; penalty: boolean; ready: boolean; pendencia: string | null; rule: PriceRule | null };
+export type ProductionLine = { taskStatus?: Task["status"]; taskId: string; name: string; projectId: string; memberId?: string; producerId: string | null; rateKey: RateKey | null; package: boolean; cards: number; dueDate: string; deliveredDate: string | null; late: boolean; deliveredLate: boolean; qualityProblem: boolean; base: number; total: number; penalty: boolean; counted: boolean; ready: boolean; pendencia: string | null; rule: PriceRule | null };
 
-export function productionLines(tasks: Task[], tags: Tag[], reviews: ProductionReview[], settings: Settings, members: Member[]): ProductionLine[] {
+export function productionLines(tasks: Task[], tags: Tag[], settings: Settings, members: Member[]): ProductionLine[] {
   const labels = new Map(tags.map((tag) => [tag.id, tag.label]));
-  const reviewById = new Map(reviews.map((review) => [review.taskId, review]));
   const produzem = new Set(members.filter((member) => (CARGOS_QUE_PRODUZEM as readonly string[]).includes(member.role)).map((member) => member.id));
   const rows = tasks.map((task) => {
-    const review = reviewById.get(task.id);
     const format = [...task.formatTagIds.map((id) => labels.get(id) || ""), task.name].join(" ").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-    const rateKey: RateKey | null = review?.rateKey || (/manual.*marca/.test(format) ? "manual" : /canva|apresentacao/.test(format) ? "canva" : /carross/.test(format) ? "carrossel" : /reels?|video/.test(format) ? "reels" : /estatico|feed|story/.test(format) ? "estatico" : null);
-    const deliveryEvent = task.statusHistory
-      .filter((event) => DELIVERY_STATUSES.has(event.status) && Number.isFinite(Date.parse(event.enteredAt)))
-      .sort((a, b) => Date.parse(a.enteredAt) - Date.parse(b.enteredAt))[0];
-    // Atividades antigas também são evidência quando o histórico está incompleto.
-    const deliveryActivity = task.comments
-      .filter((comment) => comment.kind === "activity" && comment.fieldKey === "status" && DELIVERY_STATUSES.has(comment.newValue as Task["status"]) && Number.isFinite(Date.parse(comment.createdAt)))
-      .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))[0];
-    const deliveredAt = deliveryEvent?.enteredAt || deliveryActivity?.createdAt;
-    const delivered = review?.deliveredDate || (deliveredAt ? localDate(deliveredAt) : null);
-    const endAt = deliveredAt ? Date.parse(deliveredAt) : delivered ? Date.parse(`${delivered}T23:59:59.999-03:00`) : Date.now();
-    const snapshot = deliveryEvent?.assigneeId;
-    const producerId = delivered
-      ? snapshot && produzem.has(snapshot) ? snapshot : creditedProducer(task, produzem, endAt)
-      : task.assigneeId && produzem.has(task.assigneeId) ? task.assigneeId : null;
+    const rateKey: RateKey | null = /manual.*marca/.test(format) ? "manual" : /canva|apresentacao/.test(format) ? "canva" : /carross/.test(format) ? "carrossel" : /reels?|video/.test(format) ? "reels" : /estatico|feed|story/.test(format) ? "estatico" : null;
+    const payable = PAYABLE_STATUSES.has(task.status);
+    const deliveredAt = payableEnteredAt(task);
+    const delivered = payable && deliveredAt ? localDate(deliveredAt) : null;
+    const producerId = task.assigneeId && produzem.has(task.assigneeId) ? task.assigneeId : null;
     const dueDate = daysAdd(localDate(task.createdAt), task.captacaoId ? settings.packageDays : settings.soloDays, settings.deadlineMode === "business");
     const deliveredLate = Boolean(delivered && delivered > dueDate);
     const late = !delivered && task.status === "em_criacao" && dueDate < localDate(new Date().toISOString());
-    const qualityProblem = review?.qualityProblem || false;
-    const pendencia = !rateKey ? "Sem formato reconhecido: confira o tipo da peça."
-      : !delivered ? DELIVERY_STATUSES.has(task.status) ? "Tarefa entregue sem data registrada: informe a data na conferência." : "Sem evidência de entrega: a tarefa ainda não passou por aprovação."
-      : !producerId ? "Sem diretor criativo na tarefa: ninguém que produz peça foi responsável por ela."
+    const qualityProblem = false;
+    const counted = payable && Boolean(delivered);
+    const pendencia = !payable ? "Só tarefas aprovadas ou finalizadas entram no financeiro."
+      : !delivered ? "A tarefa não tem data registrada de aprovação ou finalização."
+      : !producerId ? "O responsável atual não é um diretor criativo."
+      : !rateKey ? "A tarefa não tem um formato financeiro reconhecido."
       : null;
-    return { taskStatus: task.status, taskId: task.id, name: task.name, projectId: task.projectId, memberId: task.assigneeId, producerId, rateKey, package: Boolean(task.captacaoId), cards: review?.cards ?? 8, dueDate, deliveredDate: delivered,
-      late, deliveredLate, qualityProblem, base: 0, total: 0, penalty: settings.penaltyMode === "both" ? deliveredLate && qualityProblem : deliveredLate || qualityProblem, ready: !pendencia, pendencia, rule: null as PriceRule | null,
+    return { taskStatus: task.status, taskId: task.id, name: task.name, projectId: task.projectId, memberId: task.assigneeId, producerId, rateKey, package: Boolean(task.captacaoId), cards: 8, dueDate, deliveredDate: delivered,
+      late, deliveredLate, qualityProblem, base: 0, total: 0, penalty: settings.penaltyMode === "both" ? deliveredLate && qualityProblem : deliveredLate || qualityProblem, counted, ready: counted && !pendencia, pendencia, rule: null as PriceRule | null,
       group: `${task.projectId}:${task.captacaoId || task.id}:${producerId}:${rateKey}` };
   });
   const groups = new Map<string, typeof rows>();
-  for (const row of rows) { const group = groups.get(row.group) || []; group.push(row); groups.set(row.group, group); }
+  for (const row of rows) {
+    if (!row.ready) continue;
+    const group = groups.get(row.group) || [];
+    group.push(row);
+    groups.set(row.group, group);
+  }
   for (const group of groups.values()) group.sort((a, b) => a.taskId.localeCompare(b.taskId));
   for (const row of rows) {
-    if (!row.rateKey) continue;
+    if (!row.ready || !row.rateKey) continue;
     const rate = settings.rates[row.rateKey];
     const group = groups.get(row.group)!;
     const rank = group.indexOf(row);
@@ -290,10 +310,9 @@ export function contractAlerts(contracts: Contract[], today: string, within = 30
 
 // ---------- Fechamento por diretor criativo ----------
 //
-// A conferência é peça a peça, e precisa ser: é ali que se corrige formato, card
-// e problema de qualidade. Mas ninguém paga peça a peça — paga-se uma pessoa,
-// uma vez no mês. Sem esta soma, fechar o mês de três pessoas com dezenas de
-// entregas vira contagem manual, que é exatamente onde o erro entra.
+// O fechamento é calculado peça a peça, mas ninguém paga peça a peça: paga-se
+// uma pessoa, uma vez no mês. Sem esta soma, fechar o mês de três pessoas com
+// dezenas de entregas vira contagem manual, que é exatamente onde o erro entra.
 //
 // "Já lançado" vem do lançamento gravado, não da tabela de preços: mudar a
 // tabela depois não pode reescrever o que já foi combinado e registrado. "A
@@ -301,7 +320,7 @@ export function contractAlerts(contracts: Contract[], today: string, within = 30
 // O fechamento de um diretor criativo no mês: quantas peças, de que tipo,
 // quanto já virou despesa, quanto falta lançar e o extrato item a item.
 export type ProducerClosing = {
-  producerId: string; pieces: number; penalized: number; lines: ProductionLine[];
+  producerId: string; pieces: number; unpriced: number; penalized: number; lines: ProductionLine[];
   byFormat: { rateKey: RateKey; count: number; total: number }[];
   launched: number; pending: number; total: number; pendingTaskIds: string[];
 };
@@ -312,7 +331,7 @@ export function producerClosing(lines: ProductionLine[], entries: Entry[]): Prod
   }
   const porPessoa = new Map<string, ProductionLine[]>();
   for (const line of lines) {
-    if (!line.producerId || !line.ready) continue;
+    if (!line.producerId || !line.counted) continue;
     porPessoa.set(line.producerId, [...(porPessoa.get(line.producerId) ?? []), line]);
   }
   return [...porPessoa.entries()].map(([producerId, doDiretor]) => {
@@ -320,6 +339,7 @@ export function producerClosing(lines: ProductionLine[], entries: Entry[]): Prod
     let launched = 0, pending = 0;
     const pendingTaskIds: string[] = [];
     for (const line of doDiretor) {
+      if (!line.ready || !line.rateKey) continue;
       const registro = lancado.get(line.taskId);
       const valor = registro ? registro.amount : line.total;
       if (registro) launched += valor; else { pending += valor; pendingTaskIds.push(line.taskId); }
@@ -327,7 +347,7 @@ export function producerClosing(lines: ProductionLine[], entries: Entry[]): Prod
       formatos.set(line.rateKey!, { count: atual.count + 1, total: atual.total + valor });
     }
     return {
-      producerId, pieces: doDiretor.length, penalized: doDiretor.filter((line) => line.penalty).length,
+      producerId, pieces: doDiretor.length, unpriced: doDiretor.filter((line) => !line.ready).length, penalized: doDiretor.filter((line) => line.ready && line.penalty).length,
       lines: [...doDiretor].sort((a, b) => (a.deliveredDate ?? "").localeCompare(b.deliveredDate ?? "") || a.name.localeCompare(b.name)),
       byFormat: [...formatos.entries()].map(([rateKey, dados]) => ({ rateKey, ...dados })).sort((a, b) => b.total - a.total),
       launched, pending, total: launched + pending, pendingTaskIds,
@@ -336,18 +356,18 @@ export function producerClosing(lines: ProductionLine[], entries: Entry[]): Prod
 }
 
 
-// Todos os diretores aparecem, inclusive quem tem zero entregas ou itens sem
-// formato. Pendências ficam separadas do valor disponível para fechamento.
+// Todos os diretores aparecem. A contagem do mês usa somente tarefas cujo
+// status atual é aprovado/finalizado e sempre atribui ao responsável atual.
 export function productionRoster(lines: ProductionLine[], entries: Entry[], members: Member[], month: string) {
-  const delivered = lines.filter((line) => line.deliveredDate?.startsWith(month));
+  const delivered = lines.filter((line) => line.counted && line.deliveredDate?.startsWith(month));
   const closings = new Map(producerClosing(delivered, entries).map((closing) => [closing.producerId, closing]));
   return members.filter((member) => (CARGOS_QUE_PRODUZEM as readonly string[]).includes(member.role)).map((member) => {
     const own = lines.filter((line) => line.producerId === member.id);
     const done = delivered.filter((line) => line.producerId === member.id);
     const closing = closings.get(member.id);
     return { memberId: member.id, name: member.name, active: member.active,
-      delivered: done.length, awaitingDate: own.filter((line) => !line.deliveredDate && line.taskStatus && DELIVERY_STATUSES.has(line.taskStatus)).length, awaitingReview: done.filter((line) => !line.ready).length,
-      inProgress: own.filter((line) => !line.deliveredDate && line.taskStatus !== "problema" && (!line.taskStatus || !DELIVERY_STATUSES.has(line.taskStatus))).length,
+      delivered: done.length, unpriced: done.filter((line) => !line.ready).length,
+      inProgress: own.filter((line) => !line.counted && line.taskStatus !== "problema" && (!line.taskStatus || !PAYABLE_STATUSES.has(line.taskStatus))).length,
       lastDelivery: done.map((line) => line.deliveredDate!).sort().at(-1) ?? null,
       total: closing?.total ?? 0, launched: closing?.launched ?? 0, pending: closing?.pending ?? 0,
       pendingPieces: closing?.pendingTaskIds.length ?? 0,

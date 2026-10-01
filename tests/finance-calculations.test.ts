@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { clientMargins, contractAlerts, contractEntries, contractSummaries, contractedByMonth, creditedProducer, growthProjection, metrics, monthAdd, producerClosing, productionLines, productionRoster, priceSuggestion, recurringEntries, validDate } from "../src/lib/finance/calculations";
+import { clientMargins, contractAlerts, contractEntries, contractSummaries, contractedByMonth, growthProjection, metrics, monthAdd, producerClosing, productionLines, productionRoster, priceSuggestion, recurringEntries, validDate } from "../src/lib/finance/calculations";
 import { DEFAULT_SETTINGS, type Entry } from "../src/lib/finance/types";
-import type { Comment, Contract, Member, Project, Task, UserRole } from "../src/lib/types";
+import type { Contract, Member, Project, Task, UserRole } from "../src/lib/types";
 const entry = (patch: Partial<Entry> = {}): Entry => ({ id: "e1", direction: "income", category: "servicos", description: "Mensalidade", amount: 100000, competence: "2026-09", projectId: "p1", memberId: null, recurring: true, seriesId: "s1", sourceKey: null, cancelled: false, notes: "", createdAt: "2026-09-01", ...patch });
 const contract = (patch: Partial<Contract> = {}): Contract => ({ id: "contract", projectId: "p1", title: "Gestão", templateId: "gestao_marca", paymentMode: "pre", paymentStructure: "mensal", status: "assinado", fields: { valor_mensal: "2.000,00", vigencia_inicio: "2026-09-01", vigencia_meses: "3", dia_vencimento: "10", data_assinatura: "2026-08-20" }, body: "", createdAt: "", updatedAt: "", ...patch });
 const base = { entries: [], settings: { ...DEFAULT_SETTINGS, taxRate: 10 } };
@@ -9,8 +9,7 @@ const SEM_IMPOSTO = { ...DEFAULT_SETTINGS, taxRate: null };
 const quem = (id: string, role: UserRole = "diretor_criativo"): Member => ({ id, name: id, email: `${id}@v.com`, role, aiEnabled: false, active: true, createdAt: "", updatedAt: "" });
 const equipe: Member[] = [quem("member"), quem("a"), quem("b"), quem("social", "social_media"), quem("dono", "dono")];
 const projeto = (id: string): Project => ({ id, name: id, status: "ativo", createdAt: "", updatedAt: "" });
-const troca = (de: string | null, para: string | null, createdAt: string): Comment => ({ id: `c${createdAt}`, author: "Sistema", text: "", createdAt, kind: "activity", fieldKey: "assigneeId", oldValue: de, newValue: para });
-function task(i: number, patch: Partial<Task> = {}): Task { return { id: `t${i}`, projectId: "p1", name: "Reels", kind: "conteudo", createdAt: "2026-09-01T12:00:00Z", updatedAt: "2026-09-01T12:00:00Z", status: "aprovado", statusHistory: [{ status: "para_aprovacao", enteredAt: "2026-09-04T12:00:00Z", exitedAt: null }], images: [], formatTagIds: [], channelTagIds: [], categoryTagIds: [], lists: [], comments: [], assigneeId: "member", captacaoId: "cap", ...patch }; }
+function task(i: number, patch: Partial<Task> = {}): Task { return { id: `t${i}`, projectId: "p1", name: "Reels", kind: "conteudo", createdAt: "2026-09-01T12:00:00Z", updatedAt: "2026-09-01T12:00:00Z", status: "aprovado", statusHistory: [{ status: "aprovado", enteredAt: "2026-09-04T12:00:00Z", exitedAt: null }], images: [], formatTagIds: [], channelTagIds: [], categoryTagIds: [], lists: [], comments: [], assigneeId: "member", captacaoId: "cap", ...patch }; }
 
 describe("contratos e recorrência", () => {
   it("gera uma parcela por competência, sem inventar vencimento", () => {
@@ -60,25 +59,28 @@ describe("DRE, caixa e indicadores", () => {
 });
 describe("produção e precificação", () => {
   it("pacote de cinco reels custa 280, e seis custam 350", () => {
-    expect(productionLines(Array.from({ length: 5 }, (_, i) => task(i)), [], [], DEFAULT_SETTINGS, equipe).reduce((s, r) => s+r.total,0)).toBe(28000);
-    expect(productionLines(Array.from({ length: 6 }, (_, i) => task(i)), [], [], DEFAULT_SETTINGS, equipe).reduce((s, r) => s+r.total,0)).toBe(35000);
+    expect(productionLines(Array.from({ length: 5 }, (_, i) => task(i)), [], DEFAULT_SETTINGS, equipe).reduce((s, r) => s+r.total,0)).toBe(28000);
+    expect(productionLines(Array.from({ length: 6 }, (_, i) => task(i)), [], DEFAULT_SETTINGS, equipe).reduce((s, r) => s+r.total,0)).toBe(35000);
   });
   it("não mistura pacotes de responsáveis diferentes", () => {
-    const lines = productionLines(Array.from({ length: 5 }, (_, i) => task(i, { assigneeId: i < 3 ? "a" : "b" })), [], [], DEFAULT_SETTINGS, equipe);
+    const lines = productionLines(Array.from({ length: 5 }, (_, i) => task(i, { assigneeId: i < 3 ? "a" : "b" })), [], DEFAULT_SETTINGS, equipe);
     expect(lines.reduce((s,r)=>s+r.total,0)).toBe(35000);
   });
-  it("cobra cards adicionais e só reduz com atraso E problema", () => {
-    const t = task(1,{ captacaoId: undefined, name: "Carrossel" });
-    const review = { taskId: t.id, rateKey: "carrossel" as const, cards: 10, deliveredDate: "2026-09-04", qualityProblem: true, notes: "" };
-    const [line] = productionLines([t],[],[review],DEFAULT_SETTINGS,equipe);
-    expect(line.base).toBe(14000); expect(line.total).toBe(7000);
-    expect(productionLines([t],[],[{ ...review, qualityProblem:false }],DEFAULT_SETTINGS,equipe)[0].total).toBe(14000);
+  it("só precifica tarefas aprovadas ou finalizadas", () => {
+    const lines = productionLines([
+      task(1, { status: "aprovado" }),
+      task(2, { status: "finalizado", statusHistory: [{ status: "finalizado", enteredAt: "2026-09-04T12:00:00Z", exitedAt: null }] }),
+      task(3, { status: "para_aprovacao", statusHistory: [{ status: "para_aprovacao", enteredAt: "2026-09-04T12:00:00Z", exitedAt: null }] }),
+      task(4, { status: "problema", statusHistory: [{ status: "problema", enteredAt: "2026-09-04T12:00:00Z", exitedAt: null }] }),
+    ], [], DEFAULT_SETTINGS, equipe);
+    expect(lines.map((line) => line.counted)).toEqual([true, true, false, false]);
+    expect(lines.map((line) => line.total)).toEqual([7000, 7000, 0, 0]);
   });
   it("dias úteis pulam fim de semana", () => {
-    const [line] = productionLines([task(1,{ createdAt:"2026-09-11T12:00:00Z", captacaoId:undefined })],[],[],{ ...DEFAULT_SETTINGS, deadlineMode:"business" }, equipe);
+    const [line] = productionLines([task(1,{ createdAt:"2026-09-11T12:00:00Z", captacaoId:undefined })],[],{ ...DEFAULT_SETTINGS, deadlineMode:"business" }, equipe);
     expect(line.dueDate).toBe("2026-09-14");
   });
-  it("não gera produção pagável sem data de entrega", () => { expect(productionLines([task(1,{ statusHistory:[] })],[],[],DEFAULT_SETTINGS,equipe)[0].ready).toBe(false); });
+  it("não gera produção pagável sem data de aprovação/finalização", () => { expect(productionLines([task(1,{ statusHistory:[] })],[],DEFAULT_SETTINGS,equipe)[0].ready).toBe(false); });
   it("preço respeita custo, imposto e margem; NPS não reduz abaixo do piso", () => {
     expect(priceSuggestion(60000,10,30,10)).toMatchObject({ floor:100000,suggested:105000 });
     expect(priceSuggestion(60000,10,30,3)?.suggested).toBe(100000); expect(priceSuggestion(60000,null,30,10)).toBeNull();
@@ -87,44 +89,32 @@ describe("produção e precificação", () => {
 });
 
 // ---------- Quem recebe pela peça ----------
-// A regra do dono: uma peça gera um pagamento só, e vai para o diretor criativo
-// responsável na entrega. Social media e dono nunca entram na conta.
+// A regra do dono: uma peça gera um pagamento só e vai para o diretor criativo
+// que é o responsável atual. Social media e dono nunca entram na conta.
 describe("crédito da produção", () => {
   it("ignora quem não é diretor criativo e avisa em vez de pagar errado", () => {
-    const [line] = productionLines([task(1, { assigneeId: "social" })], [], [], DEFAULT_SETTINGS, equipe);
+    const [line] = productionLines([task(1, { assigneeId: "social" })], [], DEFAULT_SETTINGS, equipe);
     expect(line.producerId).toBeNull();
     expect(line.ready).toBe(false);
-    expect(line.pendencia).toContain("Sem diretor criativo");
-    expect(line.total).toBeGreaterThan(0); // o valor existe, mas não é pagável a ninguém
+    expect(line.pendencia).toContain("responsável atual");
+    expect(line.total).toBe(0);
   });
 
-  it("paga só o diretor criativo quando a tarefa passou por ele e pelo social media", () => {
-    // Nasce com a social media, vai para o diretor criativo no dia 2, entrega no dia 4.
-    const t = task(1, { assigneeId: "a", comments: [troca("social", "a", "2026-09-02T12:00:00Z")] });
-    const [line] = productionLines([t], [], [], DEFAULT_SETTINGS, equipe);
+  it("paga o diretor criativo que aparece como responsável atual", () => {
+    const t = task(1, { assigneeId: "a", statusHistory: [{ status: "aprovado", enteredAt: "2026-09-04T12:00:00Z", exitedAt: null, assigneeId: "b" }] });
+    const [line] = productionLines([t], [], DEFAULT_SETTINGS, equipe);
     expect(line.producerId).toBe("a");
     expect(line.ready).toBe(true);
   });
 
-  it("credita quem entregou, mesmo tendo ficado menos tempo responsável", () => {
-    // "a" fica do dia 1 ao 3 (dois dias), "b" fica do 3 ao 4 (um dia) e entrega.
-    const t = task(1, { assigneeId: "b", comments: [troca("a", "b", "2026-09-03T12:00:00Z")] });
-    expect(productionLines([t], [], [], DEFAULT_SETTINGS, equipe)[0].producerId).toBe("b");
-  });
-
-  it("no empate, fica com quem estava com ela no fim", () => {
-    // Um dia cada: "a" do 1 ao 2, "b" do 2 ao 3. A entrega é no dia 3.
-    const t = task(1, {
-      assigneeId: "b",
-      statusHistory: [{ status: "para_aprovacao", enteredAt: "2026-09-03T12:00:00Z", exitedAt: null }],
-      comments: [troca("a", "b", "2026-09-02T12:00:00Z")],
-    });
-    expect(creditedProducer(t, new Set(["a", "b"]), Date.parse("2026-09-03T12:00:00Z"))).toBe("b");
+  it("muda o crédito quando o responsável atual muda depois da aprovação", () => {
+    const t = task(1, { assigneeId: "b", statusHistory: [{ status: "aprovado", enteredAt: "2026-09-04T12:00:00Z", exitedAt: null, assigneeId: "a" }] });
+    expect(productionLines([t], [], DEFAULT_SETTINGS, equipe)[0].producerId).toBe("b");
   });
 
   it("pacote de cinco só fecha entre peças do mesmo diretor criativo", () => {
     // Três de "a" e duas de "b": ninguém completa cinco, então tudo é unitário.
-    const lines = productionLines(Array.from({ length: 5 }, (_, i) => task(i, { assigneeId: i < 3 ? "a" : "b" })), [], [], DEFAULT_SETTINGS, equipe);
+    const lines = productionLines(Array.from({ length: 5 }, (_, i) => task(i, { assigneeId: i < 3 ? "a" : "b" })), [], DEFAULT_SETTINGS, equipe);
     expect(lines.reduce((total, line) => total + line.total, 0)).toBe(35000);
     expect(new Set(lines.map((line) => line.producerId))).toEqual(new Set(["a", "b"]));
   });
@@ -225,7 +215,7 @@ describe("carteira de contratos", () => {
 // ---------- Fechamento por diretor criativo ----------
 describe("fechamento por diretor criativo", () => {
   const linhas = (entregas: { id: number; quem: string; formato?: string }[]) =>
-    productionLines(entregas.map((entrega) => task(entrega.id, { assigneeId: entrega.quem, name: entrega.formato ?? "Reels", captacaoId: undefined })), [], [], DEFAULT_SETTINGS, equipe);
+    productionLines(entregas.map((entrega) => task(entrega.id, { assigneeId: entrega.quem, name: entrega.formato ?? "Reels", captacaoId: undefined })), [], DEFAULT_SETTINGS, equipe);
 
   it("soma por pessoa, conta as peças e separa por formato", () => {
     const [fechamento] = producerClosing(linhas([{ id: 1, quem: "a" }, { id: 2, quem: "a" }, { id: 3, quem: "a", formato: "Carrossel" }]), []);
@@ -261,11 +251,11 @@ describe("fechamento por diretor criativo", () => {
 });
 
 // ---------- A regra que formou o preço ----------
-// O extrato mostra de onde cada valor saiu. Conferência que não dá para refazer
-// na mão não é conferência, então a regra aplicada é dado, não texto de tela.
+// O extrato mostra de onde cada valor saiu: a regra aplicada é dado, não texto
+// solto na interface.
 describe("regra de preço registrada na linha", () => {
   const cinco = (patch: Partial<Parameters<typeof task>[1]> = {}) =>
-    productionLines(Array.from({ length: 5 }, (_, i) => task(i, { assigneeId: "a", ...patch })), [], [], DEFAULT_SETTINGS, equipe);
+    productionLines(Array.from({ length: 5 }, (_, i) => task(i, { assigneeId: "a", ...patch })), [], DEFAULT_SETTINGS, equipe);
 
   it("marca o preço de pacote quando os cinco fecham", () => {
     const linhas = cinco();
@@ -275,19 +265,18 @@ describe("regra de preço registrada na linha", () => {
   });
 
   it("a sobra do múltiplo de cinco volta a ser unitária", () => {
-    const seis = productionLines(Array.from({ length: 6 }, (_, i) => task(i, { assigneeId: "a" })), [], [], DEFAULT_SETTINGS, equipe);
+    const seis = productionLines(Array.from({ length: 6 }, (_, i) => task(i, { assigneeId: "a" })), [], DEFAULT_SETTINGS, equipe);
     expect(seis.filter((linha) => linha.rule?.pack)).toHaveLength(5);
     const avulsa = seis.find((linha) => !linha.rule?.pack)!;
     expect(avulsa.rule).toMatchObject({ pack: false, unit: 7000 });
     expect(avulsa.total).toBe(7000);
   });
 
-  it("registra os cards acima de oito e o que eles custam", () => {
+  it("usa a regra-base do formato sem ajuste manual", () => {
     const t = task(1, { assigneeId: "a", captacaoId: undefined, name: "Carrossel" });
-    const review = { taskId: t.id, rateKey: "carrossel" as const, cards: 11, deliveredDate: "2026-09-04", qualityProblem: false, notes: "" };
-    const [linha] = productionLines([t], [], [review], DEFAULT_SETTINGS, equipe);
-    expect(linha.rule).toMatchObject({ pack: false, unit: 10000, extraCards: 3, extraCardValue: 2000 });
-    expect(linha.base).toBe(16000);
+    const [linha] = productionLines([t], [], DEFAULT_SETTINGS, equipe);
+    expect(linha.rule).toMatchObject({ pack: false, unit: 10000, extraCards: 0, extraCardValue: 2000 });
+    expect(linha.base).toBe(10000);
   });
 
   it("o extrato do fechamento vem ordenado por entrega e traz as linhas inteiras", () => {
@@ -305,58 +294,61 @@ it("resumo por diretor inclui quem não entregou e separa pendências, produçã
     task(3, { assigneeId: "Luís", status: "em_criacao", statusHistory: [] }),
     task(4, { assigneeId: "Luís", status: "problema", statusHistory: [] }),
     task(5, { assigneeId: "Erika", statusHistory: [{ status: "aprovado", enteredAt: "2026-10-01T12:00:00Z", exitedAt: null }] }),
-  ], [], [], DEFAULT_SETTINGS, members);
+  ], [], DEFAULT_SETTINGS, members);
   const roster = productionRoster(lines, [], members, "2026-09");
   expect(roster).toHaveLength(4);
   expect(roster.find(r => r.name === "Erika")).toMatchObject({ delivered: 1, pending: 7000, pendingPieces: 1 });
-  expect(roster.find(r => r.name === "Josiano")).toMatchObject({ delivered: 1, awaitingReview: 1, pending: 0 });
+  expect(roster.find(r => r.name === "Josiano")).toMatchObject({ delivered: 1, unpriced: 1, pending: 0 });
   expect(roster.find(r => r.name === "Luís")).toMatchObject({ delivered: 0, inProgress: 1 });
   expect(roster.find(r => r.name === "Novo")).toMatchObject({ delivered: 0, total: 0 });
 });
 
-describe("entrega encerra a etapa do diretor", () => {
-  it("Erika fica três dias, Luís assume e entrega em um: Luís recebe", () => {
-    const t = task(1, { assigneeId: "b", comments: [troca("a", "b", "2026-09-04T12:00:00Z")], statusHistory: [{ status: "para_aprovacao", enteredAt: "2026-09-05T12:00:00Z", exitedAt: null }] });
-    const [line] = productionLines([t], [], [], DEFAULT_SETTINGS, equipe);
-    expect(line).toMatchObject({ producerId: "b", ready: true, deliveredDate: "2026-09-05" });
-  });
-  it("enviar para social media ou outro diretor após entrega não transfere o valor", () => {
-    const t = task(1, { assigneeId: "a", comments: [troca("b", "social", "2026-09-04T12:00:00Z"), troca("social", "a", "2026-09-10T12:00:00Z")] });
-    expect(productionLines([t], [], [], DEFAULT_SETTINGS, equipe)[0]).toMatchObject({ producerId: "b", ready: true });
-  });
-  it("responsável gravado na entrega prevalece sobre histórico antigo incompleto", () => {
-    const t = task(1, { assigneeId: "a", statusHistory: [{ status: "aprovado", enteredAt: "2026-09-04T12:00:00Z", exitedAt: null, assigneeId: "b" }] });
-    expect(productionLines([t], [], [], DEFAULT_SETTINGS, equipe)[0]).toMatchObject({ producerId: "b", ready: true });
-  });
-  it("troca no mesmo instante da entrega vale para o novo diretor", () => {
-    const t = task(1, { assigneeId: "b", comments: [troca("a", "b", "2026-09-04T12:00:00Z")] });
-    expect(productionLines([t], [], [], DEFAULT_SETTINGS, equipe)[0].producerId).toBe("b");
-  });
-  it.each(["para_aprovacao", "aprovado", "finalizado"] as const)("%s já habilita recebimento sem esperar publicação", status => {
+describe("estado final e responsável atual", () => {
+  it.each(["aprovado", "finalizado"] as const)("%s habilita recebimento", status => {
     const t = task(1, { assigneeId: "b", status, statusHistory: [{ status, enteredAt: "2026-09-04T12:00:00Z", exitedAt: null }] });
-    expect(productionLines([t], [], [], DEFAULT_SETTINGS, equipe)[0]).toMatchObject({ producerId: "b", ready: true, deliveredDate: "2026-09-04" });
+    expect(productionLines([t], [], DEFAULT_SETTINGS, equipe)[0]).toMatchObject({ producerId: "b", counted: true, ready: true, deliveredDate: "2026-09-04" });
   });
-  it("aprovação no mês seguinte mantém a competência da entrega para aprovação", () => {
-    const t = task(1, { statusHistory: [{ status: "aprovado", enteredAt: "2026-10-08T12:00:00Z", exitedAt: null }, { status: "para_aprovacao", enteredAt: "2026-09-04T12:00:00Z", exitedAt: "2026-10-08T12:00:00Z" }] });
-    expect(productionLines([t], [], [], DEFAULT_SETTINGS, equipe)[0]).toMatchObject({ deliveredDate: "2026-09-04", late: false, ready: true });
+  it.each(["para_aprovacao", "problema"] as const)("%s não entra no financeiro", status => {
+    const t = task(1, { assigneeId: "b", status, statusHistory: [{ status, enteredAt: "2026-09-04T12:00:00Z", exitedAt: null }] });
+    expect(productionLines([t], [], DEFAULT_SETTINGS, equipe)[0]).toMatchObject({ counted: false, ready: false, deliveredDate: null, total: 0 });
+  });
+  it("o responsável atual prevalece sobre o responsável gravado na aprovação", () => {
+    const t = task(1, { assigneeId: "a", statusHistory: [{ status: "aprovado", enteredAt: "2026-09-04T12:00:00Z", exitedAt: null, assigneeId: "b" }] });
+    expect(productionLines([t], [], DEFAULT_SETTINGS, equipe)[0]).toMatchObject({ producerId: "a", ready: true });
+  });
+  it("se o responsável atual não é criativo, a tarefa não gera pagamento", () => {
+    const t = task(1, { assigneeId: "social", statusHistory: [{ status: "aprovado", enteredAt: "2026-09-04T12:00:00Z", exitedAt: null, assigneeId: "b" }] });
+    expect(productionLines([t], [], DEFAULT_SETTINGS, equipe)[0]).toMatchObject({ producerId: null, counted: true, ready: false, total: 0 });
+  });
+  it("mantém a primeira data da sequência Aprovado -> Finalizado", () => {
+    const t = task(1, { status: "finalizado", statusHistory: [{ status: "finalizado", enteredAt: "2026-10-08T12:00:00Z", exitedAt: null }, { status: "aprovado", enteredAt: "2026-09-04T12:00:00Z", exitedAt: "2026-10-08T12:00:00Z" }] });
+    expect(productionLines([t], [], DEFAULT_SETTINGS, equipe)[0]).toMatchObject({ deliveredDate: "2026-09-04", ready: true });
+  });
+  it("usa a nova aprovação quando uma etapa de Problema interrompeu a anterior", () => {
+    const t = task(1, { status: "aprovado", statusHistory: [
+      { status: "aprovado", enteredAt: "2026-09-04T12:00:00Z", exitedAt: "2026-09-08T12:00:00Z" },
+      { status: "problema", enteredAt: "2026-09-08T12:00:00Z", exitedAt: "2026-10-03T12:00:00Z" },
+      { status: "aprovado", enteredAt: "2026-10-03T12:00:00Z", exitedAt: null },
+    ] });
+    expect(productionLines([t], [], DEFAULT_SETTINGS, equipe)[0]).toMatchObject({ deliveredDate: "2026-10-03", ready: true });
   });
   it("recupera a data por atividade de status quando falta histórico", () => {
     const t = task(1, { statusHistory: [], comments: [{ id: "status", kind: "activity", fieldKey: "status", newValue: "aprovado", author: "Sistema", text: "", createdAt: "2026-09-04T12:00:00Z" }] });
-    expect(productionLines([t], [], [], DEFAULT_SETTINGS, equipe)[0]).toMatchObject({ deliveredDate: "2026-09-04", ready: true });
+    expect(productionLines([t], [], DEFAULT_SETTINGS, equipe)[0]).toMatchObject({ deliveredDate: "2026-09-04", ready: true });
   });
   it("sem entrega, a carteira em produção pertence ao responsável atual", () => {
-    const t = task(1, { assigneeId: "b", status: "em_criacao", statusHistory: [], comments: [troca("a", "b", "2026-09-18T12:00:00Z")] });
-    const lines = productionLines([t], [], [], DEFAULT_SETTINGS, equipe);
+    const t = task(1, { assigneeId: "b", status: "em_criacao", statusHistory: [] });
+    const lines = productionLines([t], [], DEFAULT_SETTINGS, equipe);
     expect(productionRoster(lines, [], equipe, "2026-09").find(r => r.memberId === "b")?.inProgress).toBe(1);
   });
 });
 
 it("entrega atrasada não segue em atraso ativo enquanto aguarda cliente", () => {
-  const [line] = productionLines([task(1, { captacaoId: undefined })], [], [], DEFAULT_SETTINGS, equipe);
+  const [line] = productionLines([task(1, { captacaoId: undefined })], [], DEFAULT_SETTINGS, equipe);
   expect(line).toMatchObject({ ready: true, late: false, deliveredLate: true, total: 7000 });
 });
-it("aprovada sem data aparece para conferência, não como trabalho em produção", () => {
-  const lines = productionLines([task(1, { assigneeId: "b", status: "aprovado", statusHistory: [] })], [], [], DEFAULT_SETTINGS, equipe);
-  expect(lines[0].pendencia).toContain("informe a data");
-  expect(productionRoster(lines, [], equipe, "2026-09").find(r => r.memberId === "b")).toMatchObject({ delivered: 0, awaitingDate: 1, inProgress: 0 });
+it("aprovada sem data é sinalizada sem inventar competência", () => {
+  const lines = productionLines([task(1, { assigneeId: "b", status: "aprovado", statusHistory: [] })], [], DEFAULT_SETTINGS, equipe);
+  expect(lines[0].pendencia).toContain("não tem data registrada");
+  expect(productionRoster(lines, [], equipe, "2026-09").find(r => r.memberId === "b")).toMatchObject({ delivered: 0, inProgress: 0 });
 });

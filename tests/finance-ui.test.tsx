@@ -43,24 +43,33 @@ describe("painel financeiro",()=>{
     expect(metric("Receita do mês")).toContain("12.300,00");
     await click(button("Produção da equipe"));
     expect(container.textContent).toContain("Visão rápida · outubro de 2026");
-    expect(container.textContent).toContain("Sem entrega em outubro de 2026");
+    expect(container.textContent).toContain("Sem demanda em outubro de 2026");
     await click(container.querySelector<HTMLElement>('[aria-label="Mês anterior"]'));
     expect(container.textContent).toContain("Visão rápida · setembro de 2026");
-    expect(container.textContent).toContain("5 peças entregues");
+    expect(container.textContent).toContain("Demandas computadas5");
   });
-  // O fechamento precisa mostrar de onde o valor saiu, não só o valor.
-  it("mostra o extrato de cada diretor criativo com a regra de preço aplicada",async()=>{
+  it("mostra as demandas por responsável atual sem fluxo de conferência",async()=>{
     await mount();await change(container.querySelector('[aria-label="Mês de análise"]')!,"2026-09");await click(button("Produção da equipe"));
     const texto=container.textContent||"";
-    expect(texto).toContain("Detalhamento por diretor criativo");
-    expect(texto).toContain("Extrato de entregas");
+    expect(texto).toContain("Aprovado ou Finalizado + responsável atual");
+    expect(texto).toContain("O que cada pessoa fez");
+    expect(texto).toContain("Responsável atual");
     expect(texto).toContain("Designer de exemplo");
-    // as cinco peças do pacote fecham em pacote de 5, e a linha diz isso
-    expect(texto).toContain("Regra de preço");
-    expect(texto).toContain("Pacote de 5");
-    expect(texto).toContain("Condição");
-    expect(texto).toContain("Integral");
     expect(texto).toContain("Falta lançar");
+    expect(texto).toContain("Clique no nome da demanda");
+    expect(texto).not.toContain("Conferir");
+    expect(texto).not.toContain("Salvar conferência");
+  });
+  it("abre a tarefa dentro do financeiro sem navegar para outra página",async()=>{
+    await mount();await change(container.querySelector('[aria-label="Mês de análise"]')!,"2026-09");await click(button("Produção da equipe"));
+    fetchMock.mockResolvedValueOnce(Response.json({ task: { ...financeFixture.tasks[0], dueDate:"2026-09-08", driveLink:"https://drive.example/item" } }));
+    await click(container.querySelector<HTMLElement>(".fin-task-link"));
+    await act(async()=>{await new Promise(resolve=>setTimeout(resolve,0));});
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Tarefa computada no financeiro");
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Responsável atual");
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Mostrar os bastidores da marca");
+    expect(fetchMock).toHaveBeenCalledWith("/api/tasks/task-0?detail=1",{cache:"no-store"});
+    expect(window.location.pathname).not.toContain("task-0");
   });
   it("campanha avulsa desmarca recorrência e envia centavos",async()=>{
     await mount();await click(button("Novo lançamento"));

@@ -19,6 +19,6 @@ export const financeFixture: FinanceData = {
   entries,
   settings: { ...DEFAULT_SETTINGS, taxRate:6,taxRegime:"Alíquota demonstrativa" },
   projects, members:[{id:"00000000-0000-4000-8000-000000000009",name:"Designer de exemplo",email:"demo@example.com",role:"diretor_criativo",active:true,aiEnabled:false,createdAt:iso,updatedAt:iso}],
-  tasks:Array.from({length:5},(_,i)=>({id:`task-${i}`,projectId:projects[0].id,name:`Reels ${i+1}: bastidores da marca`,kind:"conteudo",status:"aprovado",assigneeId:"00000000-0000-4000-8000-000000000009",captacaoId:"capture",createdAt:iso,updatedAt:iso,statusHistory:[{status:"para_aprovacao",enteredAt:"2026-09-04T12:00:00Z",exitedAt:null}],images:[],formatTagIds:[],channelTagIds:[],categoryTagIds:[],lists:[],comments:[]})),
+  tasks:Array.from({length:5},(_,i)=>({id:`task-${i}`,projectId:projects[0].id,name:`Reels ${i+1}: bastidores da marca`,kind:"conteudo",status:"aprovado",assigneeId:"00000000-0000-4000-8000-000000000009",captacaoId:"capture",description:"### Objetivo\nMostrar os bastidores da marca com uma narrativa clara e direta.",createdAt:iso,updatedAt:iso,statusHistory:[{status:"aprovado",enteredAt:"2026-09-04T12:00:00Z",exitedAt:null}],images:[],formatTagIds:[],channelTagIds:[],categoryTagIds:[],lists:[],comments:[]})),
   tags:[],contracts:[],scores:projects.map((p,i)=>({projectId:p.id,score:[9,8,6][i],createdAt:iso})),reviews:[],blocks:[],audit:[],warnings:[],
 };

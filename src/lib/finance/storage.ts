@@ -1,7 +1,7 @@
 import { getSupabase } from "../supabase-client";
 import { listContracts, listMembers, listProjects, listTags, listTasks } from "../storage";
 import { contractEntries, productionLines, recurringEntries, validDate } from "./calculations";
-import { CATEGORIES, DEFAULT_SETTINGS, type Entry, type EntryInput, type FinanceData, type ProductionReview, type Settings } from "./types";
+import { CATEGORIES, DEFAULT_SETTINGS, type Entry, type EntryInput, type FinanceData, type Settings } from "./types";
 
 function checked<T>(result: { data: T; error: { message: string } | null }): T {
   if (result.error) throw new Error(result.error.message);
@@ -26,9 +26,9 @@ const toRow = (e: EntryInput, actor: string) => ({ direction: e.direction, categ
 export async function loadFinance(actor: string, options: { includeProduction?: boolean } = {}): Promise<FinanceData> {
   const includeProduction = options.includeProduction !== false;
   const db = getSupabase();
-  const [contracts, projects, members, tasks, tags, settingsRow, storedEntries, blockRows, reviewRows, scoreRows, auditRows] = await Promise.all([
+  const [contracts, projects, members, tasks, tags, settingsRow, storedEntries, blockRows, scoreRows, auditRows] = await Promise.all([
     listContracts(), listProjects(), listMembers(), includeProduction ? listTasks({ all: true, projection: "production" }) : Promise.resolve([]), includeProduction ? listTags() : Promise.resolve([]), db.from("finance_settings").select("data").eq("id", true).maybeSingle().then(checked),
-    allRows("finance_entries"), allRows("finance_project_blocks", "project_id"), includeProduction ? allRows("finance_production_reviews", "task_id") : Promise.resolve([]), allRows("client_satisfaction_scores"),
+    allRows("finance_entries"), allRows("finance_project_blocks", "project_id"), allRows("client_satisfaction_scores"),
     db.from("finance_audit").select("id,entity_id,action,actor_id,created_at").order("created_at", { ascending: false }).limit(100).then(checked),
   ]);
   const settings: Settings = { ...DEFAULT_SETTINGS, ...settingsRow?.data, rates: { ...DEFAULT_SETTINGS.rates, ...settingsRow?.data?.rates } };
@@ -66,7 +66,7 @@ export async function loadFinance(actor: string, options: { includeProduction?: 
   return {
     entries, settings, contracts, projects, members, tasks, tags, warnings,
     blocks: blockRows.map((r) => ({ projectId: String(r.project_id), blocked: Boolean(r.blocked), reason: String(r.reason), updatedAt: String(r.updated_at) })),
-    reviews: reviewRows.map((r) => ({ ...(r.data as ProductionReview), taskId: String(r.task_id) })),
+    reviews: [],
     scores: scoreRows.map((r) => ({ projectId: String(r.project_id), score: Number(r.score), createdAt: String(r.created_at) })),
     audit: (visibleAuditRows ?? []).map((r) => ({ id: r.id, entityId: r.entity_id, action: r.action, actorId: r.actor_id, createdAt: r.created_at })),
   };
@@ -75,14 +75,13 @@ export async function loadFinance(actor: string, options: { includeProduction?: 
 // Produção não depende de contratos, NPS, bloqueios ou auditoria. Falha em uma
 // dessas integrações não impede consultar a equipe e fechar suas entregas.
 export async function loadFinanceProduction(): Promise<FinanceData> {
-  const [projects, members, tasks, tags, settingsRow, entryRows, reviewRows] = await Promise.all([
+  const [projects, members, tasks, tags, settingsRow, entryRows] = await Promise.all([
     listProjects(), listMembers(), listTasks({ all: true, projection: "production" }), listTags(),
     getSupabase().from("finance_settings").select("data").eq("id", true).maybeSingle().then(checked),
-    allRows("finance_entries", "id", "producao"), allRows("finance_production_reviews", "task_id"),
+    allRows("finance_entries", "id", "producao"),
   ]);
   const settings: Settings = { ...DEFAULT_SETTINGS, ...settingsRow?.data, rates: { ...DEFAULT_SETTINGS.rates, ...settingsRow?.data?.rates } };
-  return { projects, members, tasks, tags, settings, entries: entryRows.map(mapEntry),
-    reviews: reviewRows.map((row) => ({ ...(row.data as ProductionReview), taskId: String(row.task_id) })),
+  return { projects, members, tasks, tags, settings, entries: entryRows.map(mapEntry), reviews: [],
     contracts: [], blocks: [], scores: [], audit: [], warnings: [] };
 }
 
@@ -150,21 +149,14 @@ export async function mutateFinance(body: Record<string, unknown>, actor: string
     // automático: bloqueio sem justificativa registrada não é decisão, é acidente.
     const reason = body.blocked ? requireText(body.reason, "o motivo do bloqueio") : "";
     checked(await db.from("finance_project_blocks").upsert({ project_id: projectId, blocked: body.blocked, reason, updated_by: actor, updated_at: new Date().toISOString() }));
-  } else if (body.action === "review") {
-    const taskId = uuid(body.taskId);
-    const raw = body.review as ProductionReview;
-    if (!raw || (raw.rateKey !== null && !Object.hasOwn(DEFAULT_SETTINGS.rates, raw.rateKey)) || !Number.isInteger(raw.cards) || raw.cards < 1 || raw.cards > 100 || typeof raw.qualityProblem !== "boolean") throw new FinanceInputError("Revisão de produção inválida.");
-    if (raw.deliveredDate && raw.deliveredDate > new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date())) throw new FinanceInputError("Entrega não pode ter data futura.");
-    const review: ProductionReview = { taskId, rateKey: raw.rateKey, cards: raw.cards, deliveredDate: raw.deliveredDate ? date(raw.deliveredDate) : null, qualityProblem: raw.qualityProblem, notes: String(raw.notes || "").slice(0, 1000) };
-    checked(await db.from("finance_production_reviews").upsert({ task_id: taskId, data: review, updated_by: actor, updated_at: new Date().toISOString() }));
   } else if (body.action === "production" || body.action === "productionClosing") {
     const data = await loadFinanceProduction();
-    const todas = productionLines(data.tasks, data.tags, data.reviews, data.settings, data.members);
+    const todas = productionLines(data.tasks, data.tags, data.settings, data.members);
     let alvo: typeof todas;
     if (body.action === "production") {
       const taskId = uuid(body.taskId);
       const line = todas.find((item) => item.taskId === taskId);
-      if (!line?.ready) throw new FinanceInputError(line?.pendencia || "Confirme formato, diretor criativo e data de entrega antes de lançar o pagamento.");
+      if (!line?.ready) throw new FinanceInputError(line?.pendencia || "A tarefa precisa estar aprovada ou finalizada, com responsável e formato válidos.");
       alvo = [line];
     } else {
       // Fechamento do mês de uma pessoa. O servidor recalcula e filtra sozinho:
@@ -173,7 +165,7 @@ export async function mutateFinance(body: Record<string, unknown>, actor: string
       const producerId = uuid(body.memberId);
       const competence = String(body.competence || ""); date(`${competence}-01`);
       alvo = todas.filter((line) => line.ready && line.producerId === producerId && line.deliveredDate!.startsWith(competence));
-      if (!alvo.length) throw new FinanceInputError("Nenhuma entrega conferida e pendente para esta pessoa nesta competência.");
+      if (!alvo.length) throw new FinanceInputError("Nenhuma tarefa aprovada ou finalizada e pendente para esta pessoa nesta competência.");
     }
     // source_key por tarefa: reenviar o fechamento não paga a mesma peça duas vezes.
     checked(await db.from("finance_entries").upsert(alvo.map((line) => toRow({ direction: "expense", category: "producao", description: `Produção · ${line.name}`, amount: line.total, competence: line.deliveredDate!.slice(0, 7), projectId: line.projectId, memberId: line.producerId!, recurring: false, seriesId: null, sourceKey: `production:${line.taskId}`, notes: `Base ${line.base} centavos; ${line.penalty ? "50% por atraso/problema conforme regra configurada" : "integral"}. Prazo ${line.dueDate}.` }, actor)), { onConflict: "source_key", ignoreDuplicates: true }));

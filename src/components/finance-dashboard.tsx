@@ -1,14 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BadgeDollarSign, CalendarDays, Check, ChevronLeft, ChevronRight, Download, FileSignature, Landmark, LockKeyhole, Plus, RefreshCw, Settings2, ShieldCheck, TrendingUp, Users, X } from "lucide-react";
+import { BadgeDollarSign, CalendarDays, Check, ChevronLeft, ChevronRight, Download, Eye, FileSignature, Landmark, Link2, LockKeyhole, Plus, RefreshCw, Settings2, ShieldCheck, TrendingUp, Users, X } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/vz";
 import { Avatar } from "@/components/avatar";
+import { renderMarkdownLite } from "@/components/markdown-lite";
 import { responseError } from "@/lib/request-error";
 import { useConfirm } from "@/components/confirm-dialog";
 import { brl, clientMargins, contractAlerts, contractSummaries, contractedByMonth, growthProjection, metrics, monthAdd, priceSuggestion, producerClosing, productionLines, productionRoster, money, type ProductionLine } from "@/lib/finance/calculations";
-import { CARGOS_QUE_PRODUZEM, CATEGORIES, RATE_LABELS, type Entry, type FinanceData, type ProductionReview, type RateKey, type Settings } from "@/lib/finance/types";
+import { CATEGORIES, RATE_LABELS, type Entry, type FinanceData, type RateKey, type Settings } from "@/lib/finance/types";
+import { TASK_STATUSES, type Task } from "@/lib/types";
 import "@/app/financeiro/finance.css";
 
 const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
@@ -43,7 +45,6 @@ export function FinanceDashboard({ initialData }: { initialData?: FinanceData })
   const [entryOpen, setEntryOpen] = useState(false);
   const [entryProject, setEntryProject] = useState("");
   const [editEntry, setEditEntry] = useState<Entry | null>(null);
-  const [reviewLine, setReviewLine] = useState<ProductionLine | null>(null);
   const { confirm, ConfirmDialog } = useConfirm();
   const section = tab === "production" ? "production" : "overview";
   const data = section === "production" ? productionData : overviewData;
@@ -103,7 +104,7 @@ export function FinanceDashboard({ initialData }: { initialData?: FinanceData })
       {tab === "oneoff" ? <OneOff data={data} month={month} onRevenue={createRevenue} /> : null}
       {tab === "overview" ? <Overview data={data} month={month} stats={stats} /> : null}
       {tab === "costs" ? <Costs data={data} month={month} busy={busy} onEdit={setEditEntry} onCancelSeries={async (entry) => { if (await confirm({ title: "Encerrar próximas parcelas", message: `Cancelar as parcelas a partir de ${entry.competence}?`, confirmLabel: "Encerrar recorrência", danger: true })) await mutate({ action: "cancelSeries", entryId: entry.id }); }} onCancel={async (entry) => { if (await confirm({ title: "Cancelar lançamento", message: `Cancelar “${entry.description}”? O histórico será mantido.`, confirmLabel: "Cancelar lançamento", danger: true })) await mutate({ action: "cancel", entryId: entry.id }); }} /> : null}
-      {tab === "production" ? <Production data={data} month={month} busy={busy} onReview={setReviewLine} onClose={async (memberId, name, pending, pieces) => {
+      {tab === "production" ? <Production data={data} month={month} busy={busy} onClose={async (memberId, name, pending, pieces) => {
         if (await confirm({ title: `Fechar o mês de ${name}`, message: `${pieces} peça(s), ${brl(pending)}. Cada uma vira uma despesa de produção na competência ${month}.`, confirmLabel: "Lançar fechamento" })) await mutate({ action: "productionClosing", memberId, competence: month });
       }} onBook={async (line) => {
         if (await confirm({ title: "Lançar produção a pagar", message: `${line.name}: ${brl(line.total)}. O valor e a regra aplicada serão registrados no financeiro.`, confirmLabel: "Lançar despesa" })) await mutate({ action: "production", taskId: line.taskId });
@@ -111,7 +112,6 @@ export function FinanceDashboard({ initialData }: { initialData?: FinanceData })
       {tab === "settings" ? <SettingsPanel key={JSON.stringify(data.settings)} settings={data.settings} busy={busy} onSave={(settings) => mutate({ action: "settings", settings })} audit={data.audit} members={data.members} /> : null}
       {entryOpen ? <EntryForm data={data} projectId={entryProject} month={month} busy={busy} onClose={() => setEntryOpen(false)} onSave={async (payload) => { if (await mutate(payload)) setEntryOpen(false); }} error={error} /> : null}
       {editEntry ? <EditEntryForm entry={editEntry} busy={busy} error={error} onClose={() => setEditEntry(null)} onSave={async (payload) => { if (await mutate(payload)) setEditEntry(null); }} /> : null}
-      {reviewLine ? <ReviewForm line={reviewLine} review={data.reviews.find((review) => review.taskId === reviewLine.taskId)} busy={busy} onClose={() => setReviewLine(null)} onSave={async (review) => { if (await mutate({ action: "review", taskId: reviewLine.taskId, review })) setReviewLine(null); }} error={error} /> : null}
     </> : null}
     {ConfirmDialog}
   </main>;
@@ -239,79 +239,107 @@ function Contracts({ data, month, busy, onRevenue, onBlock }: { data: FinanceDat
   </>;
 }
 
-function Production({ data, month, busy, onReview, onBook, onClose }: { data: FinanceData; month: string; busy: boolean; onReview: (line: ProductionLine) => void; onBook: (line: ProductionLine) => void; onClose: (memberId: string, name: string, pending: number, pieces: number) => void }) {
-  const [member, setMember] = useState(""); const [all, setAll] = useState(false);
-  const allLines = useMemo(() => productionLines(data.tasks, data.tags, data.reviews, data.settings, data.members), [data]);
-  const doMes = allLines.filter((line) => line.deliveredDate?.startsWith(month));
+type SelectedFinanceTask = { line: ProductionLine; task: Task; loading: boolean; error: string };
+
+function Production({ data, month, busy, onBook, onClose }: { data: FinanceData; month: string; busy: boolean; onBook: (line: ProductionLine) => void; onClose: (memberId: string, name: string, pending: number, pieces: number) => void }) {
+  const [member, setMember] = useState("");
+  const [selected, setSelected] = useState<SelectedFinanceTask | null>(null);
+  const allLines = useMemo(() => productionLines(data.tasks, data.tags, data.settings, data.members), [data]);
+  const monthLines = allLines.filter((line) => line.counted && line.deliveredDate?.startsWith(month));
   const roster = productionRoster(allLines, data.entries, data.members, month);
-  const fechamentos = producerClosing(doMes, data.entries);
-  const semDiretor = doMes.filter((line) => !line.producerId);
-  const lines = allLines.filter((line) => (all || (line.deliveredDate || line.dueDate).startsWith(month) || (!line.deliveredDate && ["para_aprovacao", "aprovado", "finalizado"].includes(line.taskStatus || ""))) && (!member || line.producerId === member));
-  const total = lines.reduce((sum, line) => sum + line.total, 0);
+  const closings = producerClosing(monthLines, data.entries);
+  const visibleClosings = member ? closings.filter((closing) => closing.producerId === member) : closings;
+  const withoutCreativeOwner = monthLines.filter((line) => !line.producerId);
+  const withoutComputedDate = allLines.filter((line) => ["aprovado", "finalizado"].includes(line.taskStatus || "") && !line.deliveredDate);
   const team = roster.reduce((summary, person) => ({ delivered: summary.delivered + person.delivered, inProgress: summary.inProgress + person.inProgress, total: summary.total + person.total, pending: summary.pending + person.pending }), { delivered: 0, inProgress: 0, total: 0, pending: 0 });
-  const viewMember = (memberId: string) => { setMember(memberId); setAll(false); document.getElementById("production-tasks")?.scrollIntoView({ behavior: "smooth", block: "start" }); };
+
+  const viewMember = (memberId: string) => {
+    setMember(memberId);
+    document.getElementById("production-details")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  async function openTask(line: ProductionLine) {
+    const fallback = data.tasks.find((task) => task.id === line.taskId);
+    if (!fallback) return;
+    setSelected({ line, task: fallback, loading: true, error: "" });
+    try {
+      const response = await fetch(`/api/tasks/${line.taskId}?detail=1`, { cache: "no-store" });
+      if (!response.ok) throw new Error(await responseError(response, "abrir a tarefa"));
+      const result = await response.json() as { task: Task };
+      setSelected((current) => current?.line.taskId === line.taskId ? { line, task: result.task, loading: false, error: "" } : current);
+    } catch (error) {
+      setSelected((current) => current?.line.taskId === line.taskId ? { ...current, loading: false, error: error instanceof Error ? error.message : "Não foi possível atualizar os detalhes da tarefa." } : current);
+    }
+  }
+
   return <>
     <section className="fin-production-dashboard" aria-labelledby="creative-team-title">
-      <div className="fin-panel-title"><div><span className="fin-eyebrow">Visão rápida · {monthLabel(month)}</span><h2 id="creative-team-title">Painel da equipe criativa</h2><p>Entregas e valores da competência selecionada; produção em aberto mostra a carteira atual.</p></div><Users size={20} /></div>
-      <div className="fin-production-summary"><Metric accent label="Entregas no mês" value={String(team.delivered)} detail={`${roster.length} diretor(es) criativo(s)`} /><Metric label="Valor apurado" value={brl(team.total)} detail="Entregas prontas para fechamento" /><Metric label="Falta lançar" value={brl(team.pending)} detail="Ainda não virou despesa" /><Metric label="Em produção agora" value={String(team.inProgress)} detail="Carteira atual da equipe" /></div>
+      <div className="fin-panel-title"><div><span className="fin-eyebrow">Visão rápida · {monthLabel(month)}</span><h2 id="creative-team-title">Painel da equipe criativa</h2><p>Conta somente tarefas atualmente aprovadas ou finalizadas, sempre para o responsável atual.</p></div><Users size={20} /></div>
+      <div className="fin-production-rule"><Check size={15} /><span><strong>Regra do financeiro:</strong> Aprovado ou Finalizado + responsável atual. Tarefas em Problema não entram.</span></div>
+      <div className="fin-production-summary"><Metric accent label="Demandas computadas" value={String(team.delivered)} detail={`${roster.length} diretor(es) criativo(s)`} /><Metric label="Valor apurado" value={brl(team.total)} detail="Pela tabela de produção" /><Metric label="Falta lançar" value={brl(team.pending)} detail="Ainda não virou despesa" /><Metric label="Em andamento agora" value={String(team.inProgress)} detail="Fora do fechamento do mês" /></div>
       <div className="fin-creative-grid">{roster.map((person) => {
         const profile = data.members.find((candidate) => candidate.id === person.memberId);
         return <article className="fin-creative-card" key={person.memberId}>
           <header><Avatar name={person.name} imageUrl={profile?.avatarUrl} size={38} /><div><h3>{person.name}</h3><span>{person.active ? "Diretor criativo" : "Inativo · histórico preservado"}</span></div><strong>{brl(person.total)}</strong></header>
-          <dl><div><dt>Entregas</dt><dd>{person.delivered}</dd></div><div><dt>Em produção</dt><dd>{person.inProgress}</dd></div><div><dt>A conferir</dt><dd>{person.awaitingReview + person.awaitingDate}</dd></div><div><dt>Falta lançar</dt><dd>{brl(person.pending)}</dd></div></dl>
-          <footer><span>{person.lastDelivery ? `Última entrega: ${dateLabel(person.lastDelivery)}` : `Sem entrega em ${monthLabel(month)}`}</span><Button size="sm" variant="secondary" onClick={() => viewMember(person.memberId)}>Ver tarefas</Button></footer>
+          <dl><div><dt>Computadas</dt><dd>{person.delivered}</dd></div><div><dt>Em andamento</dt><dd>{person.inProgress}</dd></div><div><dt>Sem valor</dt><dd>{person.unpriced}</dd></div><div><dt>Falta lançar</dt><dd>{brl(person.pending)}</dd></div></dl>
+          <footer><span>{person.lastDelivery ? `Última aprovação: ${dateLabel(person.lastDelivery)}` : `Sem demanda em ${monthLabel(month)}`}</span><Button size="sm" variant="secondary" onClick={() => viewMember(person.memberId)}>Ver demandas</Button></footer>
         </article>;
       })}</div>
-      {!roster.length ? <Empty text="Nenhum diretor criativo cadastrado. Confira os cargos na equipe." /> : null}
+      {!roster.length ? <Empty text="Nenhum diretor criativo cadastrado." /> : null}
     </section>
 
-    <section className="fin-panel"><div className="fin-panel-title"><div><span className="fin-eyebrow">Fechamento · {monthLabel(month)}</span><h2>Detalhamento por diretor criativo</h2></div><Users size={20} /></div>
-      <div className="fin-table-scroll"><table className="fin-table"><thead><tr><th>Diretor criativo</th><th>Entregas no mês</th><th>A conferir</th><th>Entregues sem data</th><th>Em produção</th><th>Última entrega</th><th>Valor apurado</th><th>Já lançado</th><th>Falta lançar</th><th>Fechamento</th></tr></thead><tbody>
-        {roster.map((person) => <tr key={person.memberId}><td><strong>{person.name}</strong>{!person.active ? <small>Inativo · histórico preservado</small> : null}</td><td>{person.delivered}</td><td>{person.awaitingReview}</td><td>{person.awaitingDate}</td><td>{person.inProgress}</td><td>{person.lastDelivery ? dateLabel(person.lastDelivery) : "Sem entrega no mês"}</td><td>{brl(person.total)}</td><td>{brl(person.launched)}</td><td>{brl(person.pending)}</td><td><Button size="sm" disabled={busy || !person.pendingPieces} onClick={() => onClose(person.memberId, person.name, person.pending, person.pendingPieces)}>Fechar mês</Button><Button size="sm" variant="secondary" onClick={() => viewMember(person.memberId)}>Ver tarefas</Button></td></tr>)}
-      </tbody></table></div>
-      {!roster.length ? <Empty text="Nenhum diretor criativo cadastrado. Confira os cargos na equipe." /> : null}
-      <p className="fin-footnote">Entregas e valores são da competência selecionada. Itens a conferir não entram no fechamento. Entregas sem data aparecem para conferência, sem atribuir um mês por suposição. Em produção mostra a carteira ainda sem entrega registrada. Lançado significa despesa registrada; o pagamento é acompanhado no Asaas.</p>
-      {fechamentos.length > 1 ? <div className="fin-chart" role="img" aria-label="Comparação do valor fechado por diretor criativo">{fechamentos.map((fechamento) => {
-        const maior = Math.max(1, ...fechamentos.map((item) => item.total));
-        return <div className="fin-chart-row" key={fechamento.producerId}><span>{(data.members.find((m) => m.id === fechamento.producerId)?.name || "—").split(" ")[0]}</span><div><i style={{ width: `${fechamento.launched / maior * 100}%` }} /><i className="is-cost" style={{ width: `${fechamento.pending / maior * 100}%` }} /></div><small>{brl(fechamento.total)} · {fechamento.pieces} peças</small></div>;
-      })}<p className="fin-footnote">Roxo: já lançado · cinza: falta lançar.</p></div> : null}
-      {semDiretor.length ? <div className="fin-warning">{semDiretor.length} entrega(s) do mês sem diretor criativo na tarefa. Não entram em fechamento nenhum e não geram pagamento — é processo a corrigir, não valor a pagar.</div> : null}
-      {!fechamentos.length ? <Empty text="Nenhuma entrega conferida nesta competência." /> : null}
-    </section>
+    {withoutCreativeOwner.length ? <div className="fin-warning">{withoutCreativeOwner.length} tarefa(s) aprovada(s) ou finalizada(s) sem um diretor criativo como responsável atual. Elas não geram pagamento para ninguém.</div> : null}
+    {withoutComputedDate.length ? <div className="fin-warning">{withoutComputedDate.length} tarefa(s) aprovada(s) ou finalizada(s) sem data registrada da mudança de status. Elas não foram atribuídas a nenhuma competência.</div> : null}
 
-    {fechamentos.map((fechamento) => {
-      const pessoa = data.members.find((m) => m.id === fechamento.producerId);
-      const maiorFormato = Math.max(1, ...fechamento.byFormat.map((formato) => formato.total));
-      return <section className="fin-panel" key={fechamento.producerId}>
-        <div className="fin-panel-title"><div><span className="fin-eyebrow">Extrato de entregas · {month}</span><h2>{pessoa?.name || "Sem diretor criativo"} · {brl(fechamento.total)}</h2></div>
-          {fechamento.pending ? <Button disabled={busy} onClick={() => onClose(fechamento.producerId, pessoa?.name || "", fechamento.pending, fechamento.pendingTaskIds.length)}><Check size={15} /> Lançar as {fechamento.pendingTaskIds.length} pendentes</Button> : <span className="fin-badge is-ok">Tudo lançado</span>}
+    <div id="production-details" className="fin-production-list-head"><div><span className="fin-eyebrow">Demandas computadas · {monthLabel(month)}</span><h2>O que cada pessoa fez</h2></div><select aria-label="Filtrar diretor criativo" value={member} onChange={(event) => setMember(event.target.value)}><option value="">Toda a equipe criativa</option>{roster.map((person) => <option key={person.memberId} value={person.memberId}>{person.name}</option>)}</select></div>
+    {visibleClosings.map((closing) => {
+      const person = data.members.find((candidate) => candidate.id === closing.producerId);
+      return <section className="fin-panel" key={closing.producerId}>
+        <div className="fin-panel-title"><div><span className="fin-eyebrow">Responsável atual</span><h2>{person?.name || "Sem diretor criativo"} · {closing.pieces} demanda(s)</h2></div>
+          {closing.pending ? <Button disabled={busy} onClick={() => onClose(closing.producerId, person?.name || "", closing.pending, closing.pendingTaskIds.length)}><Check size={15} /> Lançar {closing.pendingTaskIds.length} pendente(s)</Button> : <span className="fin-badge is-ok">Valores lançados</span>}
         </div>
-        <div className="fin-mini-grid"><Metric label="Total do mês" value={brl(fechamento.total)} detail={`${fechamento.pieces} peças entregues`} /><Metric label="Já lançado" value={brl(fechamento.launched)} detail="Valor gravado na despesa" /><Metric label="Falta lançar" value={brl(fechamento.pending)} detail="Estimativa pela tabela de hoje" /><Metric label="Com desconto" value={`${fechamento.penalized} peça(s)`} detail={`50% quando ${data.settings.penaltyMode === "both" ? "atrasa E há problema" : "atrasa OU há problema"}`} /></div>
-        <div className="fin-chart" role="img" aria-label={`Valor por formato de ${pessoa?.name || "diretor criativo"}`}>{fechamento.byFormat.map((formato) => <div className="fin-chart-row" key={formato.rateKey}><span>{RATE_LABELS[formato.rateKey].split(" ")[0]}</span><div><i style={{ width: `${formato.total / maiorFormato * 100}%` }} /></div><small>{formato.count} × · {brl(formato.total)}</small></div>)}</div>
-        <div className="fin-table-scroll"><table className="fin-table"><thead><tr><th>Entrega</th><th>Cliente</th><th>Prazo e entrega</th><th>Regra de preço</th><th>Condição</th><th>Valor</th></tr></thead><tbody>{fechamento.lines.map((line) => {
-          const lancado = data.entries.find((e) => e.sourceKey === `production:${line.taskId}` && !e.cancelled);
-          const regra = line.rule;
+        <div className="fin-mini-grid"><Metric label="Valor computado" value={brl(closing.total)} detail={`${closing.pieces} tarefa(s) aprovada(s) ou finalizada(s)`} /><Metric label="Já lançado" value={brl(closing.launched)} detail="Valor gravado como despesa" /><Metric label="Falta lançar" value={brl(closing.pending)} detail="Estimativa pela tabela atual" /><Metric label="Sem valor calculado" value={String(closing.unpriced)} detail="Formato não reconhecido" /></div>
+        <div className="fin-table-scroll"><table className="fin-table fin-production-table"><thead><tr><th>Demanda</th><th>Cliente</th><th>Status atual</th><th>Data computada</th><th>Valor</th><th>Situação</th></tr></thead><tbody>{closing.lines.map((line) => {
+          const entry = data.entries.find((item) => item.sourceKey === `production:${line.taskId}` && !item.cancelled);
+          const status = TASK_STATUSES.find((item) => item.value === line.taskStatus)?.label || line.taskStatus;
           return <tr key={line.taskId}>
-            <td><strong>{line.name}</strong><small>{line.rateKey ? RATE_LABELS[line.rateKey] : "—"}</small></td>
-            <td>{data.projects.find((p) => p.id === line.projectId)?.name || "—"}</td>
-            <td>{dateLabel(line.dueDate)}<small>{line.deliveredDate ? `Entregue ${dateLabel(line.deliveredDate)}` : "Sem registro"}</small>{line.late ? <span className="fin-badge is-late">Em criação atrasada</span> : line.deliveredLate ? <span className="fin-badge">Entregue fora do prazo</span> : null}</td>
-            <td>{regra ? <>{regra.pack ? `Pacote de ${regra.packSize}` : "Unitário"}<small>{regra.pack ? `${brl(regra.unit)} ÷ ${regra.packSize}` : brl(regra.unit)}{regra.extraCards ? ` + ${regra.extraCards} card(s) × ${brl(regra.extraCardValue)}` : ""}</small></> : "—"}</td>
-            <td>{line.penalty ? <><span className="fin-badge is-late">50% do valor</span><small>{line.deliveredLate && line.qualityProblem ? "Entrega fora do prazo e problema" : line.deliveredLate ? "Entrega fora do prazo" : "Problema de qualidade"}</small></> : <>Integral<small>Sem redução pela regra configurada</small></>}</td>
-            <td><strong>{brl(lancado ? lancado.amount : line.total)}</strong><small>{lancado ? "Lançado" : `Base ${brl(line.base)}`}</small></td>
+            <td><button type="button" className="fin-task-link" onClick={() => void openTask(line)}><Eye size={14} /><span><strong>{line.name}</strong><small>{line.rateKey ? RATE_LABELS[line.rateKey] : "Formato não reconhecido"}</small></span></button></td>
+            <td>{data.projects.find((project) => project.id === line.projectId)?.name || "—"}</td>
+            <td><span className="fin-badge is-ok">{status}</span></td>
+            <td>{line.deliveredDate ? dateLabel(line.deliveredDate) : "—"}</td>
+            <td><strong>{line.ready ? brl(entry ? entry.amount : line.total) : "—"}</strong>{line.ready ? <small>{entry ? "Valor lançado" : line.penalty ? "50% pela regra de prazo" : "Valor calculado"}</small> : <small className="fin-negative">{line.pendencia}</small>}</td>
+            <td>{entry ? <span className="fin-badge">Lançada</span> : line.ready ? <Button size="sm" onClick={() => onBook(line)} disabled={busy}>Lançar a pagar</Button> : <span className="fin-badge">Sem valor</span>}</td>
           </tr>;
         })}</tbody></table></div>
-        <p className="fin-footnote">Cada linha mostra de onde o valor saiu: a regra aplicada, os cards extras e a condição de prazo. Peça já lançada aparece pelo valor gravado na despesa, não pela tabela de hoje — mudar preço depois não reescreve o que já foi combinado. Grupos de cinco no mesmo pacote, formato e diretor criativo recebem preço de pacote; o que sobra do múltiplo de cinco é unitário.</p>
+        <p className="fin-footnote">Clique no nome da demanda para abrir a tarefa dentro do Financeiro. A pessoa exibida aqui é sempre o responsável atual da tarefa.</p>
       </section>;
     })}
+    {!visibleClosings.length ? <Empty text={member ? "Esta pessoa não tem tarefas aprovadas ou finalizadas nesta competência." : "Nenhuma tarefa aprovada ou finalizada nesta competência."} /> : null}
 
-    <section className="fin-panel"><div className="fin-panel-title"><div><span className="fin-eyebrow">Valores da produção</span><h2>Tabela da equipe</h2></div><BadgeDollarSign size={20} /></div><div className="fin-table-scroll"><table className="fin-table"><thead><tr><th>Entrega</th><th>Unidade</th><th>Pacote de 5</th></tr></thead><tbody>{Object.entries(data.settings.rates).map(([key, rate]) => <tr key={key}><td>{RATE_LABELS[key as RateKey]}</td><td>{brl(rate.unit)}</td><td>{rate.pack === null ? "—" : brl(rate.pack)}</td></tr>)}</tbody></table></div><p className="fin-footnote">Carrosséis: +{brl(data.settings.extraCard)} por card acima de 8. Grupos de cinco no mesmo pacote, formato e diretor criativo recebem preço de pacote; excedentes usam preço unitário. Prazo desde o cadastro: {data.settings.soloDays} dia(s) para avulsas e {data.settings.packageDays} para pacotes, {data.settings.deadlineMode === "business" ? "úteis (segunda a sexta, sem calendário de feriados)" : "corridos"}. Pagamento de 50% com {data.settings.penaltyMode === "both" ? "atraso e problema confirmado" : "atraso ou problema confirmado"}.</p></section>
-    <section id="production-tasks" className="fin-panel"><div className="fin-panel-title"><div><span className="fin-eyebrow">Conferência antes de pagar</span><h2>Produção · {brl(total)}</h2></div><span>{lines.length} tarefas</span></div><div className="fin-filters"><select aria-label="Diretor criativo" value={member} onChange={(e) => setMember(e.target.value)}><option value="">Todos os diretores criativos</option>{data.members.filter((m) => (CARGOS_QUE_PRODUZEM as readonly string[]).includes(m.role)).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select><label><input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} /> Todos os meses</label></div>
-      <div className="fin-table-scroll"><table className="fin-table"><thead><tr><th>Tarefa</th><th>Responsável</th><th>Prazo / entrega</th><th>Base</th><th>A pagar</th><th>Conferência</th></tr></thead><tbody>{lines.map((line) => {
-        const entry = data.entries.find((e) => e.sourceKey === `production:${line.taskId}`);
-        return <tr key={line.taskId}><td><strong>{line.name}</strong><small>{line.rateKey ? RATE_LABELS[line.rateKey] : "Classificar formato"} · {line.package ? "Pacote" : "Avulsa"}</small></td><td>{data.members.find((m) => m.id === line.producerId)?.name || <span className="fin-negative">Sem diretor criativo</span>}</td><td>{dateLabel(line.dueDate)}<small>{line.deliveredDate ? `Entregue em ${dateLabel(line.deliveredDate)}` : "Entrega não registrada"}</small>{line.late ? <span className="fin-badge is-late">Em criação atrasada</span> : line.deliveredLate ? <span className="fin-badge">Entregue fora do prazo</span> : null}</td><td>{brl(line.base)}</td><td>{entry ? brl(entry.amount) : brl(line.total)}<small>{entry ? "Valor registrado" : line.penalty ? "50% do valor" : "Integral"}</small></td><td><div className="fin-row-actions"><Button size="sm" variant="secondary" onClick={() => onReview(line)} disabled={busy || Boolean(entry)}>Conferir</Button>{entry ? <span className="fin-badge">{entry.cancelled ? "Lançamento cancelado" : "Já lançado"}</span> : <Button size="sm" onClick={() => onBook(line)} disabled={busy || !line.ready}>Lançar a pagar</Button>}</div>{line.pendencia && !entry ? <small className="fin-negative">{line.pendencia}</small> : null}</td></tr>;
-      })}</tbody></table></div><p className="fin-footnote">Estimativas só entram na DRE e nas contas a pagar depois de “Lançar a pagar”. Confira cards, formato e problemas de qualidade. Só diretor criativo entra na conta — social media e dono não recebem por peça. O crédito vai para o diretor responsável na primeira entrega (Para aprovação, Aprovado ou Finalizado). Transferir depois para a social media não muda esse crédito. O tempo como responsável não define quem recebe. A espera por aprovação/publicação não conta como atraso de produção; o desconto configurado considera apenas a data em que a peça foi entregue. Tarefa sem diretor criativo aparece como pendência e não gera pagamento para ninguém.</p>
-      {!lines.length ? <Empty text="Nenhuma tarefa para os filtros selecionados." /> : null}
-    </section></>;
+    <section className="fin-panel"><div className="fin-panel-title"><div><span className="fin-eyebrow">Valores da produção</span><h2>Tabela da equipe</h2></div><BadgeDollarSign size={20} /></div><div className="fin-table-scroll"><table className="fin-table"><thead><tr><th>Entrega</th><th>Unidade</th><th>Pacote de 5</th></tr></thead><tbody>{Object.entries(data.settings.rates).map(([key, rate]) => <tr key={key}><td>{RATE_LABELS[key as RateKey]}</td><td>{brl(rate.unit)}</td><td>{rate.pack === null ? "—" : brl(rate.pack)}</td></tr>)}</tbody></table></div><p className="fin-footnote">O valor é calculado automaticamente pelo formato da tarefa. Grupos de cinco no mesmo pacote, formato e responsável atual recebem preço de pacote; excedentes usam preço unitário.</p></section>
+    {selected ? <FinanceTaskDialog selected={selected} data={data} onClose={() => setSelected(null)} /> : null}
+  </>;
+}
+
+function FinanceTaskDialog({ selected, data, onClose }: { selected: SelectedFinanceTask; data: FinanceData; onClose: () => void }) {
+  const { task, line, loading, error } = selected;
+  const project = data.projects.find((item) => item.id === task.projectId);
+  const assignee = data.members.find((item) => item.id === task.assigneeId);
+  const status = TASK_STATUSES.find((item) => item.value === task.status)?.label || task.status;
+  const tags = [...task.formatTagIds, ...task.channelTagIds, ...task.categoryTagIds].map((id) => data.tags.find((tag) => tag.id === id)?.label).filter(Boolean);
+  return <Dialog open onOpenChange={(open) => !open && onClose()}><DialogContent className="fin-task-modal" showCloseButton={false}>
+    <header><div><span className="fin-eyebrow">Tarefa computada no financeiro</span><DialogTitle>{task.name}</DialogTitle></div><button type="button" onClick={onClose} aria-label="Fechar detalhes da tarefa"><X size={20} /></button></header>
+    {loading ? <p className="fin-task-loading">Atualizando os dados da tarefa…</p> : null}
+    {error ? <p className="fin-message is-error" role="alert">{error} Os dados resumidos continuam visíveis abaixo.</p> : null}
+    <div className="fin-task-facts"><div><span>Cliente</span><strong>{project?.name || "—"}</strong></div><div><span>Responsável atual</span><strong>{assignee?.name || "Sem responsável"}</strong></div><div><span>Status atual</span><strong>{status}</strong></div><div><span>Computada em</span><strong>{line.deliveredDate ? dateLabel(line.deliveredDate) : "Sem data"}</strong></div><div><span>Valor</span><strong>{line.ready ? brl(line.total) : "Sem valor calculado"}</strong></div><div><span>Prazo original</span><strong>{task.dueDate ? dateLabel(task.dueDate) : dateLabel(line.dueDate)}</strong></div></div>
+    {tags.length ? <div className="fin-task-tags">{tags.map((tag) => <span key={tag}>{tag}</span>)}</div> : null}
+    <section className="fin-task-description"><h3>Descrição da tarefa</h3><div>{task.description?.trim() ? renderMarkdownLite(task.description) : <span className="fin-task-empty">Sem descrição cadastrada.</span>}</div></section>
+    {task.images.length ? <section className="fin-task-images"><h3>Imagens</h3><div>{task.images.map((url) => <a href={url} target="_blank" rel="noreferrer" key={url}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={url} alt="Anexo da tarefa" />
+    </a>)}</div></section> : null}
+    {task.driveLink ? <a className="fin-task-drive" href={task.driveLink} target="_blank" rel="noreferrer"><Link2 size={15} /> Abrir material no Drive</a> : null}
+    <footer><Button variant="secondary" onClick={onClose}>Fechar</Button></footer>
+  </DialogContent></Dialog>;
 }
 
 function SettingsPanel({ settings, busy, onSave, audit, members }: { settings: Settings; busy: boolean; onSave: (settings: Settings) => Promise<boolean>; audit: FinanceData["audit"]; members: FinanceData["members"] }) {
@@ -321,7 +349,7 @@ function SettingsPanel({ settings, busy, onSave, audit, members }: { settings: S
     <Field label="Regime tributário"><input value={draft.taxRegime} onChange={(e) => patch({ taxRegime: e.target.value })} placeholder="Informe com sua contabilidade" /></Field><Field label="Alíquota efetiva (%)"><input type="number" min="0" max="99.99" step="0.01" value={draft.taxRate ?? ""} onChange={(e) => patch({ taxRate: e.target.value === "" ? null : Number(e.target.value) })} /></Field><Field label="Margem-alvo (%)"><input type="number" min="0" max="99" value={draft.targetMargin} onChange={(e) => patch({ targetMargin: Number(e.target.value) })} /></Field><Field label="Reajuste anual de contrato (%)"><input type="number" min="0" max="100" step="0.01" value={draft.annualAdjustment} onChange={(e) => patch({ annualAdjustment: Number(e.target.value) })} /></Field>
     <Field label="Contagem de prazo"><select value={draft.deadlineMode} onChange={(e) => patch({ deadlineMode: e.target.value as Settings["deadlineMode"] })}><option value="calendar">Dias corridos</option><option value="business">Dias úteis (seg–sex)</option></select></Field><Field label="Reduzir pagamento para 50% quando"><select value={draft.penaltyMode} onChange={(e) => patch({ penaltyMode: e.target.value as Settings["penaltyMode"] })}><option value="both">Atrasar E houver problema</option><option value="either">Atrasar OU houver problema</option></select></Field><Field label="Prazo avulso (dias)"><input type="number" min="0" max="365" value={draft.soloDays} onChange={(e) => patch({ soloDays: Number(e.target.value) })} /></Field><Field label="Prazo em pacote (dias)"><input type="number" min="0" max="365" value={draft.packageDays} onChange={(e) => patch({ packageDays: Number(e.target.value) })} /></Field><Field label="Card adicional (R$)"><input type="number" min="0.01" step="0.01" value={draft.extraCard / 100} onChange={(e) => patch({ extraCard: Math.round(Number(e.target.value) * 100) })} /></Field>
     </div><h3>Tabela de produção</h3><div className="fin-table-scroll"><table className="fin-table"><thead><tr><th>Entrega</th><th>Unidade (R$)</th><th>Pacote de 5 (R$)</th></tr></thead><tbody>{Object.entries(draft.rates).map(([key, rate]) => <tr key={key}><td>{RATE_LABELS[key as RateKey]}</td><td><input aria-label={`Preço unitário ${RATE_LABELS[key as RateKey]}`} type="number" min="0.01" step="0.01" value={rate.unit / 100} onChange={(e) => patch({ rates: { ...draft.rates, [key]: { ...rate, unit: Math.round(Number(e.target.value) * 100) } } })} /></td><td>{rate.pack === null ? "Não se aplica" : <input aria-label={`Preço pacote ${RATE_LABELS[key as RateKey]}`} type="number" min="0.01" step="0.01" value={rate.pack / 100} onChange={(e) => patch({ rates: { ...draft.rates, [key]: { ...rate, pack: Math.round(Number(e.target.value) * 100) } } })} />}</td></tr>)}</tbody></table></div><p className="fin-footnote">Mudanças recalculam estimativas. Despesas de produção já lançadas mantêm o valor registrado.</p><Button disabled={busy} type="submit"><Check size={15} /> Salvar configurações</Button></form>
-    <section className="fin-panel"><h2>Histórico de alterações</h2><div className="fin-table-scroll"><table className="fin-table"><thead><tr><th>Quando</th><th>Quem</th><th>Ação</th></tr></thead><tbody>{audit.map((event) => <tr key={event.id}><td>{new Date(event.createdAt).toLocaleString("pt-BR")}</td><td>{members.find((m) => m.id === event.actorId)?.name || "Sistema"}</td><td>{event.action.replace("finance_entries", "Lançamento").replace("finance_settings", "Configuração").replace("finance_project_blocks", "Acesso do cliente").replace("finance_production_reviews", "Conferência de produção").replace(":INSERT", " · criação").replace(":UPDATE", " · alteração").replace(":DELETE", " · exclusão")}</td></tr>)}</tbody></table></div>{!audit.length ? <Empty text="As alterações financeiras ficarão registradas aqui." /> : null}</section></>;
+    <section className="fin-panel"><h2>Histórico de alterações</h2><div className="fin-table-scroll"><table className="fin-table"><thead><tr><th>Quando</th><th>Quem</th><th>Ação</th></tr></thead><tbody>{audit.map((event) => <tr key={event.id}><td>{new Date(event.createdAt).toLocaleString("pt-BR")}</td><td>{members.find((m) => m.id === event.actorId)?.name || "Sistema"}</td><td>{event.action.replace("finance_entries", "Lançamento").replace("finance_settings", "Configuração").replace("finance_project_blocks", "Acesso do cliente").replace("finance_production_reviews", "Ajuste antigo de produção").replace(":INSERT", " · criação").replace(":UPDATE", " · alteração").replace(":DELETE", " · exclusão")}</td></tr>)}</tbody></table></div>{!audit.length ? <Empty text="As alterações financeiras ficarão registradas aqui." /> : null}</section></>;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="fin-field"><span>{label}</span>{children}</label>; }
@@ -335,10 +363,6 @@ function EntryForm({ data, projectId, month, busy, onSave, onClose, error }: { d
     e.preventDefault(); const fields = new FormData(e.currentTarget); onSave({ ...Object.fromEntries(fields), action: "entry", direction, category, amount: money(String(fields.get("amount"))), months: Number(fields.get("months")), recurring: fields.get("recurring") === "on", requestId });
   }}><div className="fin-form-grid"><Field label="Tipo"><select value={direction} onChange={(e) => { setDirection(e.target.value); setCategory(e.target.value === "income" ? "servicos" : "operacional"); setRecurring(e.target.value === "income"); }}><option value="income">Receita</option><option value="expense">Despesa</option></select></Field><Field label="Categoria"><select value={category} onChange={(e) => { setCategory(e.target.value); setRecurring(e.target.value === "servicos"); }}>{Object.entries(CATEGORIES).filter(([key]) => (direction === "income") === ["servicos", "campanha", "outras_receitas"].includes(key)).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></Field><Field label="Descrição"><input name="description" required maxLength={500} placeholder="Mensalidade, campanha, licença…" /></Field><Field label="Valor por parcela (R$)"><input name="amount" required inputMode="decimal" placeholder="0,00" /></Field><Field label="Projeto / cliente"><select name="projectId" defaultValue={projectId}><option value="">Vizantu / sem cliente</option>{data.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></Field><Field label="Responsável / favorecido"><select name="memberId"><option value="">Não se aplica</option>{data.members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select></Field><Field label="Primeira competência"><input type="month" name="competence" required defaultValue={month} /></Field><Field label="Quantidade de meses / parcelas"><input name="months" type="number" min="1" max="120" defaultValue="1" required /></Field><label className="fin-check"><input name="recurring" type="checkbox" checked={direction === "income" && recurring} disabled={direction !== "income"} onChange={(e) => setRecurring(e.target.checked)} /> Receita recorrente (entra no MRR)</label></div><Field label="Observações"><textarea name="notes" maxLength={2000} rows={3} /></Field><p className="fin-footnote">O valor informado se repete mensalmente pelo prazo escolhido. Campanhas parceladas não devem ser marcadas como recorrentes.</p><footer><Button type="button" variant="secondary" onClick={onClose} disabled={busy}>Cancelar</Button><Button type="submit" disabled={busy}>{busy ? "Salvando…" : "Criar lançamento"}</Button></footer></form></FormShell>;
 }
-function ReviewForm({ line, review, busy, onClose, onSave, error }: { line: ProductionLine; review?: ProductionReview; busy: boolean; onClose: () => void; onSave: (review: ProductionReview) => void; error: string }) {
-  return <FormShell title="Conferir produção" onClose={onClose} busy={busy} error={error}><p>{line.name}</p><form onSubmit={(e) => { e.preventDefault(); const fields = new FormData(e.currentTarget); onSave({ taskId: line.taskId, rateKey: String(fields.get("rateKey")) as RateKey, cards: Number(fields.get("cards")), deliveredDate: String(fields.get("deliveredDate")) || null, qualityProblem: fields.get("qualityProblem") === "on", notes: String(fields.get("notes")) }); }}><div className="fin-form-grid"><Field label="Tipo da entrega"><select name="rateKey" defaultValue={review?.rateKey || line.rateKey || ""} required><option value="" disabled>Escolha o formato</option>{Object.entries(RATE_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></Field><Field label="Quantidade de cards (carrossel)"><input name="cards" type="number" min="1" max="100" defaultValue={review?.cards ?? line.cards} required /></Field><Field label="Data de entrega"><input name="deliveredDate" type="date" max={today()} defaultValue={review?.deliveredDate || line.deliveredDate || ""} /></Field><label className="fin-check"><input name="qualityProblem" type="checkbox" defaultChecked={review?.qualityProblem || false} /> Problema de qualidade confirmado</label></div><Field label="Observações da conferência"><textarea name="notes" rows={3} defaultValue={review?.notes || ""} /></Field><footer><Button type="button" variant="secondary" disabled={busy} onClick={onClose}>Cancelar</Button><Button type="submit" disabled={busy}>Salvar conferência</Button></footer></form></FormShell>;
-}
-
 function EditEntryForm({ entry, busy, error, onClose, onSave }: { entry: Entry; busy: boolean; error: string; onClose: () => void; onSave: (payload: Record<string, unknown>) => void }) {
   return <FormShell title="Editar lançamento" busy={busy} error={error} onClose={onClose}><form onSubmit={(event) => {
     event.preventDefault(); const fields = new FormData(event.currentTarget);

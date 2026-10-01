@@ -49,7 +49,7 @@ describe("carregamento financeiro", () => {
   });
 });
 
-it("visão geral não depende das tarefas nem das conferências de produção", async () => {
+it("visão geral não depende das tarefas de produção", async () => {
   mocks.tasks.mockRejectedValue(new Error("Tarefas indisponíveis"));
   const result = await loadFinance("owner", { includeProduction: false });
   expect(result.entries).toHaveLength(1);
@@ -65,11 +65,11 @@ it("produção funciona sem consultar ou importar contratos", async () => {
   expect(writes).toEqual([]);
 });
 
-it("fechamento do servidor lança a despesa para quem assumiu e entregou", async () => {
+it("fechamento do servidor lança a despesa para o responsável atual", async () => {
   const erika = "11111111-1111-4111-8111-111111111111";
   const luis = "22222222-2222-4222-8222-222222222222";
   mocks.members.mockResolvedValue([{ id: erika, role: "diretor_criativo" }, { id: luis, role: "diretor_criativo" }]);
-  mocks.tasks.mockResolvedValue([{ id: "task", name: "Reels", projectId: "project", assigneeId: luis, createdAt: "2026-09-01T12:00:00Z", formatTagIds: [], status: "aprovado", statusHistory: [{ status: "para_aprovacao", enteredAt: "2026-09-05T12:00:00Z", exitedAt: null }], comments: [{ kind: "activity", fieldKey: "assigneeId", oldValue: erika, newValue: luis, createdAt: "2026-09-04T12:00:00Z" }] }]);
+  mocks.tasks.mockResolvedValue([{ id: "task", name: "Reels", projectId: "project", assigneeId: luis, createdAt: "2026-09-01T12:00:00Z", formatTagIds: [], status: "aprovado", statusHistory: [{ status: "aprovado", enteredAt: "2026-09-05T12:00:00Z", exitedAt: null, assigneeId: erika }], comments: [] }]);
   await mutateFinance({ action: "productionClosing", memberId: luis, competence: "2026-09" }, "owner");
   expect(writes).toEqual([expect.arrayContaining([expect.objectContaining({ member_id: luis, source_key: "production:task", amount: 7000 })])]);
   expect(mocks.contracts).not.toHaveBeenCalled();
