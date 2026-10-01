@@ -7,6 +7,7 @@ import { financeFixture } from "../src/app/design-system/financeiro-check/mock";
 let root: Root, container: HTMLDivElement;
 const fetchMock=vi.fn();
 const button=(label:string)=>[...document.querySelectorAll("button")].find((b)=>b.textContent?.trim()===label);
+const metric=(label:string)=>[...container.querySelectorAll<HTMLElement>(".fin-metric")].find((item)=>item.querySelector(":scope > span")?.textContent===label)?.querySelector("strong")?.textContent;
 const click=async(el:HTMLElement|undefined|null)=>{expect(el).toBeTruthy();await act(async()=>el!.click());};
 async function mount(){await act(async()=>root.render(<FinanceDashboard initialData={financeFixture}/>));}
 async function change(input: HTMLInputElement|HTMLSelectElement, value:string) {
@@ -29,13 +30,29 @@ describe("painel financeiro",()=>{
     await mount();
     await click(button("Visão geral"));expect(container.textContent).toContain("DRE gerencial");
     await click(button("Avulsos"));expect(container.textContent).toContain("Receita esporádica");
-    await click(button("Produção da equipe"));expect(container.textContent).toContain("Tabela da equipe");expect(container.textContent).toContain("280,00");
+    await click(button("Produção da equipe"));expect(container.textContent).toContain("Painel da equipe criativa");expect(container.textContent).toContain("Tabela da equipe");
+  });
+  it("filtra a competência pelo mês e permite navegar entre meses",async()=>{
+    await mount();
+    const month=container.querySelector('[aria-label="Mês de análise"]') as HTMLInputElement;
+    await change(month,"2026-09");
+    await click(button("Visão geral"));
+    expect(metric("Receita do mês")).toContain("12.000,00");
+    await click(container.querySelector<HTMLElement>('[aria-label="Próximo mês"]'));
+    expect(month.value).toBe("2026-10");
+    expect(metric("Receita do mês")).toContain("12.300,00");
+    await click(button("Produção da equipe"));
+    expect(container.textContent).toContain("Visão rápida · outubro de 2026");
+    expect(container.textContent).toContain("Sem entrega em outubro de 2026");
+    await click(container.querySelector<HTMLElement>('[aria-label="Mês anterior"]'));
+    expect(container.textContent).toContain("Visão rápida · setembro de 2026");
+    expect(container.textContent).toContain("5 peças entregues");
   });
   // O fechamento precisa mostrar de onde o valor saiu, não só o valor.
   it("mostra o extrato de cada diretor criativo com a regra de preço aplicada",async()=>{
-    await mount();await click(button("Produção da equipe"));
+    await mount();await change(container.querySelector('[aria-label="Mês de análise"]')!,"2026-09");await click(button("Produção da equipe"));
     const texto=container.textContent||"";
-    expect(texto).toContain("Fechamento por diretor criativo");
+    expect(texto).toContain("Detalhamento por diretor criativo");
     expect(texto).toContain("Extrato de entregas");
     expect(texto).toContain("Designer de exemplo");
     // as cinco peças do pacote fecham em pacote de 5, e a linha diz isso
@@ -69,7 +86,7 @@ it("erro na visão geral não bloqueia a equipe e permite tentar novamente", asy
   expect(container.textContent).toContain("Contratos indisponíveis");
   await click(button("Produção da equipe"));
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
-  expect(container.textContent).toContain("Fechamento por diretor criativo");
+  expect(container.textContent).toContain("Painel da equipe criativa");
   expect(container.textContent).not.toContain("Contratos indisponíveis");
   fetchMock.mockImplementation(async () => Response.json(financeFixture));
   await click(button("Contratos"));

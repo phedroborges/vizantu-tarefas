@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BadgeDollarSign, CalendarDays, Check, ChevronRight, Download, FileSignature, Landmark, LockKeyhole, Plus, RefreshCw, Settings2, ShieldCheck, TrendingUp, Users, X } from "lucide-react";
+import { BadgeDollarSign, CalendarDays, Check, ChevronLeft, ChevronRight, Download, FileSignature, Landmark, LockKeyhole, Plus, RefreshCw, Settings2, ShieldCheck, TrendingUp, Users, X } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/vz";
+import { Avatar } from "@/components/avatar";
 import { responseError } from "@/lib/request-error";
 import { useConfirm } from "@/components/confirm-dialog";
 import { brl, clientMargins, contractAlerts, contractSummaries, contractedByMonth, growthProjection, metrics, monthAdd, priceSuggestion, producerClosing, productionLines, productionRoster, money, type ProductionLine } from "@/lib/finance/calculations";
@@ -15,6 +16,7 @@ const dateLabel = (date: string) => new Date(`${date}T12:00:00`).toLocaleDateStr
 const display = (value: number | null) => value === null ? "—" : brl(value);
 const percent = (value: number | null) => value === null ? "—" : `${(value * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 const inputMoney = (value: number) => (value / 100).toFixed(2).replace(".", ",");
+const monthLabel = (month: string) => new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric", timeZone: "America/Sao_Paulo" }).format(new Date(`${month}-01T12:00:00-03:00`));
 type Tab = "contracts" | "oneoff" | "costs" | "overview" | "production" | "settings";
 const TABS: { id: Tab; label: string }[] = [{ id: "contracts", label: "Contratos" }, { id: "oneoff", label: "Avulsos" }, { id: "costs", label: "Custos" }, { id: "overview", label: "Visão geral" }, { id: "production", label: "Produção da equipe" }, { id: "settings", label: "Configurações" }];
 
@@ -86,7 +88,7 @@ export function FinanceDashboard({ initialData }: { initialData?: FinanceData })
   function createRevenue(projectId = "") { setEntryProject(projectId); setEntryOpen(true); }
   return <main className="fin-page">
     <header className="fin-heading"><div><span className="fin-eyebrow"><ShieldCheck size={13} /> Exclusivo do dono</span><h1>Financeiro da Vizantu</h1><p>Quanto os contratos valem, até quando, e o que sobra. Cobrança e recebimento ficam no Asaas.</p></div>
-      <div className="fin-actions"><label className="fin-month"><CalendarDays size={16} /><input aria-label="Mês de análise" type="month" value={month} onChange={(e) => { if (/^\d{4}-(0[1-9]|1[0-2])$/.test(e.target.value)) setMonth(e.target.value); }} /></label><Button variant="secondary" onClick={load} disabled={loading || busy} aria-label="Atualizar financeiro"><RefreshCw size={15} /></Button><Button onClick={() => createRevenue()} disabled={!data}><Plus size={15} /> Novo lançamento</Button></div>
+      <div className="fin-actions"><MonthFilter month={month} onChange={setMonth} /><Button variant="secondary" onClick={load} disabled={loading || busy} aria-label="Atualizar financeiro"><RefreshCw size={15} /></Button><Button onClick={() => createRevenue()} disabled={!data}><Plus size={15} /> Novo lançamento</Button></div>
     </header>
     <nav className="fin-tabs" aria-label="Seções do financeiro">{TABS.map((item) => <button key={item.id} aria-current={tab === item.id ? "page" : undefined} onClick={() => setTab(item.id)}>{item.label}</button>)}</nav>
     {error ? <div className="fin-message is-error" role="alert">{error}<button onClick={load} disabled={loading}>Tentar novamente</button></div> : null}
@@ -117,6 +119,14 @@ export function FinanceDashboard({ initialData }: { initialData?: FinanceData })
 
 function Metric({ label, value, detail, accent = false }: { label: string; value: string; detail: string; accent?: boolean }) {
   return <article className={`fin-metric${accent ? " is-accent" : ""}`}><span>{label}</span><strong>{value}</strong><small>{detail}</small></article>;
+}
+function MonthFilter({ month, onChange }: { month: string; onChange: (month: string) => void }) {
+  const move = (offset: number) => onChange(monthAdd(`${month}-01`, offset).slice(0, 7));
+  return <div className="fin-period" aria-label={`Competência selecionada: ${monthLabel(month)}`}>
+    <button type="button" onClick={() => move(-1)} aria-label="Mês anterior"><ChevronLeft size={16} /></button>
+    <label className="fin-month"><CalendarDays size={16} /><span><small>Competência</small><strong>{monthLabel(month)}</strong></span><input aria-label="Mês de análise" type="month" value={month} onChange={(e) => { if (/^\d{4}-(0[1-9]|1[0-2])$/.test(e.target.value)) onChange(e.target.value); }} /></label>
+    <button type="button" onClick={() => move(1)} aria-label="Próximo mês"><ChevronRight size={16} /></button>
+  </div>;
 }
 function Overview({ data, month, stats: s }: { data: FinanceData; month: string; stats: ReturnType<typeof metrics> }) {
   const [growth, setGrowth] = useState(5);
@@ -238,10 +248,26 @@ function Production({ data, month, busy, onReview, onBook, onClose }: { data: Fi
   const semDiretor = doMes.filter((line) => !line.producerId);
   const lines = allLines.filter((line) => (all || (line.deliveredDate || line.dueDate).startsWith(month) || (!line.deliveredDate && ["para_aprovacao", "aprovado", "finalizado"].includes(line.taskStatus || ""))) && (!member || line.producerId === member));
   const total = lines.reduce((sum, line) => sum + line.total, 0);
+  const team = roster.reduce((summary, person) => ({ delivered: summary.delivered + person.delivered, inProgress: summary.inProgress + person.inProgress, total: summary.total + person.total, pending: summary.pending + person.pending }), { delivered: 0, inProgress: 0, total: 0, pending: 0 });
+  const viewMember = (memberId: string) => { setMember(memberId); setAll(false); document.getElementById("production-tasks")?.scrollIntoView({ behavior: "smooth", block: "start" }); };
   return <>
-    <section className="fin-panel"><div className="fin-panel-title"><div><span className="fin-eyebrow">Quanto cada um fecha em {month}</span><h2>Fechamento por diretor criativo</h2></div><Users size={20} /></div>
+    <section className="fin-production-dashboard" aria-labelledby="creative-team-title">
+      <div className="fin-panel-title"><div><span className="fin-eyebrow">Visão rápida · {monthLabel(month)}</span><h2 id="creative-team-title">Painel da equipe criativa</h2><p>Entregas e valores da competência selecionada; produção em aberto mostra a carteira atual.</p></div><Users size={20} /></div>
+      <div className="fin-production-summary"><Metric accent label="Entregas no mês" value={String(team.delivered)} detail={`${roster.length} diretor(es) criativo(s)`} /><Metric label="Valor apurado" value={brl(team.total)} detail="Entregas prontas para fechamento" /><Metric label="Falta lançar" value={brl(team.pending)} detail="Ainda não virou despesa" /><Metric label="Em produção agora" value={String(team.inProgress)} detail="Carteira atual da equipe" /></div>
+      <div className="fin-creative-grid">{roster.map((person) => {
+        const profile = data.members.find((candidate) => candidate.id === person.memberId);
+        return <article className="fin-creative-card" key={person.memberId}>
+          <header><Avatar name={person.name} imageUrl={profile?.avatarUrl} size={38} /><div><h3>{person.name}</h3><span>{person.active ? "Diretor criativo" : "Inativo · histórico preservado"}</span></div><strong>{brl(person.total)}</strong></header>
+          <dl><div><dt>Entregas</dt><dd>{person.delivered}</dd></div><div><dt>Em produção</dt><dd>{person.inProgress}</dd></div><div><dt>A conferir</dt><dd>{person.awaitingReview + person.awaitingDate}</dd></div><div><dt>Falta lançar</dt><dd>{brl(person.pending)}</dd></div></dl>
+          <footer><span>{person.lastDelivery ? `Última entrega: ${dateLabel(person.lastDelivery)}` : `Sem entrega em ${monthLabel(month)}`}</span><Button size="sm" variant="secondary" onClick={() => viewMember(person.memberId)}>Ver tarefas</Button></footer>
+        </article>;
+      })}</div>
+      {!roster.length ? <Empty text="Nenhum diretor criativo cadastrado. Confira os cargos na equipe." /> : null}
+    </section>
+
+    <section className="fin-panel"><div className="fin-panel-title"><div><span className="fin-eyebrow">Fechamento · {monthLabel(month)}</span><h2>Detalhamento por diretor criativo</h2></div><Users size={20} /></div>
       <div className="fin-table-scroll"><table className="fin-table"><thead><tr><th>Diretor criativo</th><th>Entregas no mês</th><th>A conferir</th><th>Entregues sem data</th><th>Em produção</th><th>Última entrega</th><th>Valor apurado</th><th>Já lançado</th><th>Falta lançar</th><th>Fechamento</th></tr></thead><tbody>
-        {roster.map((person) => <tr key={person.memberId}><td><strong>{person.name}</strong>{!person.active ? <small>Inativo · histórico preservado</small> : null}</td><td>{person.delivered}</td><td>{person.awaitingReview}</td><td>{person.awaitingDate}</td><td>{person.inProgress}</td><td>{person.lastDelivery ? dateLabel(person.lastDelivery) : "Sem entrega no mês"}</td><td>{brl(person.total)}</td><td>{brl(person.launched)}</td><td>{brl(person.pending)}</td><td><Button size="sm" disabled={busy || !person.pendingPieces} onClick={() => onClose(person.memberId, person.name, person.pending, person.pendingPieces)}>Fechar mês</Button><Button size="sm" variant="secondary" onClick={() => { setMember(person.memberId); setAll(false); document.getElementById("production-tasks")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>Ver tarefas</Button></td></tr>)}
+        {roster.map((person) => <tr key={person.memberId}><td><strong>{person.name}</strong>{!person.active ? <small>Inativo · histórico preservado</small> : null}</td><td>{person.delivered}</td><td>{person.awaitingReview}</td><td>{person.awaitingDate}</td><td>{person.inProgress}</td><td>{person.lastDelivery ? dateLabel(person.lastDelivery) : "Sem entrega no mês"}</td><td>{brl(person.total)}</td><td>{brl(person.launched)}</td><td>{brl(person.pending)}</td><td><Button size="sm" disabled={busy || !person.pendingPieces} onClick={() => onClose(person.memberId, person.name, person.pending, person.pendingPieces)}>Fechar mês</Button><Button size="sm" variant="secondary" onClick={() => viewMember(person.memberId)}>Ver tarefas</Button></td></tr>)}
       </tbody></table></div>
       {!roster.length ? <Empty text="Nenhum diretor criativo cadastrado. Confira os cargos na equipe." /> : null}
       <p className="fin-footnote">Entregas e valores são da competência selecionada. Itens a conferir não entram no fechamento. Entregas sem data aparecem para conferência, sem atribuir um mês por suposição. Em produção mostra a carteira ainda sem entrega registrada. Lançado significa despesa registrada; o pagamento é acompanhado no Asaas.</p>
