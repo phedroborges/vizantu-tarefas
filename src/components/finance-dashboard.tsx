@@ -276,7 +276,9 @@ function Production({ data, month, busy, onBook, onClose }: { data: FinanceData;
         tasks.push(...details);
       }
       const { buildStatementPdf } = await import("@/lib/finance/statement-pdf");
-      const { pdf, filename } = buildStatementPdf(data, closing, tasks, month, window.location.origin);
+      const { loadStatementAssets } = await import("@/lib/finance/statement-assets");
+      const assets = await loadStatementAssets();
+      const { pdf, filename } = buildStatementPdf(data, closing, tasks, month, window.location.origin, assets);
       await pdf.save(filename, { returnPromise: true });
     } catch (error) {
       setExportError(error instanceof Error ? error.message : "Não foi possível gerar o PDF. Tente novamente.");
