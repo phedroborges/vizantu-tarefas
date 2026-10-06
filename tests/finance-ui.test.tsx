@@ -16,6 +16,42 @@ async function change(input: HTMLInputElement|HTMLSelectElement, value:string) {
 beforeEach(()=>{vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT",true);vi.stubGlobal("fetch",fetchMock);fetchMock.mockReset();container=document.createElement("div");document.body.append(container);root=createRoot(container);});
 afterEach(async()=>{await act(async()=>root.unmount());container.remove();vi.unstubAllGlobals();});
 describe("painel financeiro",()=>{
+  it.each([false, true])("move uma receita avulsa para outubro e atualiza os totais (todos os meses: %s)",async(allMonths)=>{
+    const data=structuredClone(financeFixture);
+    const entry={...data.entries[0],id:"oneoff-september",description:"Campanha avulsa",category:"campanha" as const,recurring:false,amount:140000,competence:"2026-09",seriesId:"campaign-series",sourceKey:"manual:campaign:0",notes:"Campanha aprovada"};
+    data.entries.push(entry,{...entry,id:"oneoff-second",description:"Segunda parcela",sourceKey:"manual:campaign:1",amount:200000});
+    await mount(data); await change(container.querySelector('[aria-label="Mês de análise"]')!,"2026-09"); await click(button("Avulsos"));
+    if(allMonths) await click(container.querySelector<HTMLInputElement>('.fin-filters input[type="checkbox"]'));
+    expect(container.querySelector('.fin-panel h2')?.textContent).toContain("3.400,00");
+    await click(container.querySelector<HTMLElement>('[aria-label="Editar receita Campanha avulsa"]'));
+    const form=document.querySelector('.fin-modal form') as HTMLFormElement;
+    expect(form.querySelector<HTMLInputElement>('[name="competence"]')?.value).toBe("2026-09");
+    await change(form.querySelector('[name="competence"]')!,"2026-10");
+    const updated=structuredClone(data);
+    updated.entries.find((item)=>item.id===entry.id)!.competence="2026-10";
+    fetchMock.mockResolvedValueOnce(Response.json({ok:true})).mockResolvedValueOnce(Response.json(updated));
+    await act(async()=>form.dispatchEvent(new Event("submit",{bubbles:true,cancelable:true})));
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({action:"edit",entryId:entry.id,description:entry.description,amount:entry.amount,competence:"2026-10",notes:entry.notes});
+    expect(document.querySelector('.fin-modal')).toBeNull();
+    if(allMonths) {
+      const row=[...container.querySelectorAll('tbody tr')].find((item)=>item.textContent?.includes(entry.description));
+      expect(row?.textContent).toContain("2026-10");
+      await click(container.querySelector<HTMLInputElement>('.fin-filters input[type="checkbox"]'));
+    }
+    expect(container.querySelector('.fin-panel h2')?.textContent).toContain("2.000,00");
+    expect(container.textContent).not.toContain(entry.description);
+    expect(container.textContent).toContain("Segunda parcela");
+    await click(button("Visão geral"));
+    expect(metric("Receita do mês")).toContain("14.000,00");
+    expect(metric("MRR")).toContain("12.000,00");
+    await change(container.querySelector('[aria-label="Mês de análise"]')!,"2026-10");
+    expect(metric("Receita do mês")).toContain("13.700,00");
+    expect(metric("MRR")).toContain("12.300,00");
+    await click(button("Avulsos"));
+    expect(container.textContent).toContain(entry.description);
+    expect(container.textContent).not.toContain("Segunda parcela");
+    expect(container.querySelector('.fin-panel h2')?.textContent).toContain("1.400,00");
+  });
   it("abre uma despesa já na categoria de impostos e envia o valor real",async()=>{
     await mount(); await change(container.querySelector('[aria-label="Mês de análise"]')!,"2026-09"); await click(button("Custos"));
     await click(container.querySelector<HTMLElement>('[aria-label="Adicionar gasto em Impostos pagos"]'));
