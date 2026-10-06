@@ -43,7 +43,7 @@ describe("bloqueio do portal", () => {
 it("seções mantêm autorização e executam somente seu carregamento", async () => {
   load.mockResolvedValue({ entries: [] }); production.mockResolvedValue({ tasks: [] });
   expect((await GET(new NextRequest("http://localhost/api/financeiro?section=overview"))).status).toBe(200);
-  expect(load).toHaveBeenCalledWith("owner", { includeProduction: false });
+  expect(load).toHaveBeenCalledWith("owner");
   expect(production).not.toHaveBeenCalled();
   expect((await GET(new NextRequest("http://localhost/api/financeiro?section=production"))).status).toBe(200);
   expect(production).toHaveBeenCalledOnce();

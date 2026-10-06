@@ -239,10 +239,10 @@ describe("fechamento por diretor criativo", () => {
     expect(fechamento).toMatchObject({ launched: 5000, pending: 7000, total: 12000, pendingTaskIds: ["t2"] });
   });
 
-  it("lançamento cancelado volta a contar como pendente", () => {
+  it("lançamento cancelado fica fora do total e não volta a contar como pendente", () => {
     const cancelado = entry({ id: "x", direction: "expense", category: "producao", amount: 5000, recurring: false, sourceKey: "production:t1", cancelled: true });
     const [fechamento] = producerClosing(linhas([{ id: 1, quem: "a" }]), [cancelado]);
-    expect(fechamento).toMatchObject({ launched: 0, pending: 7000, pendingTaskIds: ["t1"] });
+    expect(fechamento).toMatchObject({ launched: 0, pending: 0, total: 0, pendingTaskIds: [], cancelledTaskIds: ["t1"] });
   });
 
   it("quem não é diretor criativo não gera fechamento nenhum", () => {

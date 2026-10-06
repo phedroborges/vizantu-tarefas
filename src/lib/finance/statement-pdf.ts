@@ -24,7 +24,8 @@ export function creationTime(task: Task): string {
 const C = { brand: "#9147ff", strong: "#6435e7", deep: "#4b23b8", soft: "#f2ecff", bg: "#f6f6fa", line: "#ebecf2", text: "#14151c", muted: "#6d7183", white: "#ffffff", green: "#1c7a3f", amber: "#92561a" };
 
 export function buildStatementPdf(data: FinanceData, closing: ProducerClosing, tasks: Task[], month: string, origin: string, assets: StatementAssets) {
-  const name = data.members.find((member) => member.id === closing.producerId)?.name || "Diretor criativo";
+  const person = data.members.find((member) => member.id === closing.producerId);
+  const name = person?.name || "Equipe";
   const pdf = new jsPDF({ putOnlyUsedFonts: true, compress: true });
   // Static instances of the system's Mona Sans; renamed per its font license.
   pdf.addFileToVFS("VizantuPDF-Regular.ttf", assets.regular);
@@ -62,7 +63,7 @@ export function buildStatementPdf(data: FinanceData, closing: ProducerClosing, t
   const nameLines = wrap(name, 116, 12, true);
   // Long names are shown in full in the metadata below the hero.
   text(nameLines[0], 23, 65, 12, true);
-  text("Diretor criativo", 23, 72, 8.5, false, C.muted);
+  text(`${person?.role === "social_media" ? "Social media" : "Diretor criativo"} · ${closing.paymentMode === "salary" ? "Salário fixo" : "Por demanda"}`, 23, 72, 8.5, false, C.muted);
   box(156, 40, 31, 30, C.white);
   text("COMPETÊNCIA", 159, 49, 6.8, true, C.muted);
   text(period, 159, 61, 13, true, C.deep);
@@ -85,13 +86,17 @@ export function buildStatementPdf(data: FinanceData, closing: ProducerClosing, t
   closing.lines.forEach((line, index) => {
     const task = tasks.find((task) => task.id === line.taskId);
     if (!task) throw new Error(`Detalhes ausentes para ${line.name}`);
-    const entry = data.entries.find((entry) => entry.sourceKey === `production:${line.taskId}` && !entry.cancelled);
+    const entry = data.entries.find((entry) => entry.sourceKey === `production:${line.taskId}`);
     const project = data.projects.find((project) => project.id === line.projectId)?.name || "Não informado";
     const status = TASK_STATUSES.find((status) => status.value === line.taskStatus)?.label || line.taskStatus || "Não informado";
     const titleLines = wrap(line.name, 112, 10.5, true);
     const metadata = wrap(`${project}  ·  ${line.rateKey ? RATE_LABELS[line.rateKey] : "Formato não reconhecido"}  ·  ${status}`, 163, 8);
     const notes: string[] = [];
-    if (entry) {
+    if (closing.paymentMode === "salary") {
+      notes.push(`Incluído no salário fixo mensal de ${brl(closing.salary || 0)}. Não gera pagamento adicional por peça.`);
+    } else if (entry?.cancelled) {
+      notes.push("Lançamento cancelado: esta demanda não compõe o valor do extrato.");
+    } else if (entry) {
       notes.push(`Registro: ${entry.id} · Competência: ${entry.competence} · Lançado em ${date(entry.createdAt)}`);
       if (entry.notes) notes.push(`Regra registrada: ${entry.notes}`);
     } else if (line.rule) {
@@ -120,9 +125,9 @@ export function buildStatementPdf(data: FinanceData, closing: ProducerClosing, t
       titleLines.forEach((title, row) => text(title, 32, y + 9.5 + row * 4.8, 10.5, true));
       const taskUrl = `${origin}/tarefas/${encodeURIComponent(line.taskId)}`;
       pdf.link(32, y + 5, 112, titleHeight, { url: taskUrl });
-      const value = entry ? brl(entry.amount) : line.ready ? brl(line.total) : "Sem valor";
+      const value = closing.paymentMode === "salary" ? "Incluído no salário" : entry?.cancelled ? "Cancelado" : entry ? brl(entry.amount) : line.ready ? brl(line.total) : "Sem valor";
       text(value, 188, y + 10, value.length > 14 ? 9 : 12, true, entry ? C.text : C.strong, "right");
-      text(entry ? "Lançado" : line.ready ? "Estimativa" : "Pendente", 188, y + 15.5, 7.5, false, entry ? C.green : C.amber, "right");
+      text(closing.paymentMode === "salary" ? "Salário mensal" : entry?.cancelled ? "Fora do total" : entry ? "Lançado" : line.ready ? "Estimativa" : "Pendente", 188, y + 15.5, 7.5, false, entry && !entry.cancelled ? C.green : C.amber, "right");
       let rowY = y + 8 + titleHeight;
       metadata.forEach((part) => { text(part, 22, rowY, 8, false, C.muted); rowY += 4; });
       rowY += 5;
@@ -149,6 +154,7 @@ export function buildStatementPdf(data: FinanceData, closing: ProducerClosing, t
 
   const explanations = [
     "Sobre este extrato",
+    ...(closing.paymentMode === "salary" ? [`Remuneração por salário fixo mensal: ${brl(closing.salary || 0)}. Tarefas incluídas, sem pagamento adicional por demanda.`] : []),
     "Valores a lançar são estimativas. Lançamentos registram despesas e não comprovam pagamento.",
     "Tempo em criação soma os períodos encerrados em Em criação, incluindo esperas; não mede horas efetivamente trabalhadas. Histórico ausente aparece como não registrado.",
     "Links da tarefa exigem acesso ao sistema. O material segue as permissões do Drive.",

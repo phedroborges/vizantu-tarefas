@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { buildStatementPdf, creationTime } from "../src/lib/finance/statement-pdf";
-import { producerClosing, productionLines } from "../src/lib/finance/calculations";
+import { producerClosing, productionLines, teamClosingsFromLines } from "../src/lib/finance/calculations";
 import { financeFixture } from "../src/app/design-system/financeiro-check/mock";
 const asset = (path: string) => readFileSync(fileURLToPath(new URL(`../public/${path}`, import.meta.url))).toString("base64");
 const assets = { logo: asset("brand/vizantu-pdf.png"), regular: asset("fonts/vizantu-pdf-regular.ttf"), semibold: asset("fonts/vizantu-pdf-semibold.ttf") };
@@ -18,6 +18,17 @@ describe("extrato PDF de produção", () => {
     ] })).toBe("2h 30min");
   });
 
+  it("exporta salário fixo com links das tarefas e permite um mês sem entregas", () => {
+    const data = structuredClone(financeFixture);
+    data.settings.compensationRules = [{ memberId: data.members[0].id, fromMonth: "2026-09", mode: "salary", salary: 180000 }];
+    const lines = productionLines(data.tasks, data.tags, data.settings, data.members);
+    const closing = teamClosingsFromLines(lines, data.entries, data.members, data.settings, "2026-09")[0];
+    expect(closing).toMatchObject({ total: 180000, pending: 180000, pieces: 5, paymentMode: "salary" });
+    const pdf = buildStatementPdf(data, closing, data.tasks, "2026-09", "https://tarefas.vizantu.com", assets).pdf;
+    for (const task of data.tasks) expect(pdf.output()).toContain(`https://tarefas.vizantu.com/tarefas/${task.id}`);
+    const empty = teamClosingsFromLines([], data.entries, data.members, data.settings, "2026-09")[0];
+    expect(buildStatementPdf(data, empty, [], "2026-09", "https://tarefas.vizantu.com", assets).pdf.getNumberOfPages()).toBe(1);
+  });
   it("gera um PDF paginado com todas as demandas, links ativos e valores registrados", () => {
     const data = structuredClone(financeFixture);
     const lines = productionLines(data.tasks, data.tags, data.settings, data.members).filter((line) => line.counted && line.deliveredDate?.startsWith("2026-09"));

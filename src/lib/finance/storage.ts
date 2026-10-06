@@ -1,6 +1,6 @@
 import { getSupabase } from "../supabase-client";
 import { listContracts, listMembers, listProjects, listTags, listTasks } from "../storage";
-import { contractEntries, productionLines, recurringEntries, validDate } from "./calculations";
+import { contractEntries, productionLines, recurringEntries, teamClosingsFromLines, validDate } from "./calculations";
 import { CATEGORIES, DEFAULT_SETTINGS, type Entry, type EntryInput, type FinanceData, type Settings } from "./types";
 
 function checked<T>(result: { data: T; error: { message: string } | null }): T {
@@ -35,6 +35,8 @@ export async function loadFinance(actor: string, options: { includeProduction?: 
   const warnings: string[] = [];
   const expected: EntryInput[] = [];
   for (const contract of contracts) {
+    const imported = settings.importedContractIds?.includes(contract.id) || storedEntries.some((entry) => String(entry.source_key || "").startsWith(`contract:${contract.id}:`));
+    if (!imported || settings.excludedContractIds?.includes(contract.id)) continue;
     const result = contractEntries(contract, settings);
     if (result.warning) warnings.push(result.warning);
     expected.push(...result.entries);
@@ -126,6 +128,7 @@ export async function mutateFinance(body: Record<string, unknown>, actor: string
     if (!["income", "expense"].includes(String(direction)) || !Object.hasOwn(CATEGORIES, String(category)) || (direction === "income") !== ["servicos", "campanha", "outras_receitas"].includes(category)) throw new FinanceInputError("Categoria inválida para este lançamento.");
     const competence = String(body.competence || ""); date(`${competence}-01`);
     if (body.recurring !== undefined && typeof body.recurring !== "boolean") throw new FinanceInputError("Recorrência inválida.");
+    if (body.contract === true && (direction !== "income" || category !== "servicos" || body.recurring !== true || !body.projectId)) throw new FinanceInputError("Um contrato financeiro precisa de cliente e receita recorrente.");
     const months = Number(body.months || 1);
     if (!Number.isInteger(months) || months < 1 || months > 120) throw new FinanceInputError("Prazo deve ter de 1 a 120 meses.");
     const seriesId = uuid(body.requestId); // Reenvio de uma mesma ação não duplica parcelas.
@@ -140,7 +143,44 @@ export async function mutateFinance(body: Record<string, unknown>, actor: string
     checked(await db.rpc("finance_cancel_series", { p_entry: uuid(body.entryId), p_actor: actor }));
   } else if (body.action === "settings") {
     const settings = validateSettings(body.settings);
-    checked(await db.from("finance_settings").upsert({ id: true, data: settings, updated_by: actor, updated_at: new Date().toISOString() }));
+    await updatePreferences(actor, (current) => ({ ...current, ...settings }));
+  } else if (body.action === "compensation") {
+    const memberId = uuid(body.memberId);
+    const fromMonth = String(body.fromMonth || ""); date(`${fromMonth}-01`);
+    const mode = body.mode;
+    if (mode !== "salary" && mode !== "demand" && mode !== "none") throw new FinanceInputError("Modalidade de remuneração inválida.");
+    const salary = mode === "salary" ? cents(body.salary) : 0;
+    const member = (await listMembers()).find((person) => person.id === memberId);
+    if (!member || !["diretor_criativo", "social_media"].includes(member.role)) throw new FinanceInputError("Escolha um diretor criativo ou social media.");
+    await updatePreferences(actor, (current) => ({ ...current, compensationRules: [...(current.compensationRules ?? []).filter((rule) => rule.memberId !== memberId || rule.fromMonth !== fromMonth), { memberId, fromMonth, mode, salary }] }));
+  } else if (body.action === "salary") {
+    const memberId = uuid(body.memberId);
+    const competence = String(body.competence || ""); date(`${competence}-01`);
+    const data = await loadFinanceProduction();
+    const closing = teamClosingsFromLines(productionLines(data.tasks, data.tags, data.settings, data.members), data.entries, data.members, data.settings, competence).find((item) => item.producerId === memberId && item.paymentMode === "salary");
+    if (!closing?.pending) throw new FinanceInputError("Nenhum salário pendente nesta competência.");
+    const name = data.members.find((person) => person.id === memberId)?.name || "Equipe";
+    checked(await db.from("finance_entries").upsert(toRow({ direction: "expense", category: "producao", description: `Salário fixo · ${name}`, amount: closing.pending, competence, projectId: null, memberId, recurring: false, seriesId: null, sourceKey: `salary:${memberId}:${competence}`, notes: `Salário mensal configurado: ${closing.salary} centavos. Complemento após despesas já registradas para esta pessoa na competência.` }, actor), { onConflict: "source_key", ignoreDuplicates: true }));
+  } else if (body.action === "importContract") {
+    const contractId = uuid(body.contractId);
+    const contract = (await listContracts()).find((item) => item.id === contractId);
+    if (!contract) throw new FinanceInputError("Contrato não encontrado.");
+    const settings = await updatePreferences(actor, (current) => {
+      const result = contractEntries(contract, current);
+      if (!result.entries.length) throw new FinanceInputError(result.warning || "Somente contratos assinados e completos podem ser adicionados.");
+      return { ...current, importedContractIds: [...new Set([...(current.importedContractIds ?? []), contractId])], excludedContractIds: (current.excludedContractIds ?? []).filter((id) => id !== contractId) };
+    });
+    const existing = new Set((await allRows("finance_entries")).map((row) => row.source_key));
+    const missing = contractEntries(contract, settings).entries.filter((entry) => !existing.has(entry.sourceKey));
+    if (missing.length) checked(await db.from("finance_entries").upsert(missing.map((entry) => toRow(entry, actor)), { onConflict: "source_key", ignoreDuplicates: true }));
+    if (body.restore === true) checked(await db.from("finance_entries").update({ cancelled: false, updated_by: actor, updated_at: new Date().toISOString() }).eq("series_id", contractId).eq("cancelled", true));
+  } else if (body.action === "removeContract") {
+    const seriesId = uuid(body.seriesId);
+    const rows = (await allRows("finance_entries")).map(mapEntry).filter((entry) => entry.seriesId === seriesId && entry.direction === "income").sort((a, b) => a.competence.localeCompare(b.competence));
+    if (!rows.length) throw new FinanceInputError("Contrato financeiro não encontrado.");
+    await updatePreferences(actor, (current) => ({ ...current, excludedContractIds: [...new Set([...(current.excludedContractIds ?? []), seriesId])] }));
+    const first = rows.find((entry) => !entry.cancelled);
+    if (first) checked(await db.rpc("finance_cancel_series", { p_entry: first.id, p_actor: actor }));
   } else if (body.action === "block") {
     const projectId = uuid(body.projectId);
     if (typeof body.blocked !== "boolean") throw new FinanceInputError("Situação de bloqueio inválida.");
@@ -172,4 +212,18 @@ export async function mutateFinance(body: Record<string, unknown>, actor: string
   } else {
     throw new FinanceInputError("Ação financeira inválida.");
   }
+}
+
+// Preferences and numerical settings share the existing audited JSON row.
+// The timestamp comparison prevents silently overwriting another owner's save.
+async function updatePreferences(actor: string, change: (settings: Settings) => Settings) {
+  const db = getSupabase();
+  const row = checked(await db.from("finance_settings").select("data,updated_at").eq("id", true).maybeSingle());
+  const current = { ...DEFAULT_SETTINGS, ...row?.data, rates: { ...DEFAULT_SETTINGS.rates, ...row?.data?.rates } } as Settings;
+  const values = { data: change(current), updated_by: actor, updated_at: new Date().toISOString() };
+  if (row?.updated_at) {
+    const updated = checked(await db.from("finance_settings").update(values).eq("id", true).eq("updated_at", row.updated_at).select("id"));
+    if (!updated?.length) throw new FinanceInputError("O financeiro foi atualizado em outra sessão. Atualize a página e tente novamente.");
+  } else checked(await db.from("finance_settings").upsert({ id: true, ...values }));
+  return values.data;
 }

@@ -9,13 +9,67 @@ const fetchMock=vi.fn();
 const button=(label:string)=>[...document.querySelectorAll("button")].find((b)=>b.textContent?.trim()===label);
 const metric=(label:string)=>[...container.querySelectorAll<HTMLElement>(".fin-metric")].find((item)=>item.querySelector(":scope > span")?.textContent===label)?.querySelector("strong")?.textContent;
 const click=async(el:HTMLElement|undefined|null)=>{expect(el).toBeTruthy();await act(async()=>el!.click());};
-async function mount(){await act(async()=>root.render(<FinanceDashboard initialData={financeFixture}/>));}
+async function mount(data=financeFixture){await act(async()=>root.render(<FinanceDashboard initialData={data}/>));}
 async function change(input: HTMLInputElement|HTMLSelectElement, value:string) {
   await act(async()=>{Object.getOwnPropertyDescriptor(input instanceof HTMLSelectElement?HTMLSelectElement.prototype:HTMLInputElement.prototype,"value")!.set!.call(input,value);input.dispatchEvent(new Event(input instanceof HTMLSelectElement?"change":"input",{bubbles:true}));});
 }
 beforeEach(()=>{vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT",true);vi.stubGlobal("fetch",fetchMock);fetchMock.mockReset();container=document.createElement("div");document.body.append(container);root=createRoot(container);});
 afterEach(async()=>{await act(async()=>root.unmount());container.remove();vi.unstubAllGlobals();});
 describe("painel financeiro",()=>{
+  it("abre uma despesa já na categoria de impostos e envia o valor real",async()=>{
+    await mount(); await change(container.querySelector('[aria-label="Mês de análise"]')!,"2026-09"); await click(button("Custos"));
+    await click(container.querySelector<HTMLElement>('[aria-label="Adicionar gasto em Impostos pagos"]'));
+    const form=document.querySelector('.fin-modal form') as HTMLFormElement;
+    expect([...form.querySelectorAll('select')][0].value).toBe("expense"); expect([...form.querySelectorAll('select')][1].value).toBe("impostos");
+    await change(form.querySelector('[name="description"]')!,"Multa adicional de imposto"); await change(form.querySelector('[name="amount"]')!,"150,00");
+    fetchMock.mockResolvedValueOnce(Response.json({ok:true})).mockResolvedValueOnce(Response.json(financeFixture));
+    await act(async()=>form.dispatchEvent(new Event("submit",{bubbles:true,cancelable:true})));
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({direction:"expense",category:"impostos",amount:15000,recurring:false});
+  });
+  it("cadastra contrato manual como receita recorrente e exige cliente",async()=>{
+    await mount(); await click(button("Novo contrato"));
+    const form=document.querySelector('.fin-modal form') as HTMLFormElement;
+    expect(form.querySelector<HTMLSelectElement>('[name="projectId"]')?.required).toBe(true);
+    await change(form.querySelector('[name="description"]')!,"Contrato mensal"); await change(form.querySelector('[name="amount"]')!,"2.000,00");
+    await change(form.querySelector('[name="projectId"]')!,financeFixture.projects[0].id);
+    fetchMock.mockResolvedValueOnce(Response.json({ok:true})).mockResolvedValueOnce(Response.json(financeFixture));
+    await act(async()=>form.dispatchEvent(new Event("submit",{bubbles:true,cancelable:true})));
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({direction:"income",category:"servicos",recurring:true,contract:true,amount:200000});
+  });
+  it("salva salário fixo com competência e valor em centavos",async()=>{
+    await mount(); await change(container.querySelector('[aria-label="Mês de análise"]')!,"2026-09"); await click(button("Produção da equipe"));
+    const form=container.querySelector('.fin-compensation-row') as HTMLFormElement;
+    await change(form.querySelector('select')!,"salary"); await change(form.querySelector('[name="salary"]')!,"1.800,00");
+    fetchMock.mockResolvedValueOnce(Response.json({ok:true})).mockResolvedValueOnce(Response.json(financeFixture));
+    await act(async()=>form.dispatchEvent(new Event("submit",{bubbles:true,cancelable:true})));
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({action:"compensation",mode:"salary",salary:180000,fromMonth:"2026-09",memberId:financeFixture.members[0].id});
+  });
+  it("lança salário mensal e atualiza o fechamento sem criar despesas por peça",async()=>{
+    const data=structuredClone(financeFixture);
+    data.settings.compensationRules=[{memberId:data.members[0].id,fromMonth:"2026-09",mode:"salary",salary:180000}];
+    await mount(data); await change(container.querySelector('[aria-label="Mês de análise"]')!,"2026-09"); await click(button("Produção da equipe"));
+    expect(container.textContent).toContain("Incluído no salário"); expect(button("Lançar a pagar")).toBeUndefined();
+    await click(button("Lançar salário do mês"));
+    fetchMock.mockResolvedValueOnce(Response.json({ok:true})).mockResolvedValueOnce(Response.json(data));
+    await click(button("Lançar fechamento"));
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({action:"salary",memberId:data.members[0].id,competence:"2026-09"});
+  });
+  it("permite escolher contrato assinado e depois excluir do financeiro",async()=>{
+    const data=structuredClone(financeFixture);
+    const id="22222222-2222-4222-8222-222222222222";
+    data.contracts=[{id,title:"Contrato opcional",projectId:data.projects[0].id,status:"assinado",templateId:"gestao_marca",paymentMode:"pre",paymentStructure:"mensal",fields:{valor_mensal:"900,00",vigencia_inicio:"2026-09-01",vigencia_meses:"3"},body:"",createdAt:"",updatedAt:""}];
+    await mount(data); await click(button("Adicionar ao financeiro"));
+    const included=structuredClone(data);
+    included.entries.push({...data.entries[0],id:"new-contract",seriesId:id,sourceKey:`contract:${id}:0`,description:"Contrato opcional",amount:90000});
+    fetchMock.mockResolvedValueOnce(Response.json({ok:true})).mockResolvedValueOnce(Response.json(included));
+    await click(button("Adicionar contrato"));
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({action:"importContract",contractId:id,restore:false});
+    const row=[...container.querySelectorAll('tr')].find((row)=>row.textContent?.includes("Contrato opcional"));
+    await click([...row!.querySelectorAll('button')].find((item)=>item.textContent==="Excluir do financeiro"));
+    fetchMock.mockResolvedValueOnce(Response.json({ok:true})).mockResolvedValueOnce(Response.json(data));
+    await click([...document.querySelectorAll<HTMLElement>('[role="dialog"] button')].find((item)=>item.textContent==="Excluir do financeiro"));
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toMatchObject({action:"removeContract",seriesId:id});
+  });
   it("oferece PDF por diretor e informa falha ao carregar detalhes sem exportar parcialmente",async()=>{
     await mount();await change(container.querySelector('[aria-label="Mês de análise"]')!,"2026-09");await click(button("Produção da equipe"));
     fetchMock.mockResolvedValue({ok:false,status:500,text:async()=>"",json:async()=>({error:"Falha nos detalhes"})});

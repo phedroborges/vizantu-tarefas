@@ -14,6 +14,7 @@ export type Entry = {
 };
 export type RateKey = "reels" | "estatico" | "carrossel" | "manual" | "canva";
 export const RATE_LABELS: Record<RateKey, string> = { reels: "Reels", estatico: "Estático (feed/story)", carrossel: "Carrossel até 8 cards", manual: "Manual de marca", canva: "Apresentação Canva até 15 slides (animada)" };
+export type CompensationRule = { memberId: string; fromMonth: string; mode: "demand" | "salary" | "none"; salary: number };
 export type Settings = {
   taxRate: number | null; taxRegime: string; targetMargin: number;
   deadlineMode: "calendar" | "business"; penaltyMode: "both" | "either";
@@ -23,6 +24,9 @@ export type Settings = {
   // consulta IPCA automaticamente, e fingir que consulta seria pior que zero.
   annualAdjustment: number;
   rates: Record<RateKey, { unit: number; pack: number | null }>; extraCard: number;
+  compensationRules?: CompensationRule[];
+  importedContractIds?: string[];
+  excludedContractIds?: string[];
 };
 export const DEFAULT_SETTINGS: Settings = {
   // 6% sobre o faturamento, informado pela Vizantu. Alíquota efetiva: não há
@@ -31,9 +35,8 @@ export const DEFAULT_SETTINGS: Settings = {
   deadlineMode: "calendar", penaltyMode: "both", soloDays: 1, packageDays: 3, extraCard: 2000, annualAdjustment: 0,
   rates: { reels: { unit: 7000, pack: 28000 }, estatico: { unit: 5000, pack: 20000 }, carrossel: { unit: 10000, pack: 40000 }, manual: { unit: 35000, pack: null }, canva: { unit: 30000, pack: null } },
 };
-// Só quem produz peça entra no cálculo de produção: editor de vídeo e designer,
-// que no app são diretor_criativo. Social media e dono não recebem por tarefa —
-// o trabalho deles não é medido em peça entregue.
+// Papel remunerado por demanda por padrão. Social media pode receber por
+// demanda ou salário quando o dono configura uma regra de remuneração.
 export const CARGOS_QUE_PRODUZEM = ["diretor_criativo"] as const;
 
 export type ClientMargin = {

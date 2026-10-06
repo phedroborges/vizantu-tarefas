@@ -32,15 +32,16 @@ Valores monetários usam centavos inteiros. Lançamentos vivem por **competênci
 
 Receitas e despesas avulsas ou mensais podem ter de 1 a 120 parcelas. O valor informado é o de **cada parcela**. A marcação de receita recorrente determina a entrada no MRR e a presença na aba Contratos; uma campanha parcelada não é recorrente, e fica na aba Avulsos. Cancelar não apaga o histórico.
 
-Ao abrir/atualizar o financeiro, contratos assinados completos geram os lançamentos faltantes. A chave contrato + índice da parcela impede duplicação. São usados projeto, início, valor, meses/parcelas e escalonamento. O total do projeto segue o mesmo cálculo do documento; eventuais centavos indivisíveis são distribuídos entre parcelas.
+Novos contratos assinados só entram após escolher **Adicionar ao financeiro** na lista de contratos assinados disponíveis. **Novo contrato** cadastra uma receita recorrente manual com cliente, valor mensal, competência inicial e prazo. Contratos já importados continuam na carteira. Abrir/atualizar gera apenas parcelas faltantes dos contratos incluídos; contratos excluídos não são recriados. A chave contrato + índice da parcela impede duplicação. São usados projeto, início, valor, meses/parcelas e escalonamento. O total do projeto segue o mesmo cálculo do documento; eventuais centavos indivisíveis são distribuídos entre parcelas.
 
-Contratos incompletos aparecem como pendência. Alterações posteriores não reescrevem lançamentos ou histórico: divergências aparecem para conferência. Contratos encerrados ou removidos com lançamentos existentes também geram aviso; cabe ao dono cancelar o que deixar de ser devido. Alterar um lançamento não altera o contrato nem as outras parcelas.
+**Editar parcela** altera um lançamento; **Excluir do financeiro** cancela as parcelas da série sem apagar o documento ou o histórico. Parcelas com baixas ativas antigas mantêm a proteção existente contra cancelamento. Contratos assinados excluídos podem ser reativados explicitamente, preservando seus valores anteriores. Contratos incompletos aparecem na lista com a pendência que impede sua inclusão. Alterações posteriores não reescrevem lançamentos ou histórico: divergências aparecem para conferência. Contratos encerrados ou removidos com lançamentos existentes também geram aviso; cabe ao dono cancelar o que deixar de ser devido. Alterar um lançamento não altera o contrato nem as outras parcelas.
 
 ## Indicadores
 
 - Receita/DRE: lançamentos não cancelados por competência; o resultado inclui valores ainda não recebidos.
 - Retiradas de lucro não entram como despesa operacional: distribuir lucro não é custo de operar.
-- Impostos: 6% sobre o faturamento por padrão. Valor explicitamente lançado no mês substitui a estimativa; nunca somam. Sem lançamento e sem alíquota, imposto/resultado/margem ficam sem estimativa.
+- Impostos: 6% sobre o faturamento por padrão. A soma dos gastos explicitamente lançados no mês substitui a estimativa; nunca somam. Em Custos, cada categoria oferece **Adicionar gasto**. Exemplo: imposto de R$ 900 e multa de R$ 150 resultam em R$ 1.050. **Editar** altera o valor existente e **Cancelar** o retira dos totais, mantendo o histórico. Sem lançamento e sem alíquota, imposto/resultado/margem ficam sem estimativa.
+- Equipe: despesas de produção registradas mais demandas e salários ainda a lançar, sem contar duas vezes. Uma despesa automática cancelada não volta como estimativa. A visão geral distingue lançado e pendente; ambos entram no custo e no resultado.
 - Lucro bruto: receita menos imposto e produção. Resultado gerencial: lucro bruto menos operação, ferramentas, aquisição, pró-labore e outros custos.
 - MRR: receita recorrente da competência, independentemente da baixa. ARR = MRR × 12, ritmo anual, sem presumir vigência ou renovação por 12 meses.
 - Ticket: receita vinculada a clientes ÷ clientes faturados no mês. ARPA: MRR ÷ clientes recorrentes.
@@ -61,7 +62,7 @@ O preço-base = custo com rateio ÷ (1 − imposto − margem-alvo). Uma nota 9�
 
 ## Margem por cliente
 
-Calculada, não digitada. Receita do cliente na competência menos três custos: imposto sobre o que ele fatura, produção lançada na conta dele e a fatia das ferramentas do mês. Ferramenta é assinatura da empresa e não vem carimbada por cliente, então é rateada pela participação dele na receita do mês — quem fatura mais puxa mais. Sem receita no mês, não há rateio.
+Calculada, não digitada. Receita do cliente na competência menos três custos: imposto sobre o que ele fatura, produção lançada ou pendente na conta dele, salários fixos e a fatia das ferramentas do mês. Salários e despesas de equipe sem cliente são rateados pela participação de cada cliente na receita vinculada do mês. Ferramenta é assinatura da empresa e não vem carimbada por cliente, então é rateada pela participação dele na receita do mês — quem fatura mais puxa mais. Sem receita no mês, não há rateio.
 
 Operacional, marketing e pró-labore ficam de fora: são custo de existir a empresa, não custo de atender aquele cliente. Somá-los faria todo cliente parecer deficitário nos meses fracos. O campo de custo do simulador de preço continua editável, mas nasce preenchido com produção mais ferramentas rateadas.
 
@@ -75,21 +76,21 @@ O reajuste anual é um percentual fixo configurado, aplicado a cada 12 parcelas 
 
 Tabela inicial: Reels 70/280; estáticos 50/200; carrosséis até 8 cards 100/400 (unidade/pacote de cinco); manual de marca 350; apresentação Canva animada até 15 slides 300. Card adicional custa 20.
 
-Só conta quem produz peça: editor de vídeo e designer, que no app são **diretor criativo**. Social media e dono não recebem por tarefa — o trabalho deles não é medido em peça entregue.
+Diretores criativos e social media aparecem em **Remuneração da equipe**, na aba Produção da equipe. Cada pessoa pode receber **Por demanda**, **Salário fixo mensal** ou **Não contabilizar**, com mês inicial de vigência e histórico das regras. O padrão mantém diretores por demanda e social media sem remuneração automática até a configuração. Para interromper um salário, salve Não contabilizar a partir do mês de encerramento.
 
-Uma peça gera um pagamento só. Recebe o diretor responsável na primeira entrega: Para aprovação, Aprovado ou Finalizado. O tempo de responsabilidade não mede trabalho e não define crédito. Novas transições guardam o responsável no histórico de status; tarefas antigas usam a sequência de trocas até a entrega, escolhendo o último diretor, inclusive quando a demanda já foi repassada à social media. Mudanças posteriores não transferem o crédito. O mês usa a data da primeira entrega, ou a data corrigida na conferência. Status concluído sem data conhecida exige conferência, sem inventar uma competência. Tarefa sem nenhum diretor criativo aparece como pendência nomeada e não gera pagamento para ninguém; é sinal de processo a corrigir, não de valor a pagar.
+Por demanda, só entram tarefas cujo status atual é Aprovado ou Finalizado, atribuídas ao responsável atual. A competência usa o início da sequência final de aprovação/finalização; sair dessa sequência e voltar cria uma nova data. Sem evidência de data, a tarefa fica pendente. Para aprovação e Problema não geram pagamento. O formato vem das etiquetas/nome. Grupos de cinco no mesmo projeto, pacote, formato e pessoa recebem preço de pacote; sobras são unitárias. O prazo parte do cadastro em horário de São Paulo. Atraso ativo só aparece em Em criação. Os preços e descontos continuam usando as regras configuradas.
 
-O formato é sugerido por etiqueta/nome e pode ser corrigido na conferência. Os grupos de cinco consideram o mesmo projeto, pacote, formato e diretor criativo creditado; sobras são unitárias. O prazo parte do cadastro da tarefa, em horário de São Paulo, e a primeira passagem por entrega ao cliente serve como evidência de entrega. O dono pode corrigir a data. Problema de qualidade precisa ser confirmado na conferência. Atraso ativo só aparece no status Em criação. Para aprovação e Aprovado já habilitam o recebimento; aprovação e publicação posteriores não acrescentam atraso. A regra configurada de desconto considera a entrega efetivamente fora do prazo, sem usar o tempo que o cliente levou para aprovar.
+Salário fixo entra no custo mensal mesmo sem tarefas entregues. As tarefas ficam no extrato como **Incluído no salário**, sem adicionar valor por peça. **Lançar salário do mês** registra uma despesa de produção com chave única por pessoa/competência, calculada no servidor. Despesas de equipe já registradas para essa pessoa no mês abatem o valor pendente. Alterar a regra não reescreve despesas anteriores.
 
-## Fechamento por diretor criativo
+## Fechamento por pessoa
 
 O PDF usa a identidade visual do design system: logo oficial, cores do tema claro e Mona Sans incorporada (instâncias estáticas para PDF). O resumo destaca total, lançado, estimativa e quantidade; os trabalhos são separados em blocos com links ativos. Cabeçalho e paginação acompanham todas as páginas. Os arquivos de marca são carregados apenas na exportação e ficam em `public/brand` e `public/fonts`.
 
-Na aba **Produção da equipe**, o botão **Exportar extrato PDF** no bloco de cada diretor baixa todas as demandas computadas dessa pessoa na competência selecionada. O documento inclui resumo dos valores, cliente, formato, status, cadastro, prazo, data computada de entrega, valor registrado ou estimado, regra de preço e links clicáveis para a tarefa e o material no Drive. Valores registrados preservam as notas do lançamento; estimativas mostram a regra atual. O tempo em criação soma os intervalos encerrados do status `em_criacao`, incluindo esperas, e não representa um cronômetro de horas trabalhadas. Histórico ausente aparece como não registrado. A exportação busca os detalhes completos e informa erros sem baixar um documento parcial.
+Na aba **Produção da equipe**, o botão **Exportar extrato PDF** no bloco de cada pessoa baixa todas as demandas computadas dessa pessoa na competência selecionada. O documento inclui resumo dos valores, cliente, formato, status, cadastro, prazo, data computada de entrega, valor registrado ou estimado, regra de preço e links clicáveis para a tarefa e o material no Drive. Valores registrados preservam as notas do lançamento; estimativas mostram a regra atual. O tempo em criação soma os intervalos encerrados do status `em_criacao`, incluindo esperas, e não representa um cronômetro de horas trabalhadas. Histórico ausente aparece como não registrado. A exportação busca os detalhes completos e informa erros sem baixar um documento parcial.
 
-A conferência é peça a peça, porque é ali que se corrige formato, quantidade de cards e problema de qualidade. Mas ninguém paga peça a peça: paga-se uma pessoa, uma vez no mês.
+Na modalidade por demanda, a conferência mostra cada peça e sua regra de preço. O fechamento agrupa as pendências da pessoa no mês; salário fixo usa um único lançamento mensal.
 
-Cada diretor criativo tem o seu próprio bloco, separado dos demais, com:
+Cada pessoa remunerada tem o seu próprio bloco, separado dos demais, com:
 
 - os números do mês: total, peças entregues, já lançado, falta lançar e quantas levaram desconto;
 - um gráfico por formato, e outro comparando o fechado entre as pessoas;
@@ -111,7 +112,7 @@ Não há régua de cobrança: quem cobra é o Asaas. O bloqueio é uma decisão 
 
 ## Verificação
 
-`npm run test:unit -- tests/finance-calculations.test.ts tests/finance-access.test.ts tests/finance-database.test.ts tests/finance-validation.test.ts tests/finance-ui.test.tsx`
+`pnpm exec vitest run tests/finance-*.test.ts tests/finance-ui.test.tsx --maxWorkers=1 --pool=threads`
 
 Também foram exercitados os testes de aprovação do cliente e de permissões. A interface foi conferida em navegador com dados de exemplo, em desktop e celular. Dados de demonstração ficam exclusivamente em `tests/fixtures`.
 

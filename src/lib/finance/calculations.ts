@@ -66,7 +66,8 @@ export function contractEntries(contract: Contract, settings?: Pick<Settings, "a
   })) };
 }
 
-export function metrics(data: Pick<FinanceData, "entries" | "settings">, month: string) {
+type CostData = Pick<FinanceData, "entries" | "settings"> & Partial<Pick<FinanceData, "tasks" | "tags" | "members">>;
+export function metrics(data: CostData, month: string) {
   const { settings } = data;
   const entries = data.entries.filter((entry) => !entry.cancelled);
   const current = entries.filter((entry) => entry.competence === month);
@@ -76,7 +77,8 @@ export function metrics(data: Pick<FinanceData, "entries" | "settings">, month: 
   const taxEstimate = settings.taxRate === null ? null : Math.round(revenue * settings.taxRate / 100);
   // Imposto cadastrado substitui a provisão estimada: nunca somar os dois.
   const tax = costs.impostos || taxEstimate;
-  const directCost = costs.producao;
+  const teamPending = pendingTeamCost(data, month);
+  const directCost = costs.producao + teamPending;
   const operatingCost = costs.operacional + costs.ferramentas + costs.marketing + costs.prolabore + costs.outros_custos;
   const grossProfit = tax === null ? null : revenue - tax - directCost;
   const profit = grossProfit === null ? null : grossProfit - operatingCost;
@@ -100,14 +102,15 @@ export function metrics(data: Pick<FinanceData, "entries" | "settings">, month: 
   const history = Array.from({ length: 3 }, (_, i) => {
     const key = monthAdd(`${historicalStart}-01`, i).slice(0, 7);
     const rows = entries.filter((e) => e.competence === key);
-    return { month: key, revenue: sum(rows.filter((e) => e.direction === "income")), cost: sum(rows.filter((e) => e.direction === "expense" && e.category !== "retiradas")), hasData: rows.length > 0 };
+    const pending = pendingTeamCost(data, key);
+    return { month: key, revenue: sum(rows.filter((e) => e.direction === "income")), cost: sum(rows.filter((e) => e.direction === "expense" && e.category !== "retiradas")) + pending, hasData: rows.length > 0 || pending > 0 };
   });
   const observed = history.filter((h) => h.hasData);
   const averageRevenue = observed.length ? Math.round(observed.reduce((s, h) => s + h.revenue, 0) / observed.length) : null;
   const averageCost = observed.length ? Math.round(observed.reduce((s, h) => s + h.cost, 0) / observed.length) : null;
   // Saúde sem caixa: sobra resultado e margem, que é o que a competência sabe.
-  const health = !current.length ? "Sem dados" : tax === null ? "Configuração incompleta" : profit !== null && profit < 0 ? "Crítica" : margin !== null && margin * 100 < settings.targetMargin ? "Atenção" : "Saudável";
-  return { revenue, costs, tax, taxEstimate, directCost, operatingCost, grossProfit, profit, margin,
+  const health = !current.length && !teamPending ? "Sem dados" : tax === null ? "Configuração incompleta" : profit !== null && profit < 0 ? "Crítica" : margin !== null && margin * 100 < settings.targetMargin ? "Atenção" : "Saudável";
+  return { revenue, costs, tax, taxEstimate, directCost, teamPending, operatingCost, grossProfit, profit, margin,
     mrr, arr: mrr * 12, arpa, ticket: monthlyClients.size ? Math.round(sum(current.filter((e) => e.direction === "income" && e.projectId !== null)) / monthlyClients.size) : null,
     churn, ltv, cac, newClients, clients: clients.size, breakEven, health, history, averageRevenue, averageCost };
 }
@@ -175,14 +178,16 @@ export type ProductionLine = { taskStatus?: Task["status"]; taskId: string; name
 
 export function productionLines(tasks: Task[], tags: Tag[], settings: Settings, members: Member[]): ProductionLine[] {
   const labels = new Map(tags.map((tag) => [tag.id, tag.label]));
-  const produzem = new Set(members.filter((member) => (CARGOS_QUE_PRODUZEM as readonly string[]).includes(member.role)).map((member) => member.id));
+  const produzem = new Map(members.filter((member) => ["diretor_criativo", "social_media"].includes(member.role)).map((member) => [member.id, member]));
   const rows = tasks.map((task) => {
     const format = [...task.formatTagIds.map((id) => labels.get(id) || ""), task.name].join(" ").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
     const rateKey: RateKey | null = /manual.*marca/.test(format) ? "manual" : /canva|apresentacao/.test(format) ? "canva" : /carross/.test(format) ? "carrossel" : /reels?|video/.test(format) ? "reels" : /estatico|feed|story/.test(format) ? "estatico" : null;
     const payable = PAYABLE_STATUSES.has(task.status);
     const deliveredAt = payableEnteredAt(task);
     const delivered = payable && deliveredAt ? localDate(deliveredAt) : null;
-    const producerId = task.assigneeId && produzem.has(task.assigneeId) ? task.assigneeId : null;
+    const person = task.assigneeId ? produzem.get(task.assigneeId) : undefined;
+    const pay = person ? compensationFor(settings, person, delivered?.slice(0, 7) || localDate(new Date().toISOString()).slice(0, 7)) : null;
+    const producerId = person && pay?.mode !== "none" ? person.id : null;
     const dueDate = daysAdd(localDate(task.createdAt), task.captacaoId ? settings.packageDays : settings.soloDays, settings.deadlineMode === "business");
     const deliveredLate = Boolean(delivered && delivered > dueDate);
     const late = !delivered && task.status === "em_criacao" && dueDate < localDate(new Date().toISOString());
@@ -190,7 +195,8 @@ export function productionLines(tasks: Task[], tags: Tag[], settings: Settings, 
     const counted = payable && Boolean(delivered);
     const pendencia = !payable ? "Só tarefas aprovadas ou finalizadas entram no financeiro."
       : !delivered ? "A tarefa não tem data registrada de aprovação ou finalização."
-      : !producerId ? "O responsável atual não é um diretor criativo."
+      : !producerId ? "O responsável atual não tem remuneração por demanda configurada."
+      : pay?.mode === "salary" ? "Incluído no salário fixo mensal."
       : !rateKey ? "A tarefa não tem um formato financeiro reconhecido."
       : null;
     return { taskStatus: task.status, taskId: task.id, name: task.name, projectId: task.projectId, memberId: task.assigneeId, producerId, rateKey, package: Boolean(task.captacaoId), cards: 8, dueDate, deliveredDate: delivered,
@@ -232,13 +238,18 @@ export function productionLines(tasks: Task[], tags: Tag[], settings: Settings, 
 // Operacional, marketing e pró-labore ficam de fora: são custo de existir a
 // empresa, não custo de atender aquele cliente. Misturar os dois faria todo
 // cliente parecer deficitário nos meses fracos.
-export function clientMargins(data: Pick<FinanceData, "entries" | "settings" | "projects">, month: string): ClientMargin[] {
+export function clientMargins(data: CostData & Pick<FinanceData, "projects">, month: string): ClientMargin[] {
   const live = data.entries.filter((entry) => !entry.cancelled && entry.competence === month);
   const receitaTotal = sum(live.filter((entry) => entry.direction === "income" && entry.projectId));
   const ferramentas = sum(live.filter((entry) => entry.direction === "expense" && entry.category === "ferramentas"));
+  const lines = productionLines(data.tasks ?? [], data.tags ?? [], data.settings, data.members ?? []);
+  const pendingClosings = teamClosingsFromLines(lines, data.entries, data.members ?? [], data.settings, month);
+  const fixedPending = pendingClosings.filter((closing) => closing.paymentMode === "salary").reduce((total, closing) => total + closing.pending, 0);
+  const unassignedTeam = sum(live.filter((entry) => entry.direction === "expense" && entry.category === "producao" && !entry.projectId));
   return data.projects.map((project) => {
     const revenue = sum(live.filter((entry) => entry.direction === "income" && entry.projectId === project.id));
-    const production = sum(live.filter((entry) => entry.direction === "expense" && entry.category === "producao" && entry.projectId === project.id));
+    const demandPending = pendingClosings.filter((closing) => closing.paymentMode !== "salary").flatMap((closing) => closing.lines.filter((line) => closing.pendingTaskIds.includes(line.taskId))).filter((line) => line.projectId === project.id).reduce((total, line) => total + line.total, 0);
+    const production = sum(live.filter((entry) => entry.direction === "expense" && entry.category === "producao" && entry.projectId === project.id)) + demandPending + (receitaTotal ? Math.round((fixedPending + unassignedTeam) * revenue / receitaTotal) : 0);
     const tools = receitaTotal ? Math.round(ferramentas * revenue / receitaTotal) : 0;
     const tax = data.settings.taxRate === null ? null : Math.round(revenue * data.settings.taxRate / 100);
     const result = tax === null ? null : revenue - tax - production - tools;
@@ -323,11 +334,12 @@ export type ProducerClosing = {
   producerId: string; pieces: number; unpriced: number; penalized: number; lines: ProductionLine[];
   byFormat: { rateKey: RateKey; count: number; total: number }[];
   launched: number; pending: number; total: number; pendingTaskIds: string[];
+  paymentMode?: "demand" | "salary"; salary?: number; cancelledTaskIds?: string[];
 };
 export function producerClosing(lines: ProductionLine[], entries: Entry[]): ProducerClosing[] {
   const lancado = new Map<string, Entry>();
   for (const entry of entries) {
-    if (entry.sourceKey?.startsWith("production:") && !entry.cancelled) lancado.set(entry.sourceKey.slice("production:".length), entry);
+    if (entry.sourceKey?.startsWith("production:")) lancado.set(entry.sourceKey.slice("production:".length), entry);
   }
   const porPessoa = new Map<string, ProductionLine[]>();
   for (const line of lines) {
@@ -341,6 +353,7 @@ export function producerClosing(lines: ProductionLine[], entries: Entry[]): Prod
     for (const line of doDiretor) {
       if (!line.ready || !line.rateKey) continue;
       const registro = lancado.get(line.taskId);
+      if (registro?.cancelled) continue;
       const valor = registro ? registro.amount : line.total;
       if (registro) launched += valor; else { pending += valor; pendingTaskIds.push(line.taskId); }
       const atual = formatos.get(line.rateKey!) ?? { count: 0, total: 0 };
@@ -350,7 +363,7 @@ export function producerClosing(lines: ProductionLine[], entries: Entry[]): Prod
       producerId, pieces: doDiretor.length, unpriced: doDiretor.filter((line) => !line.ready).length, penalized: doDiretor.filter((line) => line.ready && line.penalty).length,
       lines: [...doDiretor].sort((a, b) => (a.deliveredDate ?? "").localeCompare(b.deliveredDate ?? "") || a.name.localeCompare(b.name)),
       byFormat: [...formatos.entries()].map(([rateKey, dados]) => ({ rateKey, ...dados })).sort((a, b) => b.total - a.total),
-      launched, pending, total: launched + pending, pendingTaskIds,
+      launched, pending, total: launched + pending, pendingTaskIds, cancelledTaskIds: doDiretor.filter((line) => lancado.get(line.taskId)?.cancelled).map((line) => line.taskId),
     };
   }).sort((a, b) => b.total - a.total);
 }
@@ -358,19 +371,48 @@ export function producerClosing(lines: ProductionLine[], entries: Entry[]): Prod
 
 // Todos os diretores aparecem. A contagem do mês usa somente tarefas cujo
 // status atual é aprovado/finalizado e sempre atribui ao responsável atual.
-export function productionRoster(lines: ProductionLine[], entries: Entry[], members: Member[], month: string) {
+export function productionRoster(lines: ProductionLine[], entries: Entry[], members: Member[], month: string, settings?: Settings) {
   const delivered = lines.filter((line) => line.counted && line.deliveredDate?.startsWith(month));
-  const closings = new Map(producerClosing(delivered, entries).map((closing) => [closing.producerId, closing]));
-  return members.filter((member) => (CARGOS_QUE_PRODUZEM as readonly string[]).includes(member.role)).map((member) => {
+  const closings = new Map((settings ? teamClosingsFromLines(lines, entries, members, settings, month) : producerClosing(delivered, entries)).map((closing) => [closing.producerId, closing]));
+  return members.filter((member) => settings ? ["diretor_criativo", "social_media"].includes(member.role) : (CARGOS_QUE_PRODUZEM as readonly string[]).includes(member.role)).map((member) => {
     const own = lines.filter((line) => line.producerId === member.id);
     const done = delivered.filter((line) => line.producerId === member.id);
     const closing = closings.get(member.id);
     return { memberId: member.id, name: member.name, active: member.active,
-      delivered: done.length, unpriced: done.filter((line) => !line.ready).length,
+      delivered: done.length, unpriced: closing?.unpriced ?? done.filter((line) => !line.ready).length,
+      paymentMode: settings ? compensationFor(settings, member, month).mode : "demand",
       inProgress: own.filter((line) => !line.counted && line.taskStatus !== "problema" && (!line.taskStatus || !PAYABLE_STATUSES.has(line.taskStatus))).length,
       lastDelivery: done.map((line) => line.deliveredDate!).sort().at(-1) ?? null,
       total: closing?.total ?? 0, launched: closing?.launched ?? 0, pending: closing?.pending ?? 0,
       pendingPieces: closing?.pendingTaskIds.length ?? 0,
     };
   }).sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "pt-BR"));
+}
+
+export function compensationFor(settings: Settings, member: Pick<Member, "id" | "role">, month: string) {
+  return [...(settings.compensationRules ?? [])].filter((rule) => rule.memberId === member.id && rule.fromMonth <= month).sort((a, b) => b.fromMonth.localeCompare(a.fromMonth))[0]
+    ?? { memberId: member.id, fromMonth: "", mode: member.role === "diretor_criativo" ? "demand" as const : "none" as const, salary: 0 };
+}
+
+export function teamClosingsFromLines(lines: ProductionLine[], entries: Entry[], members: Member[], settings: Settings, month: string): ProducerClosing[] {
+  const delivered = lines.filter((line) => line.counted && line.deliveredDate?.startsWith(month));
+  const closings = producerClosing(delivered, entries);
+  for (const person of members.filter((member) => ["diretor_criativo", "social_media"].includes(member.role))) {
+    const pay = compensationFor(settings, person, month);
+    if (pay.mode !== "salary") continue;
+    const own = delivered.filter((line) => line.producerId === person.id);
+    const booked = entries.filter((entry) => !entry.cancelled && entry.direction === "expense" && entry.category === "producao" && entry.memberId === person.id && entry.competence === month);
+    const salaryEntry = entries.find((entry) => entry.sourceKey === `salary:${person.id}:${month}`);
+    const launched = sum(booked);
+    const pending = salaryEntry ? 0 : Math.max(0, pay.salary - launched);
+    const closing: ProducerClosing = { producerId: person.id, pieces: own.length, unpriced: 0, penalized: 0, lines: [...own].sort((a, b) => a.name.localeCompare(b.name)), byFormat: [], launched, pending, total: launched + pending, pendingTaskIds: [], paymentMode: "salary", salary: pay.salary };
+    const index = closings.findIndex((item) => item.producerId === person.id);
+    if (index < 0) closings.push(closing); else closings[index] = closing;
+  }
+  return closings.sort((a, b) => b.total - a.total);
+}
+
+function pendingTeamCost(data: CostData, month: string): number {
+  const lines = productionLines(data.tasks ?? [], data.tags ?? [], data.settings, data.members ?? []);
+  return teamClosingsFromLines(lines, data.entries, data.members ?? [], data.settings, month).reduce((total, closing) => total + closing.pending, 0);
 }
