@@ -1,4 +1,6 @@
 allowBuilds:
+  # O postinstall apenas exibe uma mensagem de apoio; não gera código.
+  core-js: false
   esbuild: true
   sharp: true
   unrs-resolver: true
