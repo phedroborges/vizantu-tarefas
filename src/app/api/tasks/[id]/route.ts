@@ -57,7 +57,9 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     // A lista pede o conteúdo completo só ao abrir o modal. Histórico continua
     // disponível pela mesma rota, sem acrescentar sua consulta à abertura.
     if (_request.nextUrl.searchParams.get("detail") === "1") return NextResponse.json({ task }, { headers: { "Cache-Control": "private, no-store" } });
-    return NextResponse.json({ activity: await listTaskActivity(id) });
+    // ?history=all é o histórico completo de edições (com o antes e o depois,
+    // para restaurar); sem ele vem a versão enxuta da linha do tempo.
+    return NextResponse.json({ activity: await listTaskActivity(id, _request.nextUrl.searchParams.get("history") === "all" ? "full" : "timeline") }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return apiFailure(error, _request.nextUrl.searchParams.get("detail") === "1" ? "abrir a tarefa" : "carregar o histórico da tarefa");
   }

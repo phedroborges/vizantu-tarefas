@@ -157,12 +157,16 @@ export type StatusHistoryEntry = {
 
 // ---------- Comentários ----------
 
+/** Imagem ou áudio anexado a um comentário. A URL é sempre do nosso bucket. */
+export type CommentAttachment = { type: "image" | "audio"; url: string; durationMs?: number };
+
 export type Comment = {
   id: string;
   author: string;
   authorMemberId?: string;
   mentionedMemberIds?: string[];
   text: string;
+  attachments?: CommentAttachment[];
   createdAt: string;
   kind?: "comment" | "activity";
   fieldKey?: string;
@@ -265,6 +269,9 @@ export type TaskActivityEvent = {
   fieldKey: string;
   oldValue: unknown;
   newValue: unknown;
+  /** Os valores foram omitidos: a linha do tempo não precisa do texto inteiro
+      de cada edição menor. O histórico completo traz tudo. */
+  trimmed?: boolean;
   createdAt: string;
 };
 

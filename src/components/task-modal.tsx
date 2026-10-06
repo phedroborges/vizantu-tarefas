@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, AlignLeft, CalendarDays, Check, Copy, ExternalLink, Folder, ImagePlus, Link2, Loader2, Lock, MessageCircle, Package, Plus, Share2, Trash2, TriangleAlert, User, X } from "lucide-react";
+import { Activity, AlignLeft, CalendarDays, Check, ChevronDown, Copy, ExternalLink, Folder, History, ImagePlus, Link2, Loader2, Lock, MessageCircle, Package, Plus, Share2, Trash2, TriangleAlert, User, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -15,11 +15,13 @@ import { formatDateTime, overdueDays, todayIso } from "@/lib/dates";
 import { networkError, responseError } from "@/lib/request-error";
 import { resizeImageFile } from "@/lib/resize-image";
 import { TASK_KINDS, TASK_STATUSES } from "@/lib/types";
-import type { Member, PlanCaptacao, Project, StatusColor, Tag, TagKind, Task, TaskActivityEvent, TaskKind, TaskStatus } from "@/lib/types";
+import type { CommentAttachment, Member, PlanCaptacao, Project, StatusColor, Tag, TagKind, Task, TaskActivityEvent, TaskKind, TaskStatus } from "@/lib/types";
 import { celebrateFrom } from "@/lib/celebrate";
 import { MentionCommentForm } from "@/components/mention-comment-form";
 import { DatePicker } from "@/components/vz/date-picker";
 import { isUserComment } from "@/lib/task-activity";
+import { buildTimeline } from "@/lib/task-timeline";
+import { TaskHistoryDialog } from "@/components/task-history-dialog";
 import { findTaskGaps } from "@/lib/task-readiness";
 import { Avatar } from "@/components/avatar";
 
@@ -159,6 +161,9 @@ export function TaskModal({
   const [editingLink, setEditingLink] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [activity, setActivity] = useState<TaskActivityEvent[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+  // Grupos de edições menores que a pessoa abriu na linha do tempo.
+  const [openGroups, setOpenGroups] = useState<string[]>([]);
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const statusRef = useRef<HTMLDivElement>(null);
@@ -363,19 +368,34 @@ export function TaskModal({
     updateField("images", draft.images.filter((item) => item !== url), { immediate: true });
   }
 
-  async function sendComment(mentionedMemberIds: string[]) {
-    if (!liveTaskId || !commentText.trim()) return;
+  // Restaurar pelo histórico troca o valor no servidor; o formulário aberto
+  // precisa acompanhar, senão o próximo autosave regravaria o valor antigo.
+  function applyRestored(restored: Task) {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    pendingRef.current = null;
+    setDraft(draftFromTask(restored, defaultProjectId, currentUserId));
+    setSections(parseDescription(restored.description));
+    setStatusHistory(restored.statusHistory);
+    setSaveState("saved");
+    onSaved(restored);
+    void loadActivity(restored.id);
+  }
+
+  async function sendComment(mentionedMemberIds: string[], attachments: CommentAttachment[]): Promise<boolean> {
+    if (!liveTaskId || (!commentText.trim() && !attachments.length)) return false;
     setIsSendingComment(true);
     // O usuário está logado — assina o comentário com o nome dele, sem pedir.
     const response = await fetch(`/api/tasks/${liveTaskId}/comments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: commentText, mentionedMemberIds }),
-    });
+      body: JSON.stringify({ text: commentText, mentionedMemberIds, attachments }),
+    }).catch(() => null);
     setIsSendingComment(false);
-    if (!response.ok) return setError(await responseError(response, "enviar o comentário"));
+    if (!response) { setError(networkError("enviar o comentário")); return false; }
+    if (!response.ok) { setError(await responseError(response, "enviar o comentário")); return false; }
     setComments((await response.json()).task.comments.filter(isUserComment));
     setCommentText("");
+    return true;
   }
 
   const assigneeOptions = members.filter((member) => member.active);
@@ -418,10 +438,7 @@ export function TaskModal({
     channelTagIds: draft.channelTagIds,
   }, [...formatTags, ...channelTags]) : [], [isEditing, draft.status, draft.kind, draft.driveLink, draft.assigneeId, draft.dueDate, draft.formatTagIds, draft.channelTagIds, formatTags, channelTags]);
 
-  const timeline = useMemo(() => [
-    ...activity.map((event) => ({ kind: "activity" as const, id: `activity-${event.id}`, createdAt: event.createdAt, event })),
-    ...comments.map((comment) => ({ kind: "comment" as const, id: `comment-${comment.id}`, createdAt: comment.createdAt, comment })),
-  ].toSorted((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [activity, comments]);
+  const timeline = useMemo(() => buildTimeline(activity, comments), [activity, comments]);
 
   return (
     <>
@@ -446,6 +463,11 @@ export function TaskModal({
             <span className="task-save-status" aria-live="polite">
               {saveState === "saving" ? "Salvando..." : saveState === "saved" ? "Salvo" : saveState === "error" ? "Erro ao salvar" : ""}
             </span>
+          ) : null}
+          {isEditing ? (
+            <button type="button" className="icon-button" onClick={() => setShowHistory(true)} title="Histórico de edições (ver e restaurar)" aria-label="Histórico de edições">
+              <History size={14} />
+            </button>
           ) : null}
           {isEditing ? (
             <button type="button" className="icon-button" onClick={copyLink} title="Copiar link da tarefa" aria-label="Copiar link da tarefa">
@@ -740,17 +762,46 @@ export function TaskModal({
               </div>
             </div>
             {isEditing ? <aside className="task-activity-pane">
-              <div className="task-activity-head"><Activity size={15} /><div><strong>Atividade</strong><span>Histórico e comentários da tarefa</span></div></div>
+              <div className="task-activity-head"><Activity size={15} /><div><strong>Atividade</strong><span>Etapas, responsáveis, prazos e comentários</span></div><button type="button" className="task-activity-all" onClick={() => setShowHistory(true)}><History size={11} /> Histórico completo</button></div>
               <div className="task-activity-list" aria-live="polite">
-                {timeline.length ? timeline.map((item) => item.kind === "activity" ? (
+                {timeline.length ? timeline.map((item) => item.kind === "event" ? (
                   <article key={item.id} className="task-activity-item">
                     <i />
-                    <div><strong>{item.event.actorName}</strong><p>alterou <b>{ACTIVITY_LABELS[item.event.fieldKey] || item.event.fieldKey}</b></p><span className="task-activity-change"><del>{activityValue(item.event.fieldKey, item.event.oldValue)}</del><em>→</em><ins>{activityValue(item.event.fieldKey, item.event.newValue)}</ins></span><small>{formatDateTime(item.event.createdAt)}</small></div>
+                    {item.event.fieldKey === "created"
+                      ? <div><strong>{item.event.actorName}</strong><p>criou a tarefa</p><small>{formatDateTime(item.event.createdAt)}</small></div>
+                      : <div><strong>{item.event.actorName}</strong><p>alterou <b>{ACTIVITY_LABELS[item.event.fieldKey] || item.event.fieldKey}</b></p><span className="task-activity-change"><del>{activityValue(item.event.fieldKey, item.event.oldValue)}</del><em>→</em><ins>{activityValue(item.event.fieldKey, item.event.newValue)}</ins></span><small>{formatDateTime(item.event.createdAt)}</small></div>}
+                  </article>
+                ) : item.kind === "minor" ? (
+                  // Texto, tags, link: fica tudo registrado, mas recolhido. O
+                  // valor de cada edição mora no histórico completo.
+                  <article key={item.id} className={`task-activity-item task-activity-minor${openGroups.includes(item.id) ? " is-open" : ""}`}>
+                    <i />
+                    <div>
+                      <button type="button" className="task-activity-minor__toggle" aria-expanded={openGroups.includes(item.id)} onClick={() => setOpenGroups((current) => current.includes(item.id) ? current.filter((id) => id !== item.id) : [...current, item.id])}>
+                        <b>+{item.events.length} {item.events.length === 1 ? "mudança" : "mudanças"}</b>
+                        <span>{[...new Set(item.events.map((event) => ACTIVITY_LABELS[event.fieldKey] || event.fieldKey))].join(", ")}</span>
+                        <ChevronDown size={11} />
+                      </button>
+                      <small>{[...new Set(item.events.map((event) => event.actorName))].join(", ")} · {formatDateTime(item.createdAt)}</small>
+                      {openGroups.includes(item.id) ? <ul className="task-activity-minor__list">
+                        {item.events.slice(0, 40).map((event) => <li key={event.id}><b>{ACTIVITY_LABELS[event.fieldKey] || event.fieldKey}</b><span>{event.actorName} · {formatDateTime(event.createdAt)}</span></li>)}
+                        <li><button type="button" onClick={() => setShowHistory(true)}>{item.events.length > 40 ? `Ver as ${item.events.length} no histórico completo` : "Ver o antes e o depois no histórico completo"}</button></li>
+                      </ul> : null}
+                    </div>
                   </article>
                 ) : (
                   <article key={item.id} className="task-comment-event">
                     <Avatar name={item.comment.author} imageUrl={members.find((member) => member.id === item.comment.authorMemberId)?.avatarUrl} size={27} />
-                    <div><span><strong>{item.comment.author}</strong><small>{formatDateTime(item.comment.createdAt)}</small></span><p>{renderCommentText(item.comment.text, members)}</p></div>
+                    <div>
+                      <span><strong>{item.comment.author}</strong><small>{formatDateTime(item.comment.createdAt)}</small></span>
+                      {item.comment.text ? <p>{renderCommentText(item.comment.text, members)}</p> : null}
+                      {item.comment.attachments?.length ? <div className="comment-attachments">
+                        {item.comment.attachments.map((attachment) => attachment.type === "image"
+                          // eslint-disable-next-line @next/next/no-img-element
+                          ? <a key={attachment.url} className="comment-attachment is-image" href={attachment.url} target="_blank" rel="noreferrer" title="Abrir imagem"><img src={attachment.url} alt="Imagem do comentário" loading="lazy" /></a>
+                          : <audio key={attachment.url} className="comment-attachment is-audio" controls preload="metadata" src={attachment.url} />)}
+                      </div> : null}
+                    </div>
                   </article>
                 )) : <p className="task-activity-empty">A atividade desta tarefa aparecerá aqui.</p>}
               </div>
@@ -769,6 +820,9 @@ export function TaskModal({
           ) : <span />}
           <button type="button" className="secondary-button" onClick={onClose}>Fechar</button>
         </footer>
+        {/* Dentro do conteúdo para ser um diálogo ANINHADO: fora dele, o Esc e o
+            clique fora do histórico fechariam a tarefa junto. */}
+        {showHistory && liveTaskId ? <TaskHistoryDialog taskId={liveTaskId} labels={ACTIVITY_LABELS} formatValue={activityValue} canEdit={canEdit} onClose={() => setShowHistory(false)} onRestored={applyRestored} /> : null}
       </DialogContent>
     </Dialog>
     {ConfirmDialog}

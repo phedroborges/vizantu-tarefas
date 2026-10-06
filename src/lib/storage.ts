@@ -5,8 +5,8 @@ import { mergePreferences, normalizePreferences, type MemberPreferences } from "
 import { inheritsCaptureEditor } from "./assignee-inheritance";
 import { parseDescription } from "./description-sections";
 import { isGuideFieldKey } from "./client-guide";
-import { getSupabase } from "./supabase-client";
-import { activityEventsFromComments, createActivityComments } from "./task-activity";
+import { getSupabase, getSupabaseStorageBucket } from "./supabase-client";
+import { activityEventsFromComments, createActivityComments, trimMinorActivity } from "./task-activity";
 import { questionsForTemplate, type SurveyTemplate } from "./survey-templates";
 import { BRAND_STAGES, DEFAULT_STATUS_COLORS, OVERDUE_STATUSES, TASK_STATUSES } from "./types";
 import type {
@@ -703,13 +703,17 @@ export async function updateTask(
   return updated;
 }
 
-export async function listTaskActivity(taskId: string): Promise<import("./types").TaskActivityEvent[]> {
+// "timeline": tudo o que aconteceu, com as edições menores sem os valores.
+// "full": o histórico completo de edições, com o antes e o depois de cada uma
+// — é o que permite restaurar.
+export async function listTaskActivity(taskId: string, mode: "timeline" | "full" = "timeline"): Promise<import("./types").TaskActivityEvent[]> {
   const row = unwrap(await getSupabase().from("tasks").select("comments").eq("id", taskId).maybeSingle()) as { comments: Task["comments"] } | null;
-  const events = (row?.comments ?? []).filter((comment) => comment.kind === "activity" && comment.fieldKey).slice(-100).reverse();
+  const events = (row?.comments ?? []).filter((comment) => comment.kind === "activity" && comment.fieldKey);
   const actorIds = [...new Set(events.map((event) => event.authorMemberId).filter(Boolean))] as string[];
   const members = actorIds.length ? unwrap(await getSupabase().from("members").select("id, name").in("id", actorIds)) as { id: string; name: string }[] : [];
   const names = new Map(members.map((member) => [member.id, member.name]));
-  return activityEventsFromComments(row?.comments ?? [], taskId, names);
+  const all = activityEventsFromComments(row?.comments ?? [], taskId, names, Infinity);
+  return mode === "full" ? all : trimMinorActivity(all);
 }
 
 async function reopenApproval(taskId: string, reviewVersion: number) {
@@ -796,19 +800,34 @@ export async function deleteTask(id: string): Promise<boolean> {
   return (rows as unknown[]).length > 0;
 }
 
-export async function addComment(taskId: string, input: { author: string; authorMemberId?: string; mentionedMemberIds?: string[]; text: string }): Promise<Task | undefined> {
+// Só entra anexo que aponta para o nosso bucket: o comentário é renderizado
+// como <img>/<audio> para o time inteiro, e uma URL de fora viraria rastreador.
+function sanitizeAttachments(attachments: unknown): import("./types").CommentAttachment[] {
+  if (!Array.isArray(attachments)) return [];
+  const prefix = getSupabase().storage.from(getSupabaseStorageBucket()).getPublicUrl("").data.publicUrl;
+  return attachments.flatMap((item): import("./types").CommentAttachment[] => {
+    if (!item || typeof item !== "object") return [];
+    const { type, url, durationMs } = item as Record<string, unknown>;
+    if ((type !== "image" && type !== "audio") || typeof url !== "string" || !url.startsWith(prefix)) return [];
+    return [{ type, url, ...(typeof durationMs === "number" && Number.isFinite(durationMs) && durationMs > 0 ? { durationMs: Math.round(durationMs) } : {}) }];
+  }).slice(0, 6);
+}
+
+export async function addComment(taskId: string, input: { author: string; authorMemberId?: string; mentionedMemberIds?: string[]; text: string; attachments?: unknown }): Promise<Task | undefined> {
   const current = await getTask(taskId);
   if (!current) return undefined;
   const commentId = newId();
   const requestedMentions = dedupeIds(input.mentionedMemberIds ?? []).filter((id) => id !== input.authorMemberId);
   const validMembers = requestedMentions.length ? new Set((await listMembers()).filter((member) => member.active).map((member) => member.id)) : new Set<string>();
   const mentionedMemberIds = requestedMentions.filter((id) => validMembers.has(id));
-  const comments = [...current.comments, { id: commentId, author: input.author.trim() || "Equipe", authorMemberId: input.authorMemberId, mentionedMemberIds, text: input.text.trim(), createdAt: nowIso() }];
+  const attachments = sanitizeAttachments(input.attachments);
+  if (!input.text.trim() && !attachments.length) return current;
+  const comments = [...current.comments, { id: commentId, author: input.author.trim() || "Equipe", authorMemberId: input.authorMemberId, mentionedMemberIds, text: input.text.trim(), ...(attachments.length ? { attachments } : {}), createdAt: nowIso() }];
   const row = unwrap(await getSupabase().from("tasks").update({ comments, updated_at: nowIso() }).eq("id", taskId).select().maybeSingle());
   if (row && mentionedMemberIds.length) {
     await createNotifications(mentionedMemberIds.map((memberId) => ({
       recipientMemberId: memberId, actorMemberId: input.authorMemberId, type: "mention" as const, taskId,
-      title: `${input.author.trim() || "Alguém"} mencionou você`, body: input.text.trim(), actionUrl: `/tarefas/${taskId}`,
+      title: `${input.author.trim() || "Alguém"} mencionou você`, body: input.text.trim() || "Enviou um anexo.", actionUrl: `/tarefas/${taskId}`,
       dedupeKey: `mention:${commentId}:${memberId}`,
     })));
   }

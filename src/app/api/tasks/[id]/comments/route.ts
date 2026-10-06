@@ -9,11 +9,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (isResponse(auth)) return auth;
   const { id } = await params;
   const body = await request.json();
-  if (!body?.text || typeof body.text !== "string" || !body.text.trim()) {
-    return NextResponse.json({ error: "Escreva um comentário." }, { status: 400 });
+  const text = typeof body?.text === "string" ? body.text : "";
+  const hasAttachments = Array.isArray(body?.attachments) && body.attachments.length > 0;
+  // Um áudio ou uma imagem sozinhos já são um comentário.
+  if (!text.trim() && !hasAttachments) {
+    return NextResponse.json({ error: "Escreva um comentário ou anexe uma imagem ou um áudio." }, { status: 400 });
   }
   try {
-    const task = await addComment(id, { author: auth.name, authorMemberId: auth.id, mentionedMemberIds: Array.isArray(body.mentionedMemberIds) ? body.mentionedMemberIds : [], text: body.text });
+    const task = await addComment(id, { author: auth.name, authorMemberId: auth.id, mentionedMemberIds: Array.isArray(body.mentionedMemberIds) ? body.mentionedMemberIds : [], text, attachments: body.attachments });
     if (!task) return NextResponse.json({ error: "Tarefa não encontrada." }, { status: 404 });
     return NextResponse.json({ task }, { status: 201 });
   } catch (error) {

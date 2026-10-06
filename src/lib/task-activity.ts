@@ -1,3 +1,4 @@
+import { isKeyActivity } from "./task-timeline";
 import type { Comment, TaskActivityEvent } from "./types";
 
 export type TaskActivityChange = [fieldKey: string, oldValue: unknown, newValue: unknown];
@@ -30,4 +31,11 @@ export function activityEventsFromComments(
       actorName: event.authorMemberId ? actorNames.get(event.authorMemberId) || "Usuário" : "Sistema",
       fieldKey: event.fieldKey!, oldValue: event.oldValue, newValue: event.newValue, createdAt: event.createdAt,
     }));
+}
+
+/** Para a linha do tempo: as mudanças importantes vão inteiras; das edições
+ * menores segue só quem, quando e em qual campo. Uma tarefa com centenas de
+ * autosaves de descrição deixaria de mandar megabytes a cada abertura. */
+export function trimMinorActivity(events: TaskActivityEvent[]): TaskActivityEvent[] {
+  return events.map((event) => isKeyActivity(event) ? event : { ...event, oldValue: undefined, newValue: undefined, trimmed: true });
 }
