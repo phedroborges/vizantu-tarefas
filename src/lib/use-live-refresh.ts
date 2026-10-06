@@ -25,6 +25,30 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, useTransition } from "react";
 
+// Tela que guarda os dados em estado próprio (a de tarefas) não ganha nada com
+// router.refresh(): as props novas chegam e o estado continua o antigo. Pior,
+// com uma tarefa aberta a barra de endereço aponta pra /tarefas/[id] enquanto
+// a árvore do Next ainda é a de /tarefas, e o refresh troca de rota: desmonta
+// a tela, mostra o loading e reabre a tarefa. Essa tela registra aqui o seu
+// próprio jeito de buscar o que mudou, e os gatilhos passam a chamar ele.
+type ScreenRefresher = () => Promise<void>;
+let screenRefresher: ScreenRefresher | null = null;
+
+/** A tela assume a atualização enquanto estiver montada. */
+export function useScreenRefresh(refresher: ScreenRefresher) {
+  useEffect(() => {
+    screenRefresher = refresher;
+    return () => { if (screenRefresher === refresher) screenRefresher = null; };
+  }, [refresher]);
+}
+
+/** Atualiza a tela atual pelo caminho certo pra ela. Falha de rede fica
+ * calada: a próxima rodada tenta de novo. */
+export async function refreshScreen(router: { refresh: () => void }) {
+  if (!screenRefresher) return router.refresh();
+  try { await screenRefresher(); } catch { /* tenta de novo no próximo ciclo */ }
+}
+
 /** 20s é o meio-termo entre o sino (60s) e o painel do cliente (15s). */
 export const LIVE_REFRESH_MS = 20_000;
 
@@ -53,8 +77,8 @@ export function useLiveRefresh(intervalMs: number = LIVE_REFRESH_MS): LiveRefres
   // O refresh corre dentro de uma transition pra `pending` valer como sinal de
   // "carregando" no indicador. Sem isso não dá pra saber quando terminou.
   const run = useCallback(() => {
-    startTransition(() => {
-      router.refresh();
+    startTransition(async () => {
+      await refreshScreen(router);
       setLastRefresh(Date.now());
     });
   }, [router]);

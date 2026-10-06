@@ -4,6 +4,7 @@ import { Check, Plus, Radio, Shapes, Trash2, Tag as TagIcon } from "lucide-react
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { removeTagFromCatalog, useVisibleTags } from "@/lib/tag-catalog";
+import { refreshScreen } from "@/lib/use-live-refresh";
 import { MetaRow } from "@/components/meta-row";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { Tag, TagKind } from "@/lib/types";
@@ -55,7 +56,7 @@ export function TagPickerPopover({
       removeTagFromCatalog(deleteCandidate.id);
       if (selectedIds.includes(deleteCandidate.id)) onChange(selectedIds.filter((id) => id !== deleteCandidate.id));
       setDeleteCandidate(null);
-      router.refresh();
+      void refreshScreen(router);
     } catch (error) {
       setError(error instanceof Error ? error.message : "Não foi possível excluir. Tente novamente.");
     } finally {

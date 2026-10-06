@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { CheckSquare, Plus } from "lucide-react";
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
   isOverdue,
   overdueDays,
@@ -16,6 +16,8 @@ import { useVisibleTags } from "@/lib/tag-catalog";
 import { TagPickerPopover } from "@/components/tag-picker";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { usePreferences } from "@/lib/use-preferences";
+import { useScreenRefresh } from "@/lib/use-live-refresh";
+import { mergeFreshTasks } from "@/lib/merge-fresh-tasks";
 import { migrateLocalPreferences } from "@/lib/migrate-local-preferences";
 import { toggleColumn as toggleColumnKey, type MemberPreferences } from "@/lib/preferences";
 import type { DateFormatKey } from "@/lib/date-format";
@@ -183,6 +185,23 @@ export function TarefasView({
   const [selectedTask, setSelectedTask] = useState<Task | "new" | null>(
     () => initialTasks.find((task) => task.id === initialTaskId) ?? null,
   );
+  // Atualização em segundo plano: busca a lista e encaixa no que está na tela,
+  // sem recarregar nada. A tarefa aberta fica como está, porque o modal é quem
+  // manda nela enquanto a pessoa edita.
+  const liveRef = useRef({ tasks, selectedTask });
+  useEffect(() => { liveRef.current = { tasks, selectedTask }; }, [tasks, selectedTask]);
+  const refreshTasks = useCallback(async () => {
+    const before = liveRef.current.tasks;
+    const response = await fetch("/api/tasks?view=list", { cache: "no-store", signal: AbortSignal.timeout(20_000) });
+    if (!response.ok) return;
+    const fresh: Task[] = (await response.json()).tasks;
+    // Algo foi salvo aqui enquanto a resposta vinha: ela pode ser mais velha
+    // que a tela. Descarta e deixa pra próxima rodada.
+    if (liveRef.current.tasks !== before) return;
+    const open = liveRef.current.selectedTask;
+    setTasks(mergeFreshTasks(before, fresh, open && open !== "new" ? open.id : undefined));
+  }, []);
+  useScreenRefresh(refreshTasks);
   const [toast, setToast] = useState("");
   const [quickAddTitle, setQuickAddTitle] = useState("");
   const [isQuickAdding, setIsQuickAdding] = useState(false);

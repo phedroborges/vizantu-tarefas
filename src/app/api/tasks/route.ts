@@ -12,6 +12,13 @@ export async function GET(request?: NextRequest) {
     const counts = await listTaskCounts({ projectIds: auth.accessibleProjectIds, listKinds: auth.accessibleListKinds });
     return NextResponse.json({ counts }, { headers: { "Cache-Control": "private, no-store" } });
   }
+  // A mesma busca da página de tarefas (ver tarefas-data.ts), pra tela se
+  // atualizar em segundo plano sem recarregar.
+  if (request?.nextUrl.searchParams.get("view") === "list") {
+    const list = await listTasks({ all: true, projection: "list", projectIds: auth.accessibleProjectIds, listKinds: auth.accessibleListKinds });
+    const visible = filterTasksByListAccess(filterTasksByAccess(list, auth.accessibleProjectIds), auth.accessibleListKinds);
+    return NextResponse.json({ tasks: visible }, { headers: { "Cache-Control": "private, no-store" } });
+  }
   const tasks = await listTasks({ projectIds: auth.accessibleProjectIds, listKinds: auth.accessibleListKinds });
   const byProject = filterTasksByAccess(tasks, auth.accessibleProjectIds);
   return NextResponse.json({ tasks: filterTasksByListAccess(byProject, auth.accessibleListKinds) });
