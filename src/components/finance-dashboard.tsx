@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { BadgeDollarSign, CalendarDays, Check, ChevronLeft, ChevronRight, Download, Eye, FileSignature, Landmark, Link2, LockKeyhole, Plus, RefreshCw, Settings2, ShieldCheck, TrendingUp, Users, X } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/vz";
+import { VzLoading } from "@/components/vz/loading";
 import { Avatar } from "@/components/avatar";
 import { renderMarkdownLite } from "@/components/markdown-lite";
 import { responseError } from "@/lib/request-error";
@@ -97,7 +98,7 @@ export function FinanceDashboard({ initialData }: { initialData?: FinanceData })
     <nav className="fin-tabs" aria-label="Seções do financeiro">{TABS.map((item) => <button key={item.id} aria-current={tab === item.id ? "page" : undefined} onClick={() => setTab(item.id)}>{item.label}</button>)}</nav>
     {error ? <div className="fin-message is-error" role="alert">{error}<button onClick={load} disabled={loading}>Tentar novamente</button></div> : null}
     {notice ? <p className="fin-message" role="status">{notice}</p> : null}
-    {loading && !data ? <div className="fin-empty">{section === "production" ? "Carregando produção da equipe…" : "Carregando lançamentos e contratos…"}</div> : null}
+    {loading && !data ? <div className="fin-empty"><VzLoading label={section === "production" ? "Carregando produção da equipe…" : "Carregando lançamentos e contratos…"} /></div> : null}
     {data && stats ? <>
       {data.warnings.length ? <details className="fin-warning"><summary>{data.warnings.length} pendências na integração de contratos</summary><ul>{data.warnings.map((warning, i) => <li key={i}>{warning}</li>)}</ul></details> : null}
       {data.settings.taxRate === null ? <div className="fin-warning">Configure a alíquota de imposto para calcular o resultado e os preços com margem. <button onClick={() => setTab("settings")}>Configurar <ChevronRight size={13} /></button></div> : null}

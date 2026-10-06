@@ -3,6 +3,7 @@
 import { Check, Copy, ExternalLink, Link2, Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useConfirm } from "@/components/confirm-dialog";
+import { VzLoading } from "@/components/vz/loading";
 import type { ClientLink } from "@/lib/types";
 
 // Link do painel do cliente — o mesmo mecanismo que existia no vizantu-planos:
@@ -114,7 +115,7 @@ export function ClientLinkPanel({
         </div>
         <div className="client-link-row">
           {loading ? (
-            <span className="plan-item-empty"><Loader2 size={13} className="spin" /> Carregando…</span>
+            <VzLoading size="inline" />
           ) : link ? (
             <>
               <code className="client-link-url" title={url}>{url}</code>

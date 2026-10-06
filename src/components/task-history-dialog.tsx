@@ -3,6 +3,7 @@
 import { History, RotateCcw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { VzLoading } from "@/components/vz/loading";
 import { formatDateTime } from "@/lib/dates";
 import { responseError } from "@/lib/request-error";
 import { isWhitespaceOnlyChange, restorePayload } from "@/lib/task-timeline";
@@ -82,7 +83,7 @@ export function TaskHistoryDialog({ taskId, labels, formatValue, canEdit, onClos
         </DialogHeader>
         {problem ? <p className="task-history-problem" role="alert">{problem}</p> : null}
         <div className="task-history-list">
-          {events === null && !problem ? <p className="task-history-empty">Carregando o histórico…</p> : null}
+          {events === null && !problem ? <VzLoading label="Carregando o histórico…" /> : null}
           {events && !visible.length ? <p className="task-history-empty">Nenhuma alteração registrada.</p> : null}
           {visible.map((event) => {
             const payload = event.fieldKey === "created" ? null : restorePayload(event);

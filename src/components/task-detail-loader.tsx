@@ -4,6 +4,7 @@ import { useEffect, useState, type ComponentProps } from "react";
 import { TaskModal } from "./task-modal";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
 import { Button } from "./vz";
+import { VzLoading } from "./vz/loading";
 import { responseError } from "@/lib/request-error";
 import type { Task } from "@/lib/types";
 
@@ -36,7 +37,7 @@ export function TaskDetailLoader(props: ComponentProps<typeof TaskModal>) {
   if (loaded?.id === id) return <TaskModal {...props} task={loaded} />;
   return <Dialog open onOpenChange={(open) => { if (!open) props.onClose(); }}><DialogContent>
     <DialogTitle>{props.task?.name || "Tarefa"}</DialogTitle>
-    <DialogDescription>{error || "Carregando descrição e histórico…"}</DialogDescription>
+    <DialogDescription>{error || <VzLoading label="Carregando descrição e histórico…" />}</DialogDescription>
     {error ? <Button onClick={() => { setError(""); setAttempt((value) => value + 1); }}>Tentar novamente</Button> : null}
     <Button variant="secondary" onClick={props.onClose}>Fechar</Button>
   </DialogContent></Dialog>;
