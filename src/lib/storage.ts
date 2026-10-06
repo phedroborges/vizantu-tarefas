@@ -1559,6 +1559,26 @@ export async function listPlanApprovalEvents(taskId: string): Promise<PlanApprov
   return (rows as PlanApprovalEventRow[]).map(mapPlanApprovalEvent);
 }
 
+// O que os clientes responderam pelo link, em todos os projetos: aprovar,
+// pedir ajuste, recusar. As reaberturas são do time e ficam de fora. Alimenta
+// os rankings de clientes do dashboard.
+export async function listClientApprovalActivity(): Promise<PlanApprovalEvent[]> {
+  const events: PlanApprovalEvent[] = [];
+  for (let offset = 0; ; offset += 1000) {
+    const page = unwrap(
+      await getSupabase().from("plan_approval_events").select("*").neq("action", "reopened").order("created_at").order("id").range(offset, offset + 999),
+    ) as PlanApprovalEventRow[];
+    events.push(...page.map(mapPlanApprovalEvent));
+    if (page.length < 1000) return events;
+  }
+}
+
+/** Quando o link de cada cliente foi aberto pela última vez. */
+export async function listClientLinkAccess(): Promise<{ projectId: string; lastUsedAt?: string }[]> {
+  const rows = unwrap(await getSupabase().from("client_links").select("project_id,last_used_at")) as Pick<ClientLinkRow, "project_id" | "last_used_at">[];
+  return rows.map((row) => ({ projectId: row.project_id, lastUsedAt: row.last_used_at ?? undefined }));
+}
+
 // ---------- Dashboard do cliente ----------
 
 type ClientSatisfactionScoreRow = { id: string; project_id: string; score: number; created_at: string };

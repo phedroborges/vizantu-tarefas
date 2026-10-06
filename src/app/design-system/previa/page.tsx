@@ -65,7 +65,16 @@ export default async function PreviaPage({ searchParams }: { searchParams: Promi
     <AdminShell active={ATIVO[tela]} user={usuario}>
       <BarraDeTelas atual={tela} cargo={cargo} />
       {tela === "dashboard" ? (
-        <DashboardView metrics={buildDashboardMetrics({ tasks: TAREFAS, projects: PROJETOS, members: MEMBROS, tags: [...FORMATOS, ...CANAIS, ...CATEGORIAS], nowIso: AGORA })} />
+        <DashboardView metrics={buildDashboardMetrics({
+          tasks: TAREFAS, projects: PROJETOS, members: MEMBROS, tags: [...FORMATOS, ...CANAIS, ...CATEGORIAS], nowIso: AGORA,
+          clientActivity: {
+            events: TAREFAS.slice(0, 7).map((tarefa, indice) => ({
+              taskId: tarefa.id, action: indice % 3 === 2 ? "changes_requested" as const : "approved" as const,
+              comment: indice % 3 === 2 ? "Trocar a foto de capa." : undefined, reviewerName: indice < 5 ? "Marina Prado" : "Otávio Reis", createdAt: AGORA,
+            })),
+            links: PROJETOS.map((projeto) => ({ projectId: projeto.id, lastUsedAt: AGORA })),
+          },
+        })} />
       ) : null}
 
       {tela === "tarefas" ? (

@@ -3,8 +3,9 @@ import { buildDashboardMetrics } from "../src/lib/dashboard-metrics";
 import type { Member, Project, Tag, Task } from "../src/lib/types";
 
 const NOW = "2026-09-09T15:00:00.000Z";
+// A Ana é da estratégia; o Beto e a Clara são da criação.
 const members: Member[] = ["Ana", "Beto", "Clara"].map((name, index) => ({
-  id: `m${index + 1}`, name, email: `${name.toLowerCase()}@teste.com`, role: "social_media",
+  id: `m${index + 1}`, name, email: `${name.toLowerCase()}@teste.com`, role: index === 0 ? "social_media" : "diretor_criativo",
   aiEnabled: false, active: true, createdAt: NOW, updatedAt: NOW,
 }));
 const projects: Project[] = [{ id: "p1", name: "Cliente", status: "ativo", createdAt: NOW, updatedAt: NOW }];
@@ -63,11 +64,13 @@ describe("dashboard gerencial", () => {
   });
 
   it("mede o ciclo criativo só depois que ele fecha em aprovado ou finalizado", () => {
-    // t2: 7d22h em criação + 1h aguardando aprovação, até finalizar.
-    expect(metrics.slowestCreative).toMatchObject({ memberId: "m2", creativeDeliveries: 1, creativeAverageMs: 7 * 86_400_000 + 23 * 3_600_000 });
-    expect(metrics.averageCreativeMs).toBe(7 * 86_400_000 + 23 * 3_600_000);
-    // t1 ainda espera a aprovação do cliente: o relógio está correndo e a
-    // tarefa não entra na média.
+    // t2: 7d22h em criação. A 1h aguardando aprovação é do cliente e fica
+    // medida à parte, fora do tempo de quem criou.
+    expect(metrics.slowestCreative).toMatchObject({ memberId: "m2", creativeDeliveries: 1, creativeAverageMs: 7 * 86_400_000 + 22 * 3_600_000, creativeClientAverageMs: 3_600_000 });
+    expect(metrics.averageCreativeMs).toBe(7 * 86_400_000 + 22 * 3_600_000);
+    expect(metrics.averageCreativeClientMs).toBe(3_600_000);
+    // t1 ainda espera a aprovação do cliente: o ciclo não fechou e a tarefa
+    // não entra na média.
     expect(metrics.members.find((member) => member.memberId === "m1")).toMatchObject({ creativeDeliveries: 0, creativeAverageMs: undefined });
     expect(metrics.creativeDeliveries).toBe(1);
   });
@@ -95,13 +98,28 @@ describe("dashboard gerencial", () => {
 
   it("separa o tempo produzindo do tempo esperando na fila", () => {
     // t1 produz 5 dias (criação + duas voltas de ajuste + revisão) e t2 produz
-    // 7d22h; a espera é o "pronto para criação", o tempo parado aguardando
-    // aprovação e os 7d3h do rascunho t3, que não tem histórico e é medido
-    // desde a criação. Finalizado fica fora dos dois lados.
+    // 7d22h; a espera do time é o "pronto para criação" e os 7d3h do rascunho
+    // t3, que não tem histórico e é medido desde a criação. O tempo aguardando
+    // aprovação (2d3h de t1 + 1h de t2) é do cliente e não pesa na eficiência.
+    // Finalizado fica fora de tudo.
     expect(metrics.flowEfficiency.workingMs).toBe(12 * 86_400_000 + 22 * 3_600_000);
-    expect(metrics.flowEfficiency.waitingMs).toBe(10 * 86_400_000 + 7 * 3_600_000);
-    expect(metrics.flowEfficiency.ratio).toBe(56);
+    expect(metrics.flowEfficiency.waitingMs).toBe(8 * 86_400_000 + 3 * 3_600_000);
+    expect(metrics.flowEfficiency.clientMs).toBe(2 * 86_400_000 + 4 * 3_600_000);
+    expect(metrics.flowEfficiency.ratio).toBe(61);
     expect(metrics.flowEfficiency.tasks).toBe(3);
+  });
+
+  it("mede a espera pela aprovação do cliente, incluindo a que está aberta agora", () => {
+    // t1 está parada com o cliente há 2d3h; t2 esperou 1h e já fechou.
+    expect(metrics.clientWait.creative).toMatchObject({ tasks: 2, rounds: 2, waitingNow: 1, totalMs: 2 * 86_400_000 + 4 * 3_600_000, longestWaitingMs: 2 * 86_400_000 + 3 * 3_600_000 });
+    expect(metrics.clientWait.text).toMatchObject({ tasks: 0, waitingNow: 0, averageMs: undefined });
+    expect(metrics.clientWait.projects).toHaveLength(1);
+    expect(metrics.clientWait.projects[0]).toMatchObject({ id: "p1", name: "Cliente", creative: { tasks: 2, waitingNow: 1 } });
+    // A espera aparece na grade da Ana, mas não soma no tempo dela.
+    const ana = metrics.members.find((member) => member.memberId === "m1")!;
+    expect(ana.statusMs.para_aprovacao).toBe(2 * 86_400_000 + 3 * 3_600_000);
+    expect(ana.clientMs).toBe(2 * 86_400_000 + 3 * 3_600_000);
+    expect(ana.totalStatusMs).toBe(6 * 86_400_000);
   });
 
   it("mede o prazo real de fechamento com mediana, P85 e distribuição", () => {
@@ -183,11 +201,46 @@ it("descartada não é carga aberta, atraso ou pendência de informação", () =
   expect(metrics.punctuality.delivered).toBe(0);
 });
 
+describe("uso do link pelo cliente", () => {
+  const evento = (taskId: string, action: "approved" | "changes_requested" | "rejected" | "reopened", reviewerName?: string, comment?: string, createdAt = "2026-09-08T15:00:00.000Z") => ({ taskId, action, reviewerName, comment, createdAt });
+
+  it("conta as respostas por cliente e por pessoa, sem as reaberturas do time", () => {
+    const result = buildDashboardMetrics({
+      tasks, projects, members, tags, nowIso: NOW,
+      clientActivity: {
+        events: [
+          evento("t1", "approved", "Marina"),
+          evento("t2", "changes_requested", " marina ", "Trocar a capa", "2026-09-09T02:00:00.000Z"),
+          evento("t2", "rejected", "Otávio", "Fora da linha"),
+          evento("t1", "reopened"),
+          // Tarefa que a pessoa logada não enxerga: fica de fora.
+          evento("oculta", "approved", "Marina"),
+        ],
+        links: [{ projectId: "p1", lastUsedAt: "2026-09-09T14:00:00.000Z" }, { projectId: "outro" }],
+      },
+    });
+    expect(result.clientAdoption).toEqual([
+      { id: "p1", name: "Cliente", actions: 3, approvals: 1, changes: 2, comments: 2, reviewers: 2, lastActionDate: "2026-09-08", lastAccessDate: "2026-09-09" },
+    ]);
+    // A mesma pessoa escrita de dois jeitos é uma só.
+    expect(result.reviewers).toEqual([
+      { key: "p1:marina", name: "Marina", projectName: "Cliente", actions: 2, approvals: 1, changes: 1, comments: 1, lastActionDate: "2026-09-08" },
+      { key: "p1:otávio", name: "Otávio", projectName: "Cliente", actions: 1, approvals: 0, changes: 1, comments: 1, lastActionDate: "2026-09-08" },
+    ]);
+  });
+
+  it("mostra o cliente que tem link e nunca respondeu", () => {
+    const result = buildDashboardMetrics({ tasks, projects, members, tags, nowIso: NOW, clientActivity: { events: [], links: [{ projectId: "p1" }] } });
+    expect(result.clientAdoption).toEqual([{ id: "p1", name: "Cliente", actions: 0, approvals: 0, changes: 0, comments: 0, reviewers: 0, lastActionDate: undefined, lastAccessDate: undefined }]);
+    expect(result.reviewers).toEqual([]);
+  });
+});
+
 describe("relógio do ciclo criativo", () => {
   const D = 86_400_000;
   const at = (day: number, hour = 12) => `2026-09-${String(day).padStart(2, "0")}T${String(hour).padStart(2, "0")}:00:00.000Z`;
 
-  it("liga em pronto para criação, pausa fora da criação, para em aprovado e religa no ajuste", () => {
+  it("liga em pronto para criação, pausa com o cliente e fora da criação, para em aprovado e religa no ajuste", () => {
     const ciclo = task({
       id: "ciclo", name: "Vai e volta", status: "finalizado", assigneeId: "m1",
       statusHistory: [
@@ -195,15 +248,63 @@ describe("relógio do ciclo criativo", () => {
         { status: "aprovacao_copy", enteredAt: at(2), exitedAt: at(4) }, // 2d pausado
         { status: "pronto_para_criacao", enteredAt: at(4), exitedAt: at(5) }, // 1d conta
         { status: "em_criacao", enteredAt: at(5), exitedAt: at(6) }, // 1d conta
-        { status: "para_aprovacao", enteredAt: at(6), exitedAt: at(7) }, // 1d conta
+        { status: "para_aprovacao", enteredAt: at(6), exitedAt: at(7) }, // 1d do cliente
         { status: "aprovado", enteredAt: at(7), exitedAt: at(8) }, // parado
         { status: "ajuste", enteredAt: at(8), exitedAt: at(8, 18) }, // 6h conta
         { status: "finalizado", enteredAt: at(8, 18), exitedAt: null },
       ],
     });
     const result = buildDashboardMetrics({ tasks: [ciclo], projects, members, tags, nowIso: NOW });
-    expect(result.averageCreativeMs).toBe(4 * D + 6 * 3_600_000);
-    expect(result.members.find((member) => member.memberId === "m1")).toMatchObject({ creativeDeliveries: 1, creativeAverageMs: 4 * D + 6 * 3_600_000 });
+    expect(result.averageCreativeMs).toBe(3 * D + 6 * 3_600_000);
+    expect(result.averageCreativeClientMs).toBe(D);
+    expect(result.members.find((member) => member.memberId === "m1")).toMatchObject({ creativeDeliveries: 1, creativeAverageMs: 3 * D + 6 * 3_600_000, creativeClientAverageMs: D });
+    // As duas aprovações são do cliente, mas de fases diferentes: a do texto
+    // é estratégia, a da peça é criação.
+    expect(result.clientWait.text).toMatchObject({ tasks: 1, rounds: 1, totalMs: 2 * D, averageMs: 2 * D, waitingNow: 0 });
+    expect(result.clientWait.creative).toMatchObject({ tasks: 1, rounds: 1, totalMs: D, averageMs: D, waitingNow: 0 });
+    // Depois de aprovada a demanda volta para a estratégia, que entrega.
+    expect(result.phases).toEqual([
+      { key: "estrategia", label: "Estratégia, antes da criação", tasks: 1, teamMs: 0, clientMs: 2 * D },
+      { key: "criacao", label: "Criação", tasks: 1, teamMs: 3 * D + 6 * 3_600_000, clientMs: D },
+      { key: "entrega", label: "Estratégia, entrega e postagem", tasks: 1, teamMs: D, clientMs: 0 },
+    ]);
+  });
+
+  it("mede quem é da estratégia pelas etapas de estratégia, não pela criação", () => {
+    // A Ana planejou (2d de rascunho), esperou o cliente aprovar o texto (3d)
+    // e criou ela mesma (1d). Depois de aprovada, levou 1d para entregar.
+    const planejada = task({
+      id: "planejada", name: "Planejada", status: "finalizado", assigneeId: "m1",
+      statusHistory: [
+        { status: "rascunho", enteredAt: at(1), exitedAt: at(3) },
+        { status: "aprovacao_copy", enteredAt: at(3), exitedAt: at(6) },
+        { status: "em_criacao", enteredAt: at(6), exitedAt: at(7) },
+        { status: "aprovado", enteredAt: at(7), exitedAt: at(8) },
+        { status: "finalizado", enteredAt: at(8), exitedAt: null },
+      ],
+    });
+    const result = buildDashboardMetrics({ tasks: [planejada], projects, members, tags, nowIso: NOW });
+    expect(result.members.find((member) => member.memberId === "m1")).toMatchObject({ area: "estrategia", strategyTasks: 1, strategyAverageMs: 3 * D, strategyClientAverageMs: 3 * D });
+    expect(result.members.find((member) => member.memberId === "m2")).toMatchObject({ area: "criacao", strategyTasks: 0, strategyAverageMs: undefined });
+    // Ela fechou um ciclo criativo, mas não é da criação: fica fora do destaque.
+    expect(result.slowestCreative).toBeUndefined();
+  });
+
+  it("dá a espera da entrega a quem criou, mesmo que outra pessoa segure a aprovação", () => {
+    // O Beto criou em 1 dia; a Ana assumiu só para acompanhar a aprovação,
+    // que levou 3 dias. Ela não criou nada e não pode aparecer na velocidade.
+    const repassada = task({
+      id: "repassada", name: "Repassada", status: "aprovado", assigneeId: "m1",
+      statusHistory: [
+        { status: "em_criacao", enteredAt: at(1), exitedAt: at(2) },
+        { status: "para_aprovacao", enteredAt: at(2), exitedAt: at(5) },
+        { status: "aprovado", enteredAt: at(5), exitedAt: null },
+      ],
+      comments: [{ id: "r1", author: "Sistema", authorMemberId: "m2", text: "", kind: "activity", fieldKey: "assigneeId", oldValue: "m2", newValue: "m1", createdAt: at(2) }],
+    });
+    const result = buildDashboardMetrics({ tasks: [repassada], projects, members, tags, nowIso: NOW });
+    expect(result.members.find((member) => member.memberId === "m2")).toMatchObject({ creativeDeliveries: 1, creativeAverageMs: D, creativeClientAverageMs: 3 * D });
+    expect(result.members.find((member) => member.memberId === "m1")).toMatchObject({ creativeDeliveries: 0, creativeAverageMs: undefined, clientMs: 3 * D });
   });
 
   it("cobra de cada pessoa só o tempo em que a tarefa estava com ela", () => {

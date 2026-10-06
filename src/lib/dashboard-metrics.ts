@@ -5,24 +5,57 @@ import {
   CLOSED_TASK_STATUSES,
   TASK_STATUSES,
   type Member,
+  type PlanApprovalEvent,
   type Project,
   type StatusGroup,
   type Tag,
   type Task,
   type TaskStatus,
+  type UserRole,
 } from "./types";
 
 const DAY = 86_400_000;
 // O Brasil não tem mais horário de verão: São Paulo é UTC-3 o ano inteiro.
 const SP_OFFSET = 3 * 3_600_000;
 
+// A demanda passa por três fases. Estratégia é tudo antes de "Pronto para
+// criação": o plano, o texto e a aprovação dele. Criação vai de "Pronto para
+// criação" até o cliente aprovar a peça. Depois de aprovada ela volta para a
+// estratégia, que entrega e posta.
+export type DashboardPhaseKey = "estrategia" | "criacao" | "entrega";
+const PHASE_BY_STATUS: Partial<Record<TaskStatus, DashboardPhaseKey>> = {
+  rascunho: "estrategia", aguardando_informacao: "estrategia", aprovacao_copy: "estrategia", aguardando_captacao: "estrategia",
+  pronto_para_criacao: "criacao", em_criacao: "criacao", revisao: "criacao", ajuste: "criacao", para_aprovacao: "criacao",
+  aprovado: "entrega",
+};
+const PHASE_LABELS: Record<DashboardPhaseKey, string> = {
+  estrategia: "Estratégia, antes da criação",
+  criacao: "Criação",
+  entrega: "Estratégia, entrega e postagem",
+};
+
+// Cada pessoa é medida pela fase em que trabalha. Diretor criativo responde
+// pela criação; dono, gestor e social media respondem pela estratégia. Comparar
+// os dois grupos na mesma régua pune quem planeja por um tempo que não é de
+// produção.
+export type DashboardArea = "estrategia" | "criacao";
+export function areaOfRole(role: UserRole): DashboardArea {
+  return role === "diretor_criativo" ? "criacao" : "estrategia";
+}
+
+// Nesses dois status a demanda está na mão do cliente: o texto do plano
+// (estratégia) ou a peça pronta (criação). É tempo que o time não controla,
+// então não entra na conta de ninguém — é medido à parte.
+const CLIENT_STATUSES = new Set<TaskStatus>(["aprovacao_copy", "para_aprovacao"]);
+
 // Relógio do ciclo criativo: liga quando a demanda entra em "Pronto para
-// criação" (ou em qualquer etapa de produção), segue ligado enquanto ela está
-// com o time ou aguardando o cliente aprovar, e desliga em Aprovado ou
-// Finalizado. Se a demanda volta para Ajuste, liga de novo e soma. Voltar para
-// uma etapa anterior à criação (texto, captação) pausa o relógio.
+// criação" (ou em qualquer etapa de produção) e corre só enquanto ela está com
+// o time. Em "Para aprovação" ele pausa, porque quem demora ali é o cliente.
+// Se a demanda volta para Ajuste, liga de novo e soma. O ciclo fecha em
+// Aprovado ou Finalizado. Voltar para uma etapa anterior à criação (texto,
+// captação) também pausa o relógio.
 const CREATIVE_START = new Set<TaskStatus>(["pronto_para_criacao", "em_criacao", "revisao", "ajuste"]);
-const CREATIVE_RUNNING = new Set<TaskStatus>([...CREATIVE_START, "para_aprovacao"]);
+const CREATIVE_OPEN = new Set<TaskStatus>([...CREATIVE_START, "para_aprovacao"]);
 const CREATIVE_STOP = new Set<TaskStatus>(["aprovado", "finalizado"]);
 
 // Finalizado e Problema encerram a demanda. A entrada aberta desses status
@@ -32,11 +65,10 @@ const TERMINAL_STATUSES = new Set<TaskStatus>(CLOSED_TASK_STATUSES);
 export const TIMED_STATUSES = TASK_STATUSES.filter(({ value }) => !TERMINAL_STATUSES.has(value));
 
 // Eficiência de fluxo: das horas que a demanda passou sob nossa
-// responsabilidade, quantas alguém estava de fato com a mão nela.
+// responsabilidade, quantas alguém estava de fato com a mão nela. A espera
+// pelo cliente fica fora da conta (ver CLIENT_STATUSES).
 const WORKING_STATUSES = new Set<TaskStatus>(["em_criacao", "revisao", "ajuste"]);
-const WAITING_STATUSES = new Set<TaskStatus>([
-  "rascunho", "aguardando_informacao", "aprovacao_copy", "aguardando_captacao", "pronto_para_criacao", "para_aprovacao",
-]);
+const WAITING_STATUSES = new Set<TaskStatus>(["rascunho", "aguardando_informacao", "aguardando_captacao", "pronto_para_criacao"]);
 
 const GROUP_BY_STATUS = new Map<TaskStatus, StatusGroup>(TASK_STATUSES.map(({ value, group }) => [value, group]));
 
@@ -140,6 +172,7 @@ function shortDate(ms: number): string {
 export type DashboardMemberMetric = {
   memberId: string;
   name: string;
+  area: DashboardArea;
   avatarUrl?: string | null;
   openTasks: number;
   created: number;
@@ -152,13 +185,77 @@ export type DashboardMemberMetric = {
   statusTasks: Record<TaskStatus, number>;
   /** A tarefa que mais tempo ficou em cada status. */
   statusMaxMs: Record<TaskStatus, number>;
+  /** Tempo sob a responsabilidade da pessoa, sem a espera pelo cliente. */
   totalStatusMs: number;
   /** Tarefas diferentes com tempo medido sob a responsabilidade da pessoa. */
   timedTasks: number;
   workingMs: number;
   waitingMs: number;
+  /** Tempo em que as tarefas da pessoa ficaram aguardando o cliente. */
+  clientMs: number;
   creativeAverageMs?: number;
+  /** Quanto as entregas da pessoa esperaram pela aprovação do cliente. */
+  creativeClientAverageMs?: number;
   creativeDeliveries: number;
+  /** Média por tarefa nas etapas de estratégia enquanto estava com a pessoa. */
+  strategyAverageMs?: number;
+  /** Média por tarefa esperando o cliente aprovar o texto. */
+  strategyClientAverageMs?: number;
+  /** Tarefas que passaram por etapa de estratégia com a pessoa. */
+  strategyTasks: number;
+};
+
+/** Espera pelo cliente em uma das duas aprovações. */
+export type DashboardClientStage = {
+  /** Tarefas que passaram pela aprovação, incluindo as que estão nela agora. */
+  tasks: number;
+  totalMs: number;
+  averageMs?: number;
+  /** Quantas vezes as tarefas foram enviadas para aprovar. */
+  rounds: number;
+  waitingNow: number;
+  /** A tarefa que está há mais tempo esperando resposta. */
+  longestWaitingMs: number;
+};
+
+export type DashboardClientWait = { id: string; name: string; text: DashboardClientStage; creative: DashboardClientStage };
+
+/** O que os clientes fizeram pelo link de aprovação. */
+export type DashboardClientActivity = {
+  events: Pick<PlanApprovalEvent, "taskId" | "action" | "comment" | "reviewerName" | "createdAt">[];
+  links: { projectId: string; lastUsedAt?: string }[];
+};
+
+type DashboardClientResponses = {
+  /** Respostas dadas pelo link: aprovações, pedidos de ajuste e recusas. */
+  actions: number;
+  approvals: number;
+  /** Pedidos de ajuste e recusas. */
+  changes: number;
+  /** Respostas que vieram com comentário escrito. */
+  comments: number;
+  lastActionDate?: string;
+};
+
+export type DashboardClientAdoption = DashboardClientResponses & {
+  id: string;
+  name: string;
+  /** Pessoas diferentes do cliente que já responderam. */
+  reviewers: number;
+  lastAccessDate?: string;
+};
+
+export type DashboardReviewer = DashboardClientResponses & { key: string; name: string; projectName: string };
+
+export type DashboardPhase = {
+  key: DashboardPhaseKey;
+  label: string;
+  /** Tarefas que passaram pela fase. */
+  tasks: number;
+  /** Média por tarefa com o time. */
+  teamMs: number;
+  /** Média por tarefa aguardando o cliente. */
+  clientMs: number;
 };
 
 export type DashboardTaskMetric = {
@@ -240,11 +337,19 @@ export type DashboardMetrics = {
   reworkRate: number;
   reworkedTasks: number;
   averageCreativeMs?: number;
+  /** Média, por entrega, da espera pela aprovação da peça. */
+  averageCreativeClientMs?: number;
   creativeDeliveries: number;
+  clientWait: { text: DashboardClientStage; creative: DashboardClientStage; projects: DashboardClientWait[] };
+  /** Clientes com link de aprovação, do que mais usa para o que menos usa. */
+  clientAdoption: DashboardClientAdoption[];
+  /** As pessoas dos clientes que mais responderam pelo link. */
+  reviewers: DashboardReviewer[];
+  phases: DashboardPhase[];
   /** Tarefas que chegaram a entrar na criação: a base da taxa de retrabalho. */
   creativeTasks: number;
   criticalAlerts: number;
-  flowEfficiency: { workingMs: number; waitingMs: number; ratio: number; tasks: number };
+  flowEfficiency: { workingMs: number; waitingMs: number; clientMs: number; ratio: number; tasks: number };
   leadTime: DashboardLeadTime;
   punctuality: DashboardPunctuality;
   members: DashboardMemberMetric[];
@@ -267,12 +372,14 @@ export function buildDashboardMetrics({
   projects,
   members,
   tags,
+  clientActivity,
   nowIso,
 }: {
   tasks: Task[];
   projects: Project[];
   members: Member[];
   tags: Tag[];
+  clientActivity?: DashboardClientActivity;
   nowIso: string;
 }): DashboardMetrics {
   const nowMs = new Date(nowIso).getTime();
@@ -294,6 +401,7 @@ export function buildDashboardMetrics({
   const memberMetrics = new Map<string, DashboardMemberMetric>(activeMembers.map((member) => [member.id, {
     memberId: member.id,
     name: member.name,
+    area: areaOfRole(member.role),
     avatarUrl: member.avatarUrl,
     openTasks: 0,
     created: 0,
@@ -307,14 +415,26 @@ export function buildDashboardMetrics({
     timedTasks: 0,
     workingMs: 0,
     waitingMs: 0,
+    clientMs: 0,
     creativeDeliveries: 0,
+    strategyTasks: 0,
   }]));
+  const strategyTotals = new Map<string, { teamMs: number; clientMs: number }>();
 
-  const creativeCycles = new Map<string, number[]>();
+  const emptyStage = (): DashboardClientStage => ({ tasks: 0, totalMs: 0, rounds: 0, waitingNow: 0, longestWaitingMs: 0 });
+  const clientStages = { text: emptyStage(), creative: emptyStage() };
+  const clientByProject = new Map<string, { text: DashboardClientStage; creative: DashboardClientStage }>();
+  const phaseTotals = new Map<DashboardPhaseKey, { tasks: number; teamMs: number; clientMs: number }>(
+    (Object.keys(PHASE_LABELS) as DashboardPhaseKey[]).map((key) => [key, { tasks: 0, teamMs: 0, clientMs: 0 }]),
+  );
+
+  const creativeCycles = new Map<string, { teamMs: number; clientMs: number }[]>();
   const allCreativeCycles: number[] = [];
+  const allCreativeClientCycles: number[] = [];
   let creativeTasks = 0;
   let workingMs = 0;
   let waitingMs = 0;
+  let clientMs = 0;
   let flowTasks = 0;
   for (const task of tasks) {
     if (task.assigneeId && memberMetrics.has(task.assigneeId)) {
@@ -327,7 +447,10 @@ export function buildDashboardMetrics({
     // relógio criativo correu na mão de cada uma.
     const heldByOwner = new Map<string, Map<TaskStatus, number>>();
     const creativeByOwner = new Map<string, number>();
+    const phasesSeen = new Set<DashboardPhaseKey>();
+    const approvals = { text: { ms: 0, rounds: 0 }, creative: { ms: 0, rounds: 0 } };
     let creativeTotal = 0;
+    let creativeClient = 0;
     let creativeStarted = false;
     let creativeDelivered = false;
     let measured = false;
@@ -338,8 +461,21 @@ export function buildDashboardMetrics({
       const { status, start, end } = interval;
       if (WORKING_STATUSES.has(status)) { workingMs += end - start; measured = true; }
       else if (WAITING_STATUSES.has(status)) { waitingMs += end - start; measured = true; }
-      const running = creativeStarted && CREATIVE_RUNNING.has(status);
+      else if (CLIENT_STATUSES.has(status)) { clientMs += end - start; measured = true; }
+      const phase = PHASE_BY_STATUS[status];
+      if (phase) {
+        const totals = phaseTotals.get(phase)!;
+        if (CLIENT_STATUSES.has(status)) totals.clientMs += end - start; else totals.teamMs += end - start;
+        phasesSeen.add(phase);
+      }
+      if (CLIENT_STATUSES.has(status)) {
+        const approval = status === "aprovacao_copy" ? approvals.text : approvals.creative;
+        approval.ms += end - start;
+        approval.rounds += 1;
+      }
+      const running = creativeStarted && CREATIVE_START.has(status);
       if (running) creativeTotal += end - start;
+      if (creativeStarted && status === "para_aprovacao") creativeClient += end - start;
       const points = [start, ...assignmentBoundaries.filter((boundary) => boundary > start && boundary < end), end];
       for (let index = 0; index < points.length - 1; index += 1) {
         const owner = assigneeAt(task, points[index]);
@@ -352,24 +488,66 @@ export function buildDashboardMetrics({
       }
     }
     if (measured) flowTasks += 1;
+    for (const phase of phasesSeen) phaseTotals.get(phase)!.tasks += 1;
+    // Espera do cliente, por aprovação e por projeto. Aqui entra também a
+    // tarefa que está esperando agora: é o atraso acontecendo, e o painel por
+    // cliente existe pra mostrar isso antes de virar média.
+    const lastInterval = intervals.at(-1);
+    for (const kind of ["text", "creative"] as const) {
+      const approval = approvals[kind];
+      if (!approval.rounds) continue;
+      const waiting = task.status === (kind === "text" ? "aprovacao_copy" : "para_aprovacao") && lastInterval?.status === task.status;
+      const byProject = clientByProject.get(task.projectId) ?? { text: emptyStage(), creative: emptyStage() };
+      clientByProject.set(task.projectId, byProject);
+      for (const stage of [clientStages[kind], byProject[kind]]) {
+        stage.tasks += 1;
+        stage.totalMs += approval.ms;
+        stage.rounds += approval.rounds;
+        if (waiting && lastInterval) {
+          stage.waitingNow += 1;
+          stage.longestWaitingMs = Math.max(stage.longestWaitingMs, lastInterval.end - lastInterval.start);
+        }
+      }
+    }
     for (const [owner, held] of heldByOwner) {
       const metric = memberMetrics.get(owner)!;
-      metric.timedTasks += 1;
+      let own = false;
+      let strategyTeam = 0;
+      let strategyClient = 0;
       for (const [status, duration] of held) {
+        // Estratégia é a fase antes da criação e a de entrega, depois de
+        // aprovada. A aprovação do texto é a espera do cliente dessa fase.
+        if (status === "aprovacao_copy") strategyClient += duration;
+        else if (PHASE_BY_STATUS[status] === "estrategia" || PHASE_BY_STATUS[status] === "entrega") strategyTeam += duration;
         metric.statusMs[status] += duration;
         metric.statusTasks[status] += 1;
         metric.statusMaxMs[status] = Math.max(metric.statusMaxMs[status], duration);
+        // O status aparece na grade, mas a espera do cliente não soma no
+        // tempo da pessoa.
+        if (CLIENT_STATUSES.has(status)) { metric.clientMs += duration; continue; }
+        own = true;
         metric.totalStatusMs += duration;
         if (WORKING_STATUSES.has(status)) metric.workingMs += duration;
         else if (WAITING_STATUSES.has(status)) metric.waitingMs += duration;
       }
+      if (own) metric.timedTasks += 1;
+      if (strategyTeam || strategyClient) {
+        metric.strategyTasks += 1;
+        const totals = strategyTotals.get(owner) ?? { teamMs: 0, clientMs: 0 };
+        totals.teamMs += strategyTeam;
+        totals.clientMs += strategyClient;
+        strategyTotals.set(owner, totals);
+      }
     }
     if (creativeStarted) creativeTasks += 1;
-    // Só entra na média o ciclo que fechou: chegou a Aprovado/Finalizado e o
-    // relógio não voltou a correr (não está de novo em ajuste ou aprovação).
-    if (creativeDelivered && !CREATIVE_RUNNING.has(task.status)) {
+    // Só entra na média o ciclo que fechou: chegou a Aprovado/Finalizado e
+    // não voltou para a criação nem para a aprovação.
+    if (creativeDelivered && !CREATIVE_OPEN.has(task.status)) {
       allCreativeCycles.push(creativeTotal);
-      for (const [owner, share] of creativeByOwner) creativeCycles.set(owner, [...(creativeCycles.get(owner) || []), share]);
+      allCreativeClientCycles.push(creativeClient);
+      // A espera da entrega inteira vai para quem produziu, mesmo que a tarefa
+      // tenha trocado de mão enquanto o cliente decidia.
+      for (const [owner, share] of creativeByOwner) creativeCycles.set(owner, [...(creativeCycles.get(owner) || []), { teamMs: share, clientMs: creativeClient }]);
     }
     if (task.createdBy && memberMetrics.has(task.createdBy)) memberMetrics.get(task.createdBy)!.created += 1;
     for (const comment of task.comments) {
@@ -382,11 +560,79 @@ export function buildDashboardMetrics({
   for (const metric of memberMetrics.values()) {
     const cycles = creativeCycles.get(metric.memberId) || [];
     metric.creativeDeliveries = cycles.length;
-    metric.creativeAverageMs = cycles.length ? cycles.reduce((sum, value) => sum + value, 0) / cycles.length : undefined;
+    metric.creativeAverageMs = cycles.length ? cycles.reduce((sum, cycle) => sum + cycle.teamMs, 0) / cycles.length : undefined;
+    metric.creativeClientAverageMs = cycles.length ? cycles.reduce((sum, cycle) => sum + cycle.clientMs, 0) / cycles.length : undefined;
+    const strategy = strategyTotals.get(metric.memberId);
+    metric.strategyAverageMs = strategy ? strategy.teamMs / metric.strategyTasks : undefined;
+    metric.strategyClientAverageMs = strategy ? strategy.clientMs / metric.strategyTasks : undefined;
     metric.totalActivity = metric.created + metric.comments + metric.changes;
   }
   const memberRows = [...memberMetrics.values()];
-  const withCreativeCycles = memberRows.filter((member) => member.creativeAverageMs !== undefined);
+  const closeStage = (stage: DashboardClientStage): DashboardClientStage => ({ ...stage, averageMs: stage.tasks ? stage.totalMs / stage.tasks : undefined });
+  // No topo, o cliente que está segurando demanda há mais tempo agora; depois,
+  // quem costuma demorar mais.
+  const clientProjects: DashboardClientWait[] = [...clientByProject]
+    .map(([id, stages]) => ({ id, name: projectNames.get(id) || "Projeto removido", text: closeStage(stages.text), creative: closeStage(stages.creative) }))
+    .sort((a, b) =>
+      Math.max(b.text.longestWaitingMs, b.creative.longestWaitingMs) - Math.max(a.text.longestWaitingMs, a.creative.longestWaitingMs)
+      || (b.text.totalMs + b.creative.totalMs) - (a.text.totalMs + a.creative.totalMs));
+  // Uso do link pelo cliente. Só entra o que é de tarefa e projeto que a
+  // pessoa logada enxerga, porque o filtro de acesso já foi aplicado nelas.
+  type Responses = { actions: number; approvals: number; changes: number; comments: number; lastAction: number };
+  const emptyResponses = (): Responses => ({ actions: 0, approvals: 0, changes: 0, comments: 0, lastAction: 0 });
+  const closeResponses = ({ lastAction, ...counts }: Responses): DashboardClientResponses => ({ ...counts, lastActionDate: lastAction ? isoDateInSaoPaulo(lastAction) : undefined });
+  const projectByTask = new Map(tasks.map((task) => [task.id, task.projectId]));
+  const adoptionByProject = new Map<string, Responses & { reviewers: Set<string>; lastAccess: number }>();
+  const adoptionOf = (projectId: string) => {
+    const row = adoptionByProject.get(projectId) ?? { ...emptyResponses(), reviewers: new Set<string>(), lastAccess: 0 };
+    adoptionByProject.set(projectId, row);
+    return row;
+  };
+  const reviewerRows = new Map<string, Responses & { name: string; projectId: string }>();
+  for (const link of clientActivity?.links ?? []) {
+    if (!projectNames.has(link.projectId)) continue;
+    const row = adoptionOf(link.projectId);
+    row.lastAccess = Math.max(row.lastAccess, timestamp(link.lastUsedAt) ?? 0);
+  }
+  for (const event of clientActivity?.events ?? []) {
+    const projectId = projectByTask.get(event.taskId);
+    if (!projectId || !projectNames.has(projectId) || event.action === "reopened") continue;
+    const name = event.reviewerName?.trim();
+    const key = name ? `${projectId}:${name.toLowerCase()}` : undefined;
+    const adoption = adoptionOf(projectId);
+    if (key) adoption.reviewers.add(key);
+    if (key && !reviewerRows.has(key)) reviewerRows.set(key, { ...emptyResponses(), name: name!, projectId });
+    for (const row of [adoption, key ? reviewerRows.get(key)! : undefined]) {
+      if (!row) continue;
+      row.actions += 1;
+      if (event.action === "approved") row.approvals += 1;
+      if (event.action === "changes_requested" || event.action === "rejected") row.changes += 1;
+      if (event.comment?.trim()) row.comments += 1;
+      row.lastAction = Math.max(row.lastAction, timestamp(event.createdAt) ?? 0);
+    }
+  }
+  const clientAdoption: DashboardClientAdoption[] = [...adoptionByProject]
+    .sort(([, a], [, b]) => b.actions - a.actions || b.lastAccess - a.lastAccess)
+    .map(([id, { reviewers, lastAccess, ...responses }]) => ({
+      id,
+      name: projectNames.get(id) || "Projeto removido",
+      ...closeResponses(responses),
+      reviewers: reviewers.size,
+      lastAccessDate: lastAccess ? isoDateInSaoPaulo(lastAccess) : undefined,
+    }));
+  const reviewers: DashboardReviewer[] = [...reviewerRows]
+    .sort(([, a], [, b]) => b.actions - a.actions || b.comments - a.comments)
+    .slice(0, 8)
+    .map(([key, { name, projectId, ...responses }]) => ({ key, name, projectName: projectNames.get(projectId) || "Projeto removido", ...closeResponses(responses) }));
+  const phases: DashboardPhase[] = [...phaseTotals].map(([key, totals]) => ({
+    key,
+    label: PHASE_LABELS[key],
+    tasks: totals.tasks,
+    teamMs: totals.tasks ? totals.teamMs / totals.tasks : 0,
+    clientMs: totals.tasks ? totals.clientMs / totals.tasks : 0,
+  }));
+  // O destaque de tempo criativo só compara quem é da criação.
+  const withCreativeCycles = memberRows.filter((member) => member.area === "criacao" && member.creativeAverageMs !== undefined);
 
   const topCommented = tasks
     .map((task) => ({
@@ -575,12 +821,18 @@ export function buildDashboardMetrics({
     reworkRate: creativeTasks ? Math.round((reworkTasks.length / creativeTasks) * 100) : 0,
     reworkedTasks: reworkTasks.length,
     averageCreativeMs: allCreativeCycles.length ? allCreativeCycles.reduce((sum, value) => sum + value, 0) / allCreativeCycles.length : undefined,
+    averageCreativeClientMs: allCreativeClientCycles.length ? allCreativeClientCycles.reduce((sum, value) => sum + value, 0) / allCreativeClientCycles.length : undefined,
     creativeDeliveries: allCreativeCycles.length,
+    clientWait: { text: closeStage(clientStages.text), creative: closeStage(clientStages.creative), projects: clientProjects },
+    clientAdoption,
+    reviewers,
+    phases,
     creativeTasks,
     criticalAlerts: alerts.filter((alert) => alert.critical).length,
     flowEfficiency: {
       workingMs,
       waitingMs,
+      clientMs,
       ratio: workingMs + waitingMs ? Math.round((workingMs / (workingMs + waitingMs)) * 100) : 0,
       tasks: flowTasks,
     },
