@@ -54,13 +54,22 @@ describe("dashboard gerencial", () => {
   it("soma todas as visitas ao status de ajuste", () => {
     const ana = metrics.members.find((member) => member.memberId === "m1")!;
     expect(ana.statusMs.ajuste).toBe(2 * 86_400_000);
+    // Duas visitas da mesma tarefa continuam sendo uma tarefa só na média.
+    expect(ana.statusTasks.ajuste).toBe(1);
     expect(metrics.reworkTasks[0]).toMatchObject({ id: "t1", visits: 2, totalMs: 2 * 86_400_000 });
-    expect(metrics.reworkRate).toBe(33);
+    // A base é quem entrou em criação (t1 e t2); o rascunho t3 não dilui a taxa.
+    expect(metrics.creativeTasks).toBe(2);
+    expect(metrics.reworkRate).toBe(50);
   });
 
-  it("mede lentidão pelo ciclo até a entrega, e não pela quantidade", () => {
-    expect(metrics.slowestCreative).toMatchObject({ memberId: "m2", creativeDeliveries: 1 });
-    expect(metrics.slowestCreative!.creativeAverageMs).toBeGreaterThan(metrics.members[0].creativeAverageMs!);
+  it("mede o ciclo criativo só depois que ele fecha em aprovado ou finalizado", () => {
+    // t2: 7d22h em criação + 1h aguardando aprovação, até finalizar.
+    expect(metrics.slowestCreative).toMatchObject({ memberId: "m2", creativeDeliveries: 1, creativeAverageMs: 7 * 86_400_000 + 23 * 3_600_000 });
+    expect(metrics.averageCreativeMs).toBe(7 * 86_400_000 + 23 * 3_600_000);
+    // t1 ainda espera a aprovação do cliente: o relógio está correndo e a
+    // tarefa não entra na média.
+    expect(metrics.members.find((member) => member.memberId === "m1")).toMatchObject({ creativeDeliveries: 0, creativeAverageMs: undefined });
+    expect(metrics.creativeDeliveries).toBe(1);
   });
 
   it("separa criação, alterações e comentários e mantém pessoas sem atividade", () => {
@@ -86,11 +95,13 @@ describe("dashboard gerencial", () => {
 
   it("separa o tempo produzindo do tempo esperando na fila", () => {
     // t1 produz 5 dias (criação + duas voltas de ajuste + revisão) e t2 produz
-    // 7d22h; a espera é o "pronto para criação" e o tempo parado aguardando
-    // aprovação. Finalizado fica fora dos dois lados.
+    // 7d22h; a espera é o "pronto para criação", o tempo parado aguardando
+    // aprovação e os 7d3h do rascunho t3, que não tem histórico e é medido
+    // desde a criação. Finalizado fica fora dos dois lados.
     expect(metrics.flowEfficiency.workingMs).toBe(12 * 86_400_000 + 22 * 3_600_000);
-    expect(metrics.flowEfficiency.waitingMs).toBe(3 * 86_400_000 + 4 * 3_600_000);
-    expect(metrics.flowEfficiency.ratio).toBe(80);
+    expect(metrics.flowEfficiency.waitingMs).toBe(10 * 86_400_000 + 7 * 3_600_000);
+    expect(metrics.flowEfficiency.ratio).toBe(56);
+    expect(metrics.flowEfficiency.tasks).toBe(3);
   });
 
   it("mede o prazo real de fechamento com mediana, P85 e distribuição", () => {
@@ -118,16 +129,9 @@ describe("dashboard gerencial", () => {
     expect(result.punctuality).toMatchObject({ delivered: 1, keptCurrent: 1, keptOriginal: 0, currentRate: 100, originalRate: 0, averageSlipDays: 4 });
   });
 
-  it("envelhece a tarefa aberta pelo tempo parado no status atual", () => {
-    expect(metrics.aging).toHaveLength(1);
-    expect(metrics.aging[0]).toMatchObject({ taskId: "t1", status: "para_aprovacao", days: 2.1, overdue: false, assigneeName: "Ana" });
-    // O limite saudável nasce do P85 do prazo real, não de um número escolhido.
-    expect(metrics.agingThresholdDays).toBe(8);
-  });
-
   it("fotografa a distribuição entre fila, produção e entrega a cada semana", () => {
     expect(metrics.cumulativeFlow).toHaveLength(8);
-    expect(metrics.cumulativeFlow.at(-1)).toMatchObject({ nao_iniciada: 0, em_andamento: 0, feita: 2, total: 2 });
+    expect(metrics.cumulativeFlow.at(-1)).toMatchObject({ nao_iniciada: 1, em_andamento: 0, feita: 2, total: 3 });
     const meioDaProducao = metrics.cumulativeFlow.find((point) => point.start === "2026-09-06");
     expect(meioDaProducao).toMatchObject({ em_andamento: 2, feita: 0 });
   });
@@ -171,8 +175,103 @@ it("descartada não é carga aberta, atraso ou pendência de informação", () =
   expect(metrics.activeTasks).toBe(0);
   expect(metrics.overdueTasks).toBe(0);
   expect(metrics.members.find((member) => member.memberId === "m1")?.openTasks).toBe(0);
-  expect(metrics.aging).toEqual([]);
+  // O relógio de uma tarefa encerrada não corre: nada de tempo acumulado.
+  expect(metrics.members.find((member) => member.memberId === "m1")).toMatchObject({ totalStatusMs: 0, timedTasks: 0 });
+  expect(metrics.cumulativeFlow.at(-1)?.total).toBe(0);
   expect(metrics.alerts).toEqual([]);
   expect(metrics.projectHealth[0]).toMatchObject({ open: 0, overdue: 0, done: 0 });
   expect(metrics.punctuality.delivered).toBe(0);
+});
+
+describe("relógio do ciclo criativo", () => {
+  const D = 86_400_000;
+  const at = (day: number, hour = 12) => `2026-09-${String(day).padStart(2, "0")}T${String(hour).padStart(2, "0")}:00:00.000Z`;
+
+  it("liga em pronto para criação, pausa fora da criação, para em aprovado e religa no ajuste", () => {
+    const ciclo = task({
+      id: "ciclo", name: "Vai e volta", status: "finalizado", assigneeId: "m1",
+      statusHistory: [
+        { status: "pronto_para_criacao", enteredAt: at(1), exitedAt: at(2) }, // 1d conta
+        { status: "aprovacao_copy", enteredAt: at(2), exitedAt: at(4) }, // 2d pausado
+        { status: "pronto_para_criacao", enteredAt: at(4), exitedAt: at(5) }, // 1d conta
+        { status: "em_criacao", enteredAt: at(5), exitedAt: at(6) }, // 1d conta
+        { status: "para_aprovacao", enteredAt: at(6), exitedAt: at(7) }, // 1d conta
+        { status: "aprovado", enteredAt: at(7), exitedAt: at(8) }, // parado
+        { status: "ajuste", enteredAt: at(8), exitedAt: at(8, 18) }, // 6h conta
+        { status: "finalizado", enteredAt: at(8, 18), exitedAt: null },
+      ],
+    });
+    const result = buildDashboardMetrics({ tasks: [ciclo], projects, members, tags, nowIso: NOW });
+    expect(result.averageCreativeMs).toBe(4 * D + 6 * 3_600_000);
+    expect(result.members.find((member) => member.memberId === "m1")).toMatchObject({ creativeDeliveries: 1, creativeAverageMs: 4 * D + 6 * 3_600_000 });
+  });
+
+  it("cobra de cada pessoa só o tempo em que a tarefa estava com ela", () => {
+    // A tarefa esperou 5 dias em "pronto" com a Ana; a Clara assumiu e
+    // entregou em 1 dia. Os 5 dias não podem cair na conta da Clara.
+    const herdada = task({
+      id: "herdada", name: "Herdada", status: "aprovado", assigneeId: "m3",
+      statusHistory: [
+        { status: "pronto_para_criacao", enteredAt: at(1), exitedAt: at(6) },
+        { status: "em_criacao", enteredAt: at(6), exitedAt: at(7) },
+        { status: "aprovado", enteredAt: at(7), exitedAt: null },
+      ],
+      comments: [{ id: "h1", author: "Sistema", authorMemberId: "m1", text: "", kind: "activity", fieldKey: "assigneeId", oldValue: "m1", newValue: "m3", createdAt: at(6) }],
+    });
+    const result = buildDashboardMetrics({ tasks: [herdada], projects, members, tags, nowIso: NOW });
+    expect(result.members.find((member) => member.memberId === "m3")!.creativeAverageMs).toBe(D);
+    expect(result.members.find((member) => member.memberId === "m1")!.creativeAverageMs).toBe(5 * D);
+    expect(result.averageCreativeMs).toBe(6 * D);
+  });
+});
+
+describe("tempo por pessoa em cada status", () => {
+  const D = 86_400_000;
+
+  it("não deixa o tempo de finalizado crescer e separa a soma da média por tarefa", () => {
+    const entregue = (id: string) => task({
+      id, name: id, status: "finalizado", assigneeId: "m1",
+      statusHistory: [
+        { status: "pronto_para_criacao", enteredAt: "2026-08-01T12:00:00.000Z", exitedAt: "2026-08-03T12:00:00.000Z" },
+        { status: "finalizado", enteredAt: "2026-08-03T12:00:00.000Z", exitedAt: null },
+      ],
+    });
+    const result = buildDashboardMetrics({ tasks: [entregue("a"), entregue("b")], projects, members, tags, nowIso: NOW });
+    const ana = result.members.find((member) => member.memberId === "m1")!;
+    expect(ana.statusMs.finalizado).toBe(0);
+    expect(ana.statusMs.pronto_para_criacao).toBe(4 * D);
+    expect(ana.statusTasks.pronto_para_criacao).toBe(2);
+    expect(ana.statusMaxMs.pronto_para_criacao).toBe(2 * D);
+    expect(ana).toMatchObject({ totalStatusMs: 4 * D, timedTasks: 2 });
+  });
+
+  it("reconcilia o histórico quando o status foi trocado direto no banco", () => {
+    // A entrada aberta diz "pronto", mas a tarefa já está finalizada: a troca
+    // é datada pelo updatedAt e o relógio para ali.
+    const forcada = task({
+      id: "forcada", name: "Finalizada por fora", status: "finalizado", assigneeId: "m1",
+      createdAt: "2026-09-01T12:00:00.000Z", updatedAt: "2026-09-03T12:00:00.000Z",
+      statusHistory: [{ status: "pronto_para_criacao", enteredAt: "2026-09-01T12:00:00.000Z", exitedAt: null }],
+    });
+    const result = buildDashboardMetrics({ tasks: [forcada], projects, members, tags, nowIso: NOW });
+    expect(result.members.find((member) => member.memberId === "m1")!.statusMs.pronto_para_criacao).toBe(2 * D);
+    expect(result.leadTime).toMatchObject({ samples: 1, p50Ms: 2 * D });
+    expect(result.averageCreativeMs).toBe(2 * D);
+  });
+});
+
+it("usa o dia de São Paulo, e não o de Londres, para decidir atraso e pontualidade", () => {
+  // 23h de 9/set em São Paulo já é 10/set em UTC.
+  const noite = "2026-09-10T02:00:00.000Z";
+  const venceHoje = task({ id: "hoje", name: "Vence hoje", status: "em_criacao", dueDate: "2026-09-09", statusHistory: [{ status: "em_criacao", enteredAt: "2026-09-08T12:00:00.000Z", exitedAt: null }] });
+  const fechouHoje = task({
+    id: "fechou", name: "Fechou no dia", status: "finalizado", dueDate: "2026-09-09",
+    statusHistory: [
+      { status: "em_criacao", enteredAt: "2026-09-08T12:00:00.000Z", exitedAt: "2026-09-10T01:00:00.000Z" },
+      { status: "finalizado", enteredAt: "2026-09-10T01:00:00.000Z", exitedAt: null },
+    ],
+  });
+  const result = buildDashboardMetrics({ tasks: [venceHoje, fechouHoje], projects, members, tags, nowIso: noite });
+  expect(result.overdueTasks).toBe(0);
+  expect(result.punctuality).toMatchObject({ delivered: 1, keptCurrent: 1, keptOriginal: 1 });
 });

@@ -14,6 +14,11 @@ export function todayIso(): string {
   return isoFormatter.format(new Date());
 }
 
+/** Dia de calendário em São Paulo de um instante qualquer. */
+export function isoDateInSaoPaulo(value: Date | number): string {
+  return isoFormatter.format(new Date(value));
+}
+
 export function monthKeyFromDate(dateStr: string): string {
   return dateStr.slice(0, 7);
 }
