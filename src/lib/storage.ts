@@ -516,6 +516,13 @@ export async function listTasks(options: TaskQueryScope & { all?: boolean; proje
   return tasks.sort((a, b) => (a.dueDate || "9999-99-99").localeCompare(b.dueDate || "9999-99-99"));
 }
 
+// Só o necessário para decidir há quanto tempo cada demanda da pessoa espera o
+// play (ver lib/ready-nudge.ts) — sem comentários, imagens ou copy.
+export async function listReadyTasksForAssignee(memberId: string): Promise<import("./ready-nudge").ReadyTask[]> {
+  const rows = unwrap(await getSupabase().from("tasks").select("id,name,project_id,status,status_history,assignee_id,updated_at").eq("assignee_id", memberId).eq("status", "pronto_para_criacao")) as Pick<TaskRow, "id" | "name" | "project_id" | "status" | "status_history" | "assignee_id" | "updated_at">[];
+  return rows.map((row) => ({ id: row.id, name: row.name, projectId: row.project_id, status: row.status, statusHistory: row.status_history ?? [], assigneeId: row.assignee_id ?? undefined, updatedAt: row.updated_at }));
+}
+
 // Contagens são opcionais no calendário. A fila principal nunca baixa os JSONs
 // de comentários/anexos só para mostrar nomes, prazos e responsáveis.
 export async function listTaskCounts(scope: TaskQueryScope) {
