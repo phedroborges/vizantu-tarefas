@@ -83,6 +83,8 @@ O formato é sugerido por etiqueta/nome e pode ser corrigido na conferência. Os
 
 ## Fechamento por diretor criativo
 
+Na aba **Produção da equipe**, o botão **Exportar extrato PDF** no bloco de cada diretor baixa todas as demandas computadas dessa pessoa na competência selecionada. O documento inclui resumo dos valores, cliente, formato, status, cadastro, prazo, data computada de entrega, valor registrado ou estimado, regra de preço e links clicáveis para a tarefa e o material no Drive. Valores registrados preservam as notas do lançamento; estimativas mostram a regra atual. O tempo em criação soma os intervalos encerrados do status `em_criacao`, incluindo esperas, e não representa um cronômetro de horas trabalhadas. Histórico ausente aparece como não registrado. A exportação busca os detalhes completos e informa erros sem baixar um documento parcial.
+
 A conferência é peça a peça, porque é ali que se corrige formato, quantidade de cards e problema de qualidade. Mas ninguém paga peça a peça: paga-se uma pessoa, uma vez no mês.
 
 Cada diretor criativo tem o seu próprio bloco, separado dos demais, com:

@@ -16,6 +16,14 @@ async function change(input: HTMLInputElement|HTMLSelectElement, value:string) {
 beforeEach(()=>{vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT",true);vi.stubGlobal("fetch",fetchMock);fetchMock.mockReset();container=document.createElement("div");document.body.append(container);root=createRoot(container);});
 afterEach(async()=>{await act(async()=>root.unmount());container.remove();vi.unstubAllGlobals();});
 describe("painel financeiro",()=>{
+  it("oferece PDF por diretor e informa falha ao carregar detalhes sem exportar parcialmente",async()=>{
+    await mount();await change(container.querySelector('[aria-label="Mês de análise"]')!,"2026-09");await click(button("Produção da equipe"));
+    fetchMock.mockResolvedValue({ok:false,status:500,text:async()=>"",json:async()=>({error:"Falha nos detalhes"})});
+    await click(container.querySelector<HTMLElement>('[aria-label="Exportar extrato PDF de Designer de exemplo"]'));
+    expect(container.querySelector('[role="alert"]')).toBeTruthy();
+    expect(button("Exportar extrato PDF")?.disabled).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+  });
   // A tela abre no que o dono pediu: quanto os contratos valem e até quando.
   // Fluxo de caixa não aparece em lugar nenhum — se voltar, este teste grita.
   it("abre nos contratos, com valor mensal e fim de cada um",async()=>{

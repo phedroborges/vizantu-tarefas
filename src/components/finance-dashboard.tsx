@@ -243,6 +243,8 @@ type SelectedFinanceTask = { line: ProductionLine; task: Task; loading: boolean;
 
 function Production({ data, month, busy, onBook, onClose }: { data: FinanceData; month: string; busy: boolean; onBook: (line: ProductionLine) => void; onClose: (memberId: string, name: string, pending: number, pieces: number) => void }) {
   const [member, setMember] = useState("");
+  const [exporting, setExporting] = useState<string | null>(null);
+  const [exportError, setExportError] = useState("");
   const [selected, setSelected] = useState<SelectedFinanceTask | null>(null);
   const allLines = useMemo(() => productionLines(data.tasks, data.tags, data.settings, data.members), [data]);
   const monthLines = allLines.filter((line) => line.counted && line.deliveredDate?.startsWith(month));
@@ -257,6 +259,29 @@ function Production({ data, month, busy, onBook, onClose }: { data: FinanceData;
     setMember(memberId);
     document.getElementById("production-details")?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
+  async function exportStatement(closing: ReturnType<typeof producerClosing>[number]) {
+    if (exporting) return;
+    setExporting(closing.producerId); setExportError("");
+    try {
+      const tasks: Task[] = [];
+      // Fetch full details in bounded batches; never silently export an incomplete statement.
+      for (let index = 0; index < closing.lines.length; index += 5) {
+        const details = await Promise.all(closing.lines.slice(index, index + 5).map(async (line) => {
+          const response = await fetch(`/api/tasks/${encodeURIComponent(line.taskId)}?detail=1`, { cache: "no-store", signal: AbortSignal.timeout(30_000) });
+          if (!response.ok) throw new Error(await responseError(response, "carregar os detalhes do extrato"));
+          const result = await response.json() as { task: Task };
+          if (!result.task || result.task.id !== line.taskId) throw new Error("Não foi possível conferir todos os trabalhos. Atualize o financeiro e tente novamente.");
+          return result.task;
+        }));
+        tasks.push(...details);
+      }
+      const { buildStatementPdf } = await import("@/lib/finance/statement-pdf");
+      const { pdf, filename } = buildStatementPdf(data, closing, tasks, month, window.location.origin);
+      await pdf.save(filename, { returnPromise: true });
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "Não foi possível gerar o PDF. Tente novamente.");
+    } finally { setExporting(null); }
+  }
   async function openTask(line: ProductionLine) {
     const fallback = data.tasks.find((task) => task.id === line.taskId);
     if (!fallback) return;
@@ -291,10 +316,12 @@ function Production({ data, month, busy, onBook, onClose }: { data: FinanceData;
     {withoutComputedDate.length ? <div className="fin-warning">{withoutComputedDate.length} tarefa(s) aprovada(s) ou finalizada(s) sem data registrada da mudança de status. Elas não foram atribuídas a nenhuma competência.</div> : null}
 
     <div id="production-details" className="fin-production-list-head"><div><span className="fin-eyebrow">Demandas computadas · {monthLabel(month)}</span><h2>O que cada pessoa fez</h2></div><select aria-label="Filtrar diretor criativo" value={member} onChange={(event) => setMember(event.target.value)}><option value="">Toda a equipe criativa</option>{roster.map((person) => <option key={person.memberId} value={person.memberId}>{person.name}</option>)}</select></div>
+    {exportError ? <p className="fin-message is-error" role="alert">{exportError}</p> : null}
     {visibleClosings.map((closing) => {
       const person = data.members.find((candidate) => candidate.id === closing.producerId);
       return <section className="fin-panel" key={closing.producerId}>
         <div className="fin-panel-title"><div><span className="fin-eyebrow">Responsável atual</span><h2>{person?.name || "Sem diretor criativo"} · {closing.pieces} demanda(s)</h2></div>
+          <Button variant="secondary" disabled={busy || exporting !== null} onClick={() => void exportStatement(closing)} aria-label={`Exportar extrato PDF de ${person?.name || "diretor criativo"}` }><Download size={15} /> {exporting === closing.producerId ? "Gerando PDF…" : "Exportar extrato PDF"}</Button>
           {closing.pending ? <Button disabled={busy} onClick={() => onClose(closing.producerId, person?.name || "", closing.pending, closing.pendingTaskIds.length)}><Check size={15} /> Lançar {closing.pendingTaskIds.length} pendente(s)</Button> : <span className="fin-badge is-ok">Valores lançados</span>}
         </div>
         <div className="fin-mini-grid"><Metric label="Valor computado" value={brl(closing.total)} detail={`${closing.pieces} tarefa(s) aprovada(s) ou finalizada(s)`} /><Metric label="Já lançado" value={brl(closing.launched)} detail="Valor gravado como despesa" /><Metric label="Falta lançar" value={brl(closing.pending)} detail="Estimativa pela tabela atual" /><Metric label="Sem valor calculado" value={String(closing.unpriced)} detail="Formato não reconhecido" /></div>
@@ -310,7 +337,7 @@ function Production({ data, month, busy, onBook, onClose }: { data: FinanceData;
             <td>{entry ? <span className="fin-badge">Lançada</span> : line.ready ? <Button size="sm" onClick={() => onBook(line)} disabled={busy}>Lançar a pagar</Button> : <span className="fin-badge">Sem valor</span>}</td>
           </tr>;
         })}</tbody></table></div>
-        <p className="fin-footnote">Clique no nome da demanda para abrir a tarefa dentro do Financeiro. A pessoa exibida aqui é sempre o responsável atual da tarefa.</p>
+        <p className="fin-footnote">Clique no nome da demanda para abrir a tarefa dentro do Financeiro. A pessoa exibida aqui é sempre o responsável atual da tarefa. O PDF inclui todas as demandas desta pessoa na competência selecionada, com links e tempo registrado em criação.</p>
       </section>;
     })}
     {!visibleClosings.length ? <Empty text={member ? "Esta pessoa não tem tarefas aprovadas ou finalizadas nesta competência." : "Nenhuma tarefa aprovada ou finalizada nesta competência."} /> : null}
