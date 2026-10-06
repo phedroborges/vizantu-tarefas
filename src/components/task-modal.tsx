@@ -503,6 +503,7 @@ export function TaskModal({
                 status={draft.status}
                 statusHistory={statusHistory}
                 color={colorByStatus.get(draft.status)}
+                canStart={canEdit}
                 onChange={(value) => {
                   // Mesmo marco do lado de fora (ver patchTask em tarefas-view):
                   // "Para aprovação" é quando a demanda sai da mão do time.

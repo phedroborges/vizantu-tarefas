@@ -3,6 +3,7 @@
 import { ChevronDown, CircleDot, Clock3 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { MetaRow } from "@/components/meta-row";
+import { StartTaskButton } from "@/components/start-task-button";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatDuration, summarizeStatusDurations } from "@/lib/dates";
 import { STATUS_GROUPS, TASK_STATUSES, type StatusHistoryEntry, type TaskStatus } from "@/lib/types";
@@ -15,11 +16,14 @@ export function TaskStatusControl({
   status,
   statusHistory,
   color,
+  canStart = true,
   onChange,
 }: {
   status: TaskStatus;
   statusHistory: StatusHistoryEntry[];
   color?: string;
+  /** Mostra o play enquanto a tarefa está em "Pronto para criação". */
+  canStart?: boolean;
   onChange: (next: TaskStatus) => void;
 }) {
   const [showTiming, setShowTiming] = useState(false);
@@ -62,6 +66,7 @@ export function TaskStatusControl({
             ))}
           </SelectContent>
         </Select>
+        {canStart && status === "pronto_para_criacao" ? <StartTaskButton label onStart={() => onChange("em_criacao")} /> : null}
         {currentEntry ? (
           <span style={{ color: "var(--muted-text)", fontSize: 10.5 }}>há {formatDuration(currentEntry.totalMs)}</span>
         ) : null}

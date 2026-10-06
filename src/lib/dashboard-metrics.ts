@@ -1,4 +1,4 @@
-import { overdueDays, summarizeStatusDurations } from "./dates";
+import { isoDateInSaoPaulo, overdueDays, summarizeStatusDurations } from "./dates";
 import { isUserComment } from "./task-activity";
 import { findTaskGaps, type TaskGapType } from "./task-readiness";
 import {
@@ -7,20 +7,32 @@ import {
   type Member,
   type Project,
   type StatusGroup,
-  type StatusHistoryEntry,
   type Tag,
   type Task,
   type TaskStatus,
 } from "./types";
 
 const DAY = 86_400_000;
+// O Brasil não tem mais horário de verão: São Paulo é UTC-3 o ano inteiro.
+const SP_OFFSET = 3 * 3_600_000;
+
+// Relógio do ciclo criativo: liga quando a demanda entra em "Pronto para
+// criação" (ou em qualquer etapa de produção), segue ligado enquanto ela está
+// com o time ou aguardando o cliente aprovar, e desliga em Aprovado ou
+// Finalizado. Se a demanda volta para Ajuste, liga de novo e soma. Voltar para
+// uma etapa anterior à criação (texto, captação) pausa o relógio.
 const CREATIVE_START = new Set<TaskStatus>(["pronto_para_criacao", "em_criacao", "revisao", "ajuste"]);
-const CREATIVE_DELIVERY = new Set<TaskStatus>(["para_aprovacao", "aprovado", "finalizado"]);
+const CREATIVE_RUNNING = new Set<TaskStatus>([...CREATIVE_START, "para_aprovacao"]);
+const CREATIVE_STOP = new Set<TaskStatus>(["aprovado", "finalizado"]);
+
+// Finalizado e Problema encerram a demanda. A entrada aberta desses status
+// nunca fecha — contar o tempo dela faria toda tarefa entregue "envelhecer"
+// para sempre na conta de quem a entregou.
+const TERMINAL_STATUSES = new Set<TaskStatus>(CLOSED_TASK_STATUSES);
+export const TIMED_STATUSES = TASK_STATUSES.filter(({ value }) => !TERMINAL_STATUSES.has(value));
 
 // Eficiência de fluxo: das horas que a demanda passou sob nossa
-// responsabilidade, quantas alguém estava de fato com a mão nela. Os status
-// "feita" ficam de fora dos dois lados — depois de entregue o relógio não é
-// mais nosso, e a entrada aberta de Finalizado cresceria para sempre.
+// responsabilidade, quantas alguém estava de fato com a mão nela.
 const WORKING_STATUSES = new Set<TaskStatus>(["em_criacao", "revisao", "ajuste"]);
 const WAITING_STATUSES = new Set<TaskStatus>([
   "rascunho", "aguardando_informacao", "aprovacao_copy", "aguardando_captacao", "pronto_para_criacao", "para_aprovacao",
@@ -41,59 +53,33 @@ function calendarDays(from?: string, to?: string): number {
   return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / DAY);
 }
 
-function firstEntry(history: StatusHistoryEntry[], statuses: Set<TaskStatus>, after = -Infinity): number | undefined {
-  return history
-    .filter((entry) => statuses.has(entry.status))
-    .map((entry) => timestamp(entry.enteredAt))
-    .filter((value): value is number => value !== undefined && value >= after)
-    .sort((a, b) => a - b)[0];
-}
+type Interval = { status: TaskStatus; start: number; end: number };
 
-function completedAt(task: Task): number | undefined {
-  return firstEntry(task.statusHistory, new Set<TaskStatus>(["finalizado"]));
-}
-
-function creativeCycleMs(task: Task): number | undefined {
-  const start = firstEntry(task.statusHistory, CREATIVE_START);
-  if (start === undefined) return undefined;
-  const delivered = firstEntry(task.statusHistory, CREATIVE_DELIVERY, start);
-  return delivered === undefined ? undefined : Math.max(0, delivered - start);
-}
-
-/** Quando a tarefa começou a existir para o time: o primeiro registro de
- * status, ou a criação, o que vier antes. */
-function startedAt(task: Task): number | undefined {
-  const created = timestamp(task.createdAt);
-  const entered = task.statusHistory
-    .map((entry) => timestamp(entry.enteredAt))
-    .filter((value): value is number => value !== undefined)
-    .sort((a, b) => a - b)[0];
-  if (entered === undefined) return created;
-  return created === undefined ? entered : Math.min(created, entered);
-}
-
-/** Em que status a tarefa estava num instante do passado. Vale a entrada mais
- * recente que já tinha começado e ainda não tinha terminado. */
-function statusAt(task: Task, at: number): TaskStatus | undefined {
-  let found: { status: TaskStatus; start: number } | undefined;
-  for (const entry of task.statusHistory) {
-    const start = timestamp(entry.enteredAt);
-    if (start === undefined || start > at) continue;
-    const end = entry.exitedAt ? timestamp(entry.exitedAt) : undefined;
-    if (end !== undefined && end <= at) continue;
-    if (!found || start >= found.start) found = { status: entry.status, start };
+/** Linha do tempo da tarefa em intervalos contíguos e ordenados. Conserta o
+ * que o histórico gravado não garante: tarefa sem histórico nenhum, e status
+ * trocado direto no banco, que deixa a entrada aberta apontando para um status
+ * que a tarefa já não tem (nesse caso a troca é datada pelo updatedAt). */
+function timeline(task: Task, nowMs: number): Interval[] {
+  const entries = task.statusHistory
+    .map((entry) => ({ status: entry.status, start: timestamp(entry.enteredAt), exit: timestamp(entry.exitedAt) }))
+    .filter((entry): entry is { status: TaskStatus; start: number; exit: number | undefined } => entry.start !== undefined && entry.start <= nowMs)
+    .sort((a, b) => a.start - b.start);
+  const intervals: Interval[] = entries.map((entry, index) => {
+    const next = entries[index + 1]?.start;
+    const end = next === undefined ? entry.exit ?? nowMs : Math.min(entry.exit ?? next, next);
+    return { status: entry.status, start: entry.start, end: Math.max(entry.start, Math.min(end, nowMs)) };
+  });
+  const last = intervals.at(-1);
+  if (!last) {
+    const created = timestamp(task.createdAt);
+    return created === undefined ? [] : [{ status: task.status, start: Math.min(created, nowMs), end: nowMs }];
   }
-  return found?.status;
-}
-
-/** Desde quando a tarefa está parada no status em que está hoje. */
-function inCurrentStatusSince(task: Task): number | undefined {
-  const matching = task.statusHistory
-    .filter((entry) => entry.status === task.status)
-    .map((entry) => ({ start: timestamp(entry.enteredAt), open: !entry.exitedAt }))
-    .filter((entry): entry is { start: number; open: boolean } => entry.start !== undefined)
-    .sort((a, b) => b.start - a.start);
-  return (matching.find((entry) => entry.open) || matching[0])?.start;
+  if (last.status !== task.status) {
+    const changed = Math.max(last.start, Math.min(timestamp(task.updatedAt) ?? nowMs, nowMs));
+    last.end = changed;
+    intervals.push({ status: task.status, start: changed, end: nowMs });
+  }
+  return intervals;
 }
 
 function percentile(values: number[], fraction: number): number | undefined {
@@ -138,17 +124,17 @@ function assigneeAt(task: Task, at: number): string | undefined {
   return assignee;
 }
 
-function weekStart(date: Date): Date {
-  const copy = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  const weekday = (copy.getUTCDay() + 6) % 7;
-  copy.setUTCDate(copy.getUTCDate() - weekday);
-  return copy;
+/** Segunda-feira 00:00 de São Paulo da semana que contém o instante. */
+function weekStart(ms: number): number {
+  const local = new Date(ms - SP_OFFSET);
+  const day = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate());
+  return day - ((local.getUTCDay() + 6) % 7) * DAY + SP_OFFSET;
 }
 
+const shortDateFormatter = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", timeZone: "America/Sao_Paulo" });
+
 function shortDate(ms: number): string {
-  return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", timeZone: "UTC" })
-    .format(new Date(ms))
-    .replace(".", "");
+  return shortDateFormatter.format(new Date(ms)).replace(".", "");
 }
 
 export type DashboardMemberMetric = {
@@ -160,8 +146,15 @@ export type DashboardMemberMetric = {
   comments: number;
   changes: number;
   totalActivity: number;
+  /** Soma do tempo das tarefas em cada status enquanto estavam com a pessoa. */
   statusMs: Record<TaskStatus, number>;
+  /** Quantas tarefas diferentes compõem a soma de cada status. */
+  statusTasks: Record<TaskStatus, number>;
+  /** A tarefa que mais tempo ficou em cada status. */
+  statusMaxMs: Record<TaskStatus, number>;
   totalStatusMs: number;
+  /** Tarefas diferentes com tempo medido sob a responsabilidade da pessoa. */
+  timedTasks: number;
   workingMs: number;
   waitingMs: number;
   creativeAverageMs?: number;
@@ -198,17 +191,6 @@ export type DashboardReschedule = {
   completedDate?: string;
   changes: number;
   movedDays: number;
-};
-
-export type DashboardAgingItem = {
-  taskId: string;
-  taskName: string;
-  projectName: string;
-  assigneeName?: string;
-  status: TaskStatus;
-  group: StatusGroup;
-  days: number;
-  overdue: boolean;
 };
 
 export type DashboardFlowPoint = {
@@ -259,8 +241,10 @@ export type DashboardMetrics = {
   reworkedTasks: number;
   averageCreativeMs?: number;
   creativeDeliveries: number;
+  /** Tarefas que chegaram a entrar na criação: a base da taxa de retrabalho. */
+  creativeTasks: number;
   criticalAlerts: number;
-  flowEfficiency: { workingMs: number; waitingMs: number; ratio: number };
+  flowEfficiency: { workingMs: number; waitingMs: number; ratio: number; tasks: number };
   leadTime: DashboardLeadTime;
   punctuality: DashboardPunctuality;
   members: DashboardMemberMetric[];
@@ -274,8 +258,6 @@ export type DashboardMetrics = {
   reschedules: DashboardReschedule[];
   delayBuckets: { label: string; count: number; color: string }[];
   throughput: { label: string; start: string; created: number; completed: number }[];
-  aging: DashboardAgingItem[];
-  agingThresholdDays: number;
   cumulativeFlow: DashboardFlowPoint[];
   projectHealth: DashboardProjectHealth[];
 };
@@ -294,10 +276,20 @@ export function buildDashboardMetrics({
   nowIso: string;
 }): DashboardMetrics {
   const nowMs = new Date(nowIso).getTime();
-  const today = nowIso.slice(0, 10);
+  const today = isoDateInSaoPaulo(nowMs);
   const projectNames = new Map(projects.map((project) => [project.id, project.name]));
-  const memberNames = new Map(members.map((member) => [member.id, member.name]));
   const activeMembers = members.filter((member) => member.active);
+  const timelines = new Map(tasks.map((task) => [task.id, timeline(task, nowMs)]));
+  const completedAt = (task: Task) => timelines.get(task.id)!.find((interval) => interval.status === "finalizado")?.start;
+  /** Quando a tarefa começou a existir para o time: o primeiro registro de
+   * status, ou a criação, o que vier antes. */
+  const startedAt = (task: Task) => {
+    const created = timestamp(task.createdAt);
+    const entered = timelines.get(task.id)![0]?.start;
+    if (entered === undefined) return created;
+    return created === undefined ? entered : Math.min(created, entered);
+  };
+  const zeroByStatus = () => Object.fromEntries(TASK_STATUSES.map(({ value }) => [value, 0])) as Record<TaskStatus, number>;
 
   const memberMetrics = new Map<string, DashboardMemberMetric>(activeMembers.map((member) => [member.id, {
     memberId: member.id,
@@ -308,46 +300,76 @@ export function buildDashboardMetrics({
     comments: 0,
     changes: 0,
     totalActivity: 0,
-    statusMs: Object.fromEntries(TASK_STATUSES.map(({ value }) => [value, 0])) as Record<TaskStatus, number>,
+    statusMs: zeroByStatus(),
+    statusTasks: zeroByStatus(),
+    statusMaxMs: zeroByStatus(),
     totalStatusMs: 0,
+    timedTasks: 0,
     workingMs: 0,
     waitingMs: 0,
     creativeDeliveries: 0,
   }]));
 
   const creativeCycles = new Map<string, number[]>();
+  const allCreativeCycles: number[] = [];
+  let creativeTasks = 0;
   let workingMs = 0;
   let waitingMs = 0;
+  let flowTasks = 0;
   for (const task of tasks) {
     if (task.assigneeId && memberMetrics.has(task.assigneeId)) {
       const metric = memberMetrics.get(task.assigneeId)!;
       if (!CLOSED_TASK_STATUSES.includes(task.status)) metric.openTasks += 1;
     }
+    const intervals = timelines.get(task.id)!;
     const assignmentBoundaries = assigneeChanges(task).map((change) => change.at);
-    for (const entry of task.statusHistory) {
-      const start = timestamp(entry.enteredAt);
-      const end = entry.exitedAt ? timestamp(entry.exitedAt) : nowMs;
-      if (start === undefined || end === undefined || end <= start) continue;
-      if (WORKING_STATUSES.has(entry.status)) workingMs += end - start;
-      else if (WAITING_STATUSES.has(entry.status)) waitingMs += end - start;
+    // Por tarefa: quanto cada pessoa segurou em cada status, e quanto do
+    // relógio criativo correu na mão de cada uma.
+    const heldByOwner = new Map<string, Map<TaskStatus, number>>();
+    const creativeByOwner = new Map<string, number>();
+    let creativeTotal = 0;
+    let creativeStarted = false;
+    let creativeDelivered = false;
+    let measured = false;
+    for (const interval of intervals) {
+      if (CREATIVE_START.has(interval.status)) creativeStarted = true;
+      if (creativeStarted && CREATIVE_STOP.has(interval.status)) creativeDelivered = true;
+      if (TERMINAL_STATUSES.has(interval.status) || interval.end <= interval.start) continue;
+      const { status, start, end } = interval;
+      if (WORKING_STATUSES.has(status)) { workingMs += end - start; measured = true; }
+      else if (WAITING_STATUSES.has(status)) { waitingMs += end - start; measured = true; }
+      const running = creativeStarted && CREATIVE_RUNNING.has(status);
+      if (running) creativeTotal += end - start;
       const points = [start, ...assignmentBoundaries.filter((boundary) => boundary > start && boundary < end), end];
       for (let index = 0; index < points.length - 1; index += 1) {
         const owner = assigneeAt(task, points[index]);
         if (!owner || !memberMetrics.has(owner)) continue;
         const duration = points[index + 1] - points[index];
-        const metric = memberMetrics.get(owner)!;
-        metric.statusMs[entry.status] += duration;
-        metric.totalStatusMs += duration;
-        if (WORKING_STATUSES.has(entry.status)) metric.workingMs += duration;
-        else if (WAITING_STATUSES.has(entry.status)) metric.waitingMs += duration;
+        const held = heldByOwner.get(owner) ?? new Map<TaskStatus, number>();
+        held.set(status, (held.get(status) || 0) + duration);
+        heldByOwner.set(owner, held);
+        if (running) creativeByOwner.set(owner, (creativeByOwner.get(owner) || 0) + duration);
       }
     }
-    const cycle = creativeCycleMs(task);
-    if (cycle !== undefined) {
-      const start = firstEntry(task.statusHistory, CREATIVE_START)!;
-      const deliveredAt = firstEntry(task.statusHistory, CREATIVE_DELIVERY, start)!;
-      const creativeOwner = assigneeAt(task, deliveredAt);
-      if (creativeOwner && memberMetrics.has(creativeOwner)) creativeCycles.set(creativeOwner, [...(creativeCycles.get(creativeOwner) || []), cycle]);
+    if (measured) flowTasks += 1;
+    for (const [owner, held] of heldByOwner) {
+      const metric = memberMetrics.get(owner)!;
+      metric.timedTasks += 1;
+      for (const [status, duration] of held) {
+        metric.statusMs[status] += duration;
+        metric.statusTasks[status] += 1;
+        metric.statusMaxMs[status] = Math.max(metric.statusMaxMs[status], duration);
+        metric.totalStatusMs += duration;
+        if (WORKING_STATUSES.has(status)) metric.workingMs += duration;
+        else if (WAITING_STATUSES.has(status)) metric.waitingMs += duration;
+      }
+    }
+    if (creativeStarted) creativeTasks += 1;
+    // Só entra na média o ciclo que fechou: chegou a Aprovado/Finalizado e o
+    // relógio não voltou a correr (não está de novo em ajuste ou aprovação).
+    if (creativeDelivered && !CREATIVE_RUNNING.has(task.status)) {
+      allCreativeCycles.push(creativeTotal);
+      for (const [owner, share] of creativeByOwner) creativeCycles.set(owner, [...(creativeCycles.get(owner) || []), share]);
     }
     if (task.createdBy && memberMetrics.has(task.createdBy)) memberMetrics.get(task.createdBy)!.created += 1;
     for (const comment of task.comments) {
@@ -365,7 +387,6 @@ export function buildDashboardMetrics({
   }
   const memberRows = [...memberMetrics.values()];
   const withCreativeCycles = memberRows.filter((member) => member.creativeAverageMs !== undefined);
-  const allCreativeCycles = [...creativeCycles.values()].flat();
 
   const topCommented = tasks
     .map((task) => ({
@@ -417,7 +438,7 @@ export function buildDashboardMetrics({
       projectName: projectNames.get(task.projectId) || "Projeto removido",
       originalDate: original,
       currentDate,
-      completedDate: closure === undefined ? undefined : new Date(closure).toISOString().slice(0, 10),
+      completedDate: closure === undefined ? undefined : isoDateInSaoPaulo(closure),
       changes: changes.length,
       movedDays: calendarDays(original, currentDate),
     }];
@@ -431,13 +452,13 @@ export function buildDashboardMetrics({
     { label: "8+ dias", count: lateness.filter((days) => days >= 8).length, color: "#b73535" },
   ];
 
-  const thisWeek = weekStart(new Date(nowIso));
+  const thisWeek = weekStart(nowMs);
   const throughput = Array.from({ length: 8 }, (_, index) => {
-    const startMs = thisWeek.getTime() - (7 - index) * 7 * DAY;
+    const startMs = thisWeek - (7 - index) * 7 * DAY;
     const endMs = startMs + 7 * DAY;
     return {
       label: shortDate(startMs),
-      start: new Date(startMs).toISOString().slice(0, 10),
+      start: isoDateInSaoPaulo(startMs),
       created: tasks.filter((task) => {
         const value = timestamp(task.createdAt);
         return value !== undefined && value >= startMs && value < endMs;
@@ -451,18 +472,19 @@ export function buildDashboardMetrics({
 
   // Fluxo cumulativo: uma fotografia do fim de cada semana mostrando quanta
   // demanda estava parada, em produção e entregue. É onde a fila que engrossa
-  // aparece antes de virar atraso.
+  // aparece antes de virar atraso. Descartada (Problema) não é entrega e fica
+  // de fora.
   const cumulativeFlow: DashboardFlowPoint[] = Array.from({ length: 8 }, (_, index) => {
-    const snapshotMs = Math.min(nowMs, thisWeek.getTime() - (7 - index) * 7 * DAY + 7 * DAY - 1);
+    const snapshotMs = Math.min(nowMs, thisWeek - (7 - index) * 7 * DAY + 7 * DAY - 1);
     const counts: Record<StatusGroup, number> = { nao_iniciada: 0, em_andamento: 0, feita: 0 };
     for (const task of tasks) {
-      const status = statusAt(task, snapshotMs);
-      if (!status) continue;
+      const status = timelines.get(task.id)!.findLast((interval) => interval.start <= snapshotMs)?.status;
+      if (!status || status === "problema") continue;
       counts[GROUP_BY_STATUS.get(status) || "nao_iniciada"] += 1;
     }
     return {
       label: shortDate(snapshotMs),
-      start: new Date(snapshotMs).toISOString().slice(0, 10),
+      start: isoDateInSaoPaulo(snapshotMs),
       ...counts,
       total: counts.nao_iniciada + counts.em_andamento + counts.feita,
     };
@@ -504,7 +526,7 @@ export function buildDashboardMetrics({
     const current = task.dueDate;
     const original = originalDueDate(task);
     if (!current && !original) return [];
-    return [{ closedOn: new Date(finished).toISOString().slice(0, 10), current, original }];
+    return [{ closedOn: isoDateInSaoPaulo(finished), current, original }];
   });
   const keptCurrent = deliveries.filter((delivery) => !delivery.current || delivery.closedOn <= delivery.current).length;
   const keptOriginal = deliveries.filter((delivery) => !delivery.original || delivery.closedOn <= delivery.original).length;
@@ -517,27 +539,6 @@ export function buildDashboardMetrics({
     originalRate: deliveries.length ? Math.round((keptOriginal / deliveries.length) * 100) : 0,
     averageSlipDays: slips.length ? Math.round((slips.reduce((sum, value) => sum + value, 0) / slips.length) * 10) / 10 : 0,
   };
-
-  // Envelhecimento: quanto tempo cada demanda aberta está parada no status em
-  // que está. Diferente do atraso, aparece antes do prazo estourar.
-  const aging: DashboardAgingItem[] = tasks
-    .filter((task) => !CLOSED_TASK_STATUSES.includes(task.status))
-    .flatMap((task) => {
-      const since = inCurrentStatusSince(task);
-      if (since === undefined || since > nowMs) return [];
-      return [{
-        taskId: task.id,
-        taskName: task.name,
-        projectName: projectNames.get(task.projectId) || "Projeto removido",
-        assigneeName: task.assigneeId ? memberNames.get(task.assigneeId) : undefined,
-        status: task.status,
-        group: GROUP_BY_STATUS.get(task.status) || "nao_iniciada",
-        days: Math.round(((nowMs - since) / DAY) * 10) / 10,
-        overdue: overdueDays(task.dueDate, task.status, today) > 0,
-      }];
-    })
-    .sort((a, b) => b.days - a.days);
-  const agingThresholdDays = Math.round(((leadTime.p85Ms ?? percentile(aging.map((item) => item.days * DAY), 0.85) ?? 0) / DAY) * 10) / 10;
 
   const projectHealth: DashboardProjectHealth[] = projects
     .map((project) => {
@@ -571,15 +572,17 @@ export function buildDashboardMetrics({
     totalTasks: tasks.length,
     activeTasks: tasks.filter((task) => !CLOSED_TASK_STATUSES.includes(task.status)).length,
     overdueTasks: lateness.length,
-    reworkRate: tasks.length ? Math.round((reworkTasks.length / tasks.length) * 100) : 0,
+    reworkRate: creativeTasks ? Math.round((reworkTasks.length / creativeTasks) * 100) : 0,
     reworkedTasks: reworkTasks.length,
     averageCreativeMs: allCreativeCycles.length ? allCreativeCycles.reduce((sum, value) => sum + value, 0) / allCreativeCycles.length : undefined,
     creativeDeliveries: allCreativeCycles.length,
+    creativeTasks,
     criticalAlerts: alerts.filter((alert) => alert.critical).length,
     flowEfficiency: {
       workingMs,
       waitingMs,
       ratio: workingMs + waitingMs ? Math.round((workingMs / (workingMs + waitingMs)) * 100) : 0,
+      tasks: flowTasks,
     },
     leadTime,
     punctuality,
@@ -594,8 +597,6 @@ export function buildDashboardMetrics({
     reschedules,
     delayBuckets,
     throughput,
-    aging,
-    agingThresholdDays,
     cumulativeFlow,
     projectHealth,
   };

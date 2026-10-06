@@ -9,6 +9,7 @@ import { AnnouncementComposer } from "@/components/announcement-composer";
 import { AnnouncementGate } from "@/components/announcement-gate";
 import { LiveStatus } from "@/components/live-status";
 import { NotificationBell } from "@/components/notification-bell";
+import { ReadyNudge } from "@/components/ready-nudge";
 import { ThemeSwitch } from "@/components/theme-switch";
 import { Avatar } from "@/components/avatar";
 import { Logo } from "@/components/vz/logo";
@@ -127,6 +128,7 @@ export function AdminShell({
           flutuante cobre o "Enviar" do composer. */}
       {user.aiEnabled && active !== "assistente" ? <AiAssistantLauncher /> : null}
       <AnnouncementGate />
+      <ReadyNudge />
     </div>
     </PageContextProvider>
   );

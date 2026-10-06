@@ -20,6 +20,7 @@ import { migrateLocalPreferences } from "@/lib/migrate-local-preferences";
 import { toggleColumn as toggleColumnKey, type MemberPreferences } from "@/lib/preferences";
 import type { DateFormatKey } from "@/lib/date-format";
 import { StatusTag } from "@/components/status-tag";
+import { StartTaskButton } from "@/components/start-task-button";
 import { DueDateValue } from "@/components/due-date-value";
 import { Avatar, AvatarName } from "@/components/avatar";
 import { celebrateFrom } from "@/lib/celebrate";
@@ -50,6 +51,7 @@ function dueLabel(task: Task): string {
 function InlineStatusCell({ task, colorByStatus, onChange }: { task: Task; colorByStatus: Map<TaskStatus, string>; onChange: (status: TaskStatus, origin?: HTMLElement | null) => void }) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   return (
+    <span className="status-cell">
     <Select items={STATUS_LABELS} value={task.status} onValueChange={(value) => value && onChange(value as TaskStatus, triggerRef.current)}>
       <SelectTrigger ref={triggerRef} className="meta-trigger cell-trigger status-trigger" onClick={(event) => event.stopPropagation()}>
         <StatusTag status={task.status} colorByStatus={colorByStatus} />
@@ -67,6 +69,8 @@ function InlineStatusCell({ task, colorByStatus, onChange }: { task: Task; color
         ))}
       </SelectContent>
     </Select>
+    {task.status === "pronto_para_criacao" ? <StartTaskButton onStart={() => onChange("em_criacao", triggerRef.current)} /> : null}
+    </span>
   );
 }
 
@@ -380,6 +384,7 @@ export function TarefasView({
       celebrateFrom(origin);
       showToast("Enviada para aprovação!");
     }
+    if (result.task.status === "em_criacao" && anterior === "pronto_para_criacao") showToast("Criação iniciada.");
   }
 
   async function quickAdd(event: React.FormEvent<HTMLFormElement>) {
