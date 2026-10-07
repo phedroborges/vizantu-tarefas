@@ -9,9 +9,11 @@ import { whatsappConfigured } from "./provider";
 
 export const DEFAULT_APPROVAL_DEADLINE_DAYS = 7;
 
-// Enviar 20 conteúdos para aprovação não pode virar 20 mensagens no grupo. O
-// aviso espera este tempo depois da última tarefa enviada e sai uma vez só,
-// com a contagem do que está pendente naquele momento.
+// O aviso nunca sai no instante em que o status muda. Ele espera este tempo
+// depois da última tarefa enviada, por dois motivos: quem colocou o status
+// errado sem querer tem tempo de voltar atrás (na hora de enviar, só entra o
+// que ainda está em aprovação), e enviar 20 conteúdos em sequência vira uma
+// mensagem só, em vez de 20.
 const DEBOUNCE_MS = 3 * 60_000;
 
 export type ProjectCommunication = {

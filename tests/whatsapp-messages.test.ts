@@ -188,6 +188,16 @@ describe("quando o prazo começa a contar", () => {
     expect(unnotified).toEqual([]);
   });
 
+  // Para não desgastar o grupo: o que já foi avisado não é anunciado de novo
+  // quando outro conteúdo entra; só volta se sair da aprovação e retornar.
+  it("conteúdo já avisado não é novidade; o que voltou do ajuste é", () => {
+    const jaAvisado = { id: "avisado", since: 10 * D };
+    const voltouDoAjuste = { id: "voltou", since: 25 * D };
+    const { notified, unnotified } = startDeadlineClock([jaAvisado, voltouDoAjuste], [12 * D]);
+    expect(notified.map((item) => item.id)).toEqual(["avisado"]);
+    expect(unnotified).toEqual([voltouDoAjuste]);
+  });
+
   it("aviso anterior ao conteúdo não vale para ele", () => {
     const novo = { id: "novo", since: 40 * D };
     const { notified, unnotified } = startDeadlineClock([{ id: "antigo", since: 0 }, novo], [30 * D]);

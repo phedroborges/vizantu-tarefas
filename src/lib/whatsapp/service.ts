@@ -74,11 +74,11 @@ export async function clientPortalLink(projectId: string): Promise<string | unde
 }
 
 /** Quando este cliente foi avisado de que tinha material para aprovar. */
-async function noticeTimes(projectId: string): Promise<number[]> {
-  const rows = unwrap<{ sent_at: string | null }[]>(
-    await getSupabase().from("whatsapp_messages").select("sent_at").eq("project_id", projectId).eq("status", "sent").in("kind", ["approval", "reminder", "last_day"]),
+async function noticeTimes(projectId: string, exceptMessageId?: string): Promise<number[]> {
+  const rows = unwrap<{ id: string; sent_at: string | null }[]>(
+    await getSupabase().from("whatsapp_messages").select("id, sent_at").eq("project_id", projectId).eq("status", "sent").in("kind", ["approval", "reminder", "last_day"]),
   );
-  return rows.flatMap((row) => row.sent_at ? [new Date(row.sent_at).getTime()] : []);
+  return rows.flatMap((row) => row.sent_at && row.id !== exceptMessageId ? [new Date(row.sent_at).getTime()] : []);
 }
 
 // ---------- Fila ----------
@@ -108,13 +108,16 @@ async function deliver(row: MessageRow): Promise<void> {
     if (!waiting.length) return finish(row.id, { status: "skipped", error: "Nada pendente na hora do envio.", dedupe_key: freeKey });
     if (!link) return finish(row.id, { status: "skipped", error: "Cliente sem link de aprovação ativo.", dedupe_key: freeKey });
     const days = (await listProjectCommunications()).find((item) => item.projectId === row.project_id)?.approvalDeadlineDays ?? 7;
-    // Esta mensagem já conta como aviso: para o que ainda não tinha sido
-    // avisado, o prazo começa agora.
-    const { notified } = startDeadlineClock(waiting, await noticeTimes(row.project_id));
-    const clock = notified.length ? Math.min(...notified.map((item) => item.since)) : Date.now();
+    // Só entra o que ainda não foi avisado. O que o grupo já recebeu não é
+    // repetido a cada conteúdo novo; volta a ser avisado apenas se sair da
+    // aprovação (um ajuste, por exemplo) e entrar de novo, porque aí mudou de
+    // fato. Esta própria mensagem não conta: ela é o aviso que está saindo.
+    const { unnotified } = startDeadlineClock(waiting, await noticeTimes(row.project_id, row.id));
+    if (!unnotified.length) return finish(row.id, { status: "skipped", error: "Tudo que está pendente já tinha sido avisado.", dedupe_key: freeKey });
+    // Para o que é avisado agora, o prazo começa agora.
     body = composeMessage("approval", automation, {
-      items: waiting, link, clientName: await clientName(row.project_id), deadlineDays: days,
-      deadlineIso: new Date(clock + days * DAY).toISOString(), daysLeft: Math.max(0, days - Math.floor((Date.now() - clock) / DAY)),
+      items: unnotified, link, clientName: await clientName(row.project_id), deadlineDays: days,
+      deadlineIso: new Date(Date.now() + days * DAY).toISOString(), daysLeft: days,
     });
     // Libera a chave para o próximo aviso deste cliente.
     await finish(row.id, { body, dedupe_key: freeKey });
