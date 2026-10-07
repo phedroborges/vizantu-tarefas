@@ -7,7 +7,7 @@ import type { UserRole } from "./types";
 
 export type AppArea =
   | "dashboard" | "projetos" | "tarefas" | "notificacoes" | "planos"
-  | "financeiro" | "pesquisas" | "marcas" | "contratos" | "membros" | "conhecimento" | "assistente";
+  | "financeiro" | "pesquisas" | "marcas" | "contratos" | "membros" | "conhecimento" | "assistente" | "comunicados";
 
 type RoleProfile = {
   areas: AppArea[];
@@ -30,7 +30,7 @@ type RoleProfile = {
 
 const TODAS_AS_AREAS: AppArea[] = [
   "dashboard", "projetos", "tarefas", "notificacoes", "planos",
-  "pesquisas", "marcas", "contratos", "membros", "conhecimento", "assistente", "financeiro",
+  "pesquisas", "marcas", "contratos", "membros", "conhecimento", "assistente", "financeiro", "comunicados",
 ];
 
 export const ROLE_PROFILES: Record<UserRole, RoleProfile> = {
@@ -43,7 +43,7 @@ export const ROLE_PROFILES: Record<UserRole, RoleProfile> = {
     // Vê o que o social media vê, mais o painel e os contratos. Membros e base
     // de conhecimento continuam fora: ele gerencia entrega, não o time nem a
     // documentação interna.
-    areas: ["dashboard", "projetos", "tarefas", "notificacoes", "planos", "pesquisas", "contratos", "assistente"],
+    areas: ["dashboard", "projetos", "tarefas", "notificacoes", "planos", "pesquisas", "contratos", "assistente", "comunicados"],
     planeja: true, gerenciaEquipe: true, gerenciaMembros: false, veCredenciais: true,
     gerenciaCredenciais: false, veTodosOsProjetos: true, inicio: "/",
   },
@@ -126,7 +126,7 @@ export function telaInicial(role: UserRole): string {
 
 // Abas de dentro do cliente. "Documentos" são os contratos e "Acessos" são as
 // senhas — as duas seguem as mesmas regras do resto do app.
-export type ProjectTab = "informacoes" | "calendario" | "planos" | "pesquisas" | "documentos" | "acessos" | "equipe";
+export type ProjectTab = "informacoes" | "calendario" | "planos" | "pesquisas" | "documentos" | "acessos" | "equipe" | "comunicacao";
 
 export function abasDoProjeto(role: UserRole): ProjectTab[] {
   const abas: ProjectTab[] = ["informacoes", "calendario", "planos"];
@@ -134,6 +134,8 @@ export function abasDoProjeto(role: UserRole): ProjectTab[] {
   if (podeVer(role, "contratos")) abas.push("documentos");
   if (podeVerCredenciais(role)) abas.push("acessos");
   if (podeGerenciarEquipe(role)) abas.push("equipe");
+  // Quem monta o plano é quem combina o grupo e o prazo com o cliente.
+  if (podePlanejar(role)) abas.push("comunicacao");
   return abas;
 }
 

@@ -213,6 +213,14 @@
 .cd-decision-closed.status-approved { color: var(--vz-green-ink); background: var(--vz-green-bg); border: 1px solid var(--vz-green-line); }
 .cd-decision-closed.status-changes_requested { color: var(--vz-amber-ink); background: var(--vz-amber-bg); border: 1px solid var(--vz-amber-line); }
 .cd-decision-closed.status-rejected { color: var(--vz-red-ink); background: var(--vz-red-bg); border: 1px solid var(--vz-red-line); }
+/* Seções do conteúdo: cada cartão diz em que pé aquela parte está. */
+.cd-sections { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 14px 0 16px; }
+.cd-section-card { display: grid; justify-items: center; gap: 7px; min-width: 0; padding: 12px 8px; border: 1px solid var(--cd-line); border-radius: var(--vz-r-md); background: var(--vz-panel); color: var(--vz-text); font: inherit; font-size: var(--vz-t-xs); cursor: pointer; }
+.cd-section-card strong { font-weight: 650; }
+.cd-section-card:hover { border-color: var(--vz-brand-line); }
+.cd-section-card.is-active { border-color: var(--vz-brand); background: var(--vz-brand-softer); box-shadow: 0 0 0 1px var(--vz-brand); }
+.cd-next-section { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 14px; }
+@media (max-width: 560px) { .cd-sections { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .cd-decision-closed.status-adjusted { color: var(--vz-blue-ink); background: var(--vz-blue-bg); border: 1px solid var(--vz-blue-line); }
 /* Histórico de ajustes: o que o cliente pediu e o que a equipe fez depois. */
 .cd-history { margin: 0 0 16px; padding: 16px 18px; border: 1px solid var(--vz-amber-line); border-radius: var(--vz-r-md); background: var(--vz-amber-bg); }

@@ -3,6 +3,11 @@ import type { PlanApprovalStatus, PlanItemApproval, PlanStage, TaskStatus } from
 
 export type ApprovalStage = "copy" | "creative";
 
+// Quando o prazo do cliente termina sem resposta, a aprovação é registrada com
+// este nome no lugar do revisor. É o que separa "o cliente aprovou" de "o prazo
+// aprovou" no histórico e nos números de adesão.
+export const AUTO_APPROVAL_REVIEWER = "Aprovação automática (prazo)";
+
 export function approvalStage(reviewVersion: number): ApprovalStage {
   return reviewVersion >= 100 ? "creative" : "copy";
 }

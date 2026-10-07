@@ -1,3 +1,4 @@
+import { queueApprovalNotice } from "./whatsapp/queue";
 import { buildApprovalHistory, type ApprovalHistoryEntry } from "./approval-history";
 import { organizeClientPackages, type ClientPackageAssignment } from "./client-packages";
 import { todayIso } from "./dates";
@@ -701,6 +702,11 @@ export async function updateTask(
     if (activityRow) [updated] = await attachPlanKind([mapTask(activityRow as TaskRow)]);
   }
   await syncApprovalRoundFromTask(updated);
+  // Entrou na mão do cliente: o grupo dele é avisado (uma mensagem só, mesmo
+  // que vários conteúdos entrem em sequência).
+  if (updated.planId && updated.status !== current.status && (updated.status === "aprovacao_copy" || updated.status === "para_aprovacao")) {
+    void queueApprovalNotice(updated.projectId);
+  }
   return updated;
 }
 

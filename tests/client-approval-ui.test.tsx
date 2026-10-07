@@ -147,3 +147,45 @@ describe("histórico de ajustes no portal", () => {
     expect(container.querySelector(".cd-history")).toBeNull();
   });
 });
+
+describe("seções do conteúdo no portal", () => {
+  const comSecoes: DashboardItem = {
+    ...creative, id: "secoes-1", name: "Conteúdo com seções", status: "aprovacao_copy", materialLink: null, reviewVersion: 1,
+    description: "**Direcionamento**\nMostrar por que o Buteco é diferente.\n\n**Roteiro**\nCena 1: abre no palco.\n\n**Legenda**\nVem pro Buteco!",
+  };
+  const cartao = (nome: string) => Array.from(container.querySelectorAll(".cd-section-card")).find((card) => card.querySelector("strong")?.textContent === nome);
+  const ativo = () => container.querySelector(".cd-section-card.is-active strong")?.textContent;
+
+  // A ideia vem antes do texto: o cliente lê o direcionamento e só então
+  // encontra a aprovação, na seção do conteúdo.
+  it("começa no direcionamento e leva a aprovação para o conteúdo", async () => {
+    await mount(comSecoes);
+    expect(ativo()).toBe("Direcionamento");
+    expect(container.querySelector(".cd-item-description")?.textContent).toContain("Mostrar por que o Buteco é diferente.");
+    expect(container.querySelector(".cd-item-description")?.textContent).not.toContain("Vem pro Buteco!");
+    expect(button("Aprovar texto")).toBeUndefined();
+
+    await click(container.querySelector(".cd-next-section"));
+    expect(ativo()).toBe("Conteúdo");
+    expect(container.querySelector(".cd-item-description")?.textContent).toContain("Vem pro Buteco!");
+    expect(button("Aprovar texto")).toBeTruthy();
+    // "Essa eu já fiz, agora falta essa."
+    expect(cartao("Direcionamento")?.querySelector(".cd-pill")?.textContent).toBe("Lido");
+    expect(cartao("Conteúdo")?.querySelector(".cd-pill")?.textContent).toBe("Para revisar");
+    expect(cartao("Criativo")?.querySelector(".cd-pill")?.textContent).toBe("Depois do texto");
+    expect(cartao("Publicado")?.querySelector(".cd-pill")?.textContent).toBe("Ainda não");
+  });
+
+  it("abre direto no criativo quando é ele que espera resposta", async () => {
+    await mount({ ...comSecoes, status: "para_aprovacao", reviewVersion: 100, materialLink: "https://drive.google.com/drive/folders/abc" });
+    expect(ativo()).toBe("Criativo");
+    expect(cartao("Conteúdo")?.querySelector(".cd-pill")?.textContent).toBe("Aprovado");
+    expect(container.querySelector(".cd-material-link")?.getAttribute("href")).toBe("https://drive.google.com/drive/folders/abc");
+    expect(button("Aprovar criação")).toBeTruthy();
+  });
+
+  it("marca como publicado o conteúdo finalizado", async () => {
+    await mount({ ...comSecoes, status: "finalizado", reviewVersion: 100, approvalStatus: "approved", materialLink: "https://drive.google.com/drive/folders/abc" });
+    expect(cartao("Publicado")?.querySelector(".cd-pill")?.textContent).toBe("Publicado");
+  });
+});

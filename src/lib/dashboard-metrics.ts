@@ -1,3 +1,4 @@
+import { AUTO_APPROVAL_REVIEWER } from "./approval-workflow";
 import { isoDateInSaoPaulo, overdueDays, summarizeStatusDurations } from "./dates";
 import { isUserComment } from "./task-activity";
 import { findTaskGaps, type TaskGapType } from "./task-readiness";
@@ -596,7 +597,8 @@ export function buildDashboardMetrics({
   }
   for (const event of clientActivity?.events ?? []) {
     const projectId = projectByTask.get(event.taskId);
-    if (!projectId || !projectNames.has(projectId) || event.action === "reopened") continue;
+    // Aprovação por prazo não é resposta do cliente: fica fora da adesão.
+    if (!projectId || !projectNames.has(projectId) || event.action === "reopened" || event.reviewerName === AUTO_APPROVAL_REVIEWER) continue;
     const name = event.reviewerName?.trim();
     const key = name ? `${projectId}:${name.toLowerCase()}` : undefined;
     const adoption = adoptionOf(projectId);

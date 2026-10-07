@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, Bell, BookOpen, CheckSquare, ClipboardList, FileQuestion, FileText, Folders, LogOut, Menu, Palette, Sparkles, Users, Wallet, X } from "lucide-react";
+import { BarChart3, Bell, BookOpen, CheckSquare, ClipboardList, FileQuestion, FileText, Folders, LogOut, Megaphone, Menu, Palette, Sparkles, Users, Wallet, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -19,7 +19,7 @@ import { createClient } from "@/lib/supabase/browser-client";
 import { podeGerenciarEquipe, podeVer, type AppArea } from "@/lib/permissions";
 import { USER_ROLES, type UserRole } from "@/lib/types";
 
-export type AdminShellActive = "financeiro" | "dashboard" | "projetos" | "tarefas" | "planos" | "pesquisas" | "marcas" | "contratos" | "membros" | "conhecimento" | "assistente" | "notificacoes";
+export type AdminShellActive = "financeiro" | "dashboard" | "projetos" | "tarefas" | "planos" | "pesquisas" | "marcas" | "contratos" | "membros" | "conhecimento" | "assistente" | "notificacoes" | "comunicados";
 
 
 // A ordem aqui é a ordem do menu. A área de cada item é o que decide quem o
@@ -31,6 +31,7 @@ const ITENS_DO_MENU: { area: AppArea; href: string; label: string; Icone: typeof
   { area: "notificacoes", href: "/notificacoes", label: "Notificações", Icone: Bell },
   { area: "planos", href: "/planos", label: "Planos", Icone: ClipboardList },
   { area: "pesquisas", href: "/pesquisas", label: "Pesquisas", Icone: FileQuestion },
+  { area: "comunicados", href: "/comunicados", label: "Comunicados", Icone: Megaphone },
   { area: "marcas", href: "/marcas", label: "Marcas", Icone: Palette },
   { area: "financeiro", href: "/financeiro", label: "Financeiro", Icone: Wallet },
   { area: "contratos", href: "/contratos", label: "Contratos", Icone: FileText },
@@ -54,6 +55,7 @@ const PAGE_LABELS: Record<AdminShellActive, string> = {
   conhecimento: "Página atual: Base de conhecimento.",
   assistente: "Página atual: Assistente (chat completo).",
   notificacoes: "Página atual: Caixa de entrada de notificações.",
+  comunicados: "Página atual: Comunicados (mensagens enviadas ao grupo de WhatsApp dos clientes).",
 };
 
 export function AdminShell({

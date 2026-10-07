@@ -1,5 +1,6 @@
 "use client";
 
+import { ProjectCommunicationPanel } from "@/components/project-communication-panel";
 import { ArrowLeft, AtSign, BarChart3, CheckCircle2, Clock3, Eye, EyeOff, KeyRound, Loader2, MapPin, Plus, ShieldAlert, Target, Trash2, UserRound } from "lucide-react";
 import { isOverdue } from "@/lib/dates";
 import Link from "next/link";
@@ -20,7 +21,7 @@ const AUTOSAVE_MS = 700;
 
 const ROTULO_DA_ABA: Record<ProjectTab, string> = {
   informacoes: "Informações", calendario: "Calendário", planos: "Planos",
-  pesquisas: "Pesquisas", documentos: "Documentos", acessos: "Acessos", equipe: "Equipe",
+  pesquisas: "Pesquisas", documentos: "Documentos", acessos: "Acessos", equipe: "Equipe", comunicacao: "Comunicação",
 };
 
 const CAMPOS: { key: keyof ProjectProfile; label: string; hint?: string; longo?: boolean }[] = [
@@ -222,6 +223,7 @@ export function ProjectProfileView({
           </ul>
           <p className="dash-footnote">Enquanto ninguém estiver marcado, todo mundo do time enxerga este cliente. Ao marcar a primeira pessoa, ele passa a aparecer só para quem está nesta lista — o dono e o gestor continuam vendo todos.</p>
         </Card> : null}
+        {tab === "comunicacao" ? <ProjectCommunicationPanel projectId={project.id} projectName={project.client || project.name} canEdit={canEditProfile} /> : null}
         {tab === "acessos" ? <div className="project-profile-grid project-profile-grid--single">
           <Card className="project-credentials-card">
             <div className="project-section-head">

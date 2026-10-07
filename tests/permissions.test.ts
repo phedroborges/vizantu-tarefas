@@ -91,9 +91,9 @@ describe("o que cada cargo pode fazer", () => {
   });
 
   it("as abas do cliente seguem as mesmas regras do menu", () => {
-    expect(abasDoProjeto("dono")).toEqual(["informacoes", "calendario", "planos", "pesquisas", "documentos", "acessos", "equipe"]);
-    expect(abasDoProjeto("gestor")).toEqual(["informacoes", "calendario", "planos", "pesquisas", "documentos", "acessos", "equipe"]);
-    expect(abasDoProjeto("social_media")).toEqual(["informacoes", "calendario", "planos", "pesquisas", "acessos"]);
+    expect(abasDoProjeto("dono")).toEqual(["informacoes", "calendario", "planos", "pesquisas", "documentos", "acessos", "equipe", "comunicacao"]);
+    expect(abasDoProjeto("gestor")).toEqual(["informacoes", "calendario", "planos", "pesquisas", "documentos", "acessos", "equipe", "comunicacao"]);
+    expect(abasDoProjeto("social_media")).toEqual(["informacoes", "calendario", "planos", "pesquisas", "acessos", "comunicacao"]);
     expect(abasDoProjeto("diretor_criativo")).toEqual(["informacoes", "calendario", "planos"]);
     // Contrato não aparece para quem não o vê no menu; senha, só para quem publica.
     for (const cargo of ["social_media", "diretor_criativo"] as UserRole[]) {
@@ -101,6 +101,8 @@ describe("o que cada cargo pode fazer", () => {
       expect(abasDoProjeto(cargo), cargo).not.toContain("equipe");
     }
     expect(abasDoProjeto("diretor_criativo")).not.toContain("acessos");
+    // O grupo e o prazo do cliente são de quem planeja.
+    expect(abasDoProjeto("diretor_criativo")).not.toContain("comunicacao");
   });
 });
 

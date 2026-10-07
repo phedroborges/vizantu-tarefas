@@ -1,7 +1,8 @@
 "use client";
 
 import { approvalDisplay, diffWords, type ApprovalHistoryEntry } from "@/lib/approval-history";
-import { AlertCircle, CalendarClock, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Copy, ExternalLink, ImageIcon, Images, Link2, MessageCircleMore, Play, Sparkles, Video, X } from "lucide-react";
+import { emptySections, serializeDescription } from "@/lib/description-sections";
+import { AlertCircle, ArrowRight, CalendarClock, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Copy, ExternalLink, ImageIcon, Images, Link2, MessageCircleMore, Play, Sparkles, Video, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { renderMarkdownLite } from "@/components/markdown-lite";
 import { Button, Count, IconButton, Tag } from "@/components/vz";
@@ -50,7 +51,6 @@ const subscribeToStoredName = () => () => {};
 const readStoredName = () => window.localStorage.getItem(REVIEWER_KEY) || "";
 const readStoredNameOnServer = () => "";
 const isCreativeStage = (item: DashboardItem) => item.reviewVersion >= 100;
-const copyStatus = (item: DashboardItem) => isCreativeStage(item) ? "approved" : item.approvalStatus;
 const isReviewed = (item: DashboardItem) => item.approvalStatus !== "pending";
 // O que mostrar no selo: depois de um pedido, ele acompanha o que a equipe fez.
 const displayStatus = (item: DashboardItem) => approvalDisplay({
@@ -589,6 +589,10 @@ function IdentificationGate({ onConfirm }: { onConfirm: (name: string) => void }
   );
 }
 
+type SectionKey = "direcionamento" | "conteudo" | "criativo" | "publicado";
+type SectionPill = { label: string; tone: string };
+const SECTION_STATE_LABEL: Record<string, string> = { approved: "Aprovado", changes_requested: "Em ajuste", rejected: "Reprovado", adjusted: "Ajuste aplicado", resent: "Nova versão" };
+
 function ApprovalModal({
   item,
   scheduleItems,
@@ -629,6 +633,30 @@ function ApprovalModal({
   const approveRef = useRef<HTMLButtonElement>(null);
   const decisionClosed = isReviewed(item);
   const creativeStage = isCreativeStage(item);
+  // O conteúdo é lido em seções, na ordem em que o trabalho acontece. São duas
+  // decisões do cliente: o texto (direcionamento + conteúdo) e, depois, o
+  // criativo. A resposta fica na seção em que a decisão é tomada.
+  const parts = parseDescription(item.description || undefined);
+  const contentText = serializeDescription({ ...emptySections(), livre: parts.livre, roteiro: parts.roteiro, legenda: parts.legenda });
+  const decisionSection: SectionKey = creativeStage ? "criativo" : "conteudo";
+  const [section, setSection] = useState<SectionKey>(() => creativeStage ? "criativo" : !decisionClosed && parts.direcionamento ? "direcionamento" : "conteudo");
+  const [readDirection, setReadDirection] = useState(false);
+  const reviewable = canReviewItem(item);
+  const textState = creativeStage ? "approved" : displayStatus(item);
+  const pill = (state: string, canAnswer: boolean): SectionPill => state === "pending"
+    ? canAnswer ? { label: "Para revisar", tone: "status-pending" } : { label: "Em preparo", tone: "stage-locked" }
+    : { label: SECTION_STATE_LABEL[state] || state, tone: `status-${state}` };
+  const textPill = pill(textState, !creativeStage && reviewable);
+  const sectionCards: { key: SectionKey; label: string; pill: SectionPill }[] = [
+    { key: "direcionamento", label: "Direcionamento", pill: !parts.direcionamento ? { label: "Sem direcionamento", tone: "stage-locked" } : readDirection && textState === "pending" ? { label: "Lido", tone: "status-approved" } : textPill },
+    { key: "conteudo", label: "Conteúdo", pill: textPill },
+    { key: "criativo", label: "Criativo", pill: creativeStage ? pill(displayStatus(item), reviewable) : { label: textState === "approved" ? "Em produção" : "Depois do texto", tone: "stage-locked" } },
+    { key: "publicado", label: "Publicado", pill: item.status === "finalizado" ? { label: "Publicado", tone: "status-approved" } : { label: "Ainda não", tone: "stage-locked" } },
+  ];
+  function openSection(next: SectionKey) {
+    if (section === "direcionamento" && next !== "direcionamento") setReadDirection(true);
+    setSection(next);
+  }
   const dateConflicts = requestedDate ? scheduleItems.filter((entry) => entry.id !== item.id && entry.dueDate === requestedDate) : [];
   const requestedDateValue = requestedDate ? new Date(`${requestedDate}T12:00:00`) : null;
   const isWeekend = requestedDateValue ? requestedDateValue.getDay() === 0 || requestedDateValue.getDay() === 6 : false;
@@ -651,18 +679,32 @@ function ApprovalModal({
         <h3>{item.name}</h3>
         <div className="cd-modal-context"><Tag tone="violet" icon={<ContentIcon format={item.formatLabel} size={10} />}>{item.formatLabel || "Formato não informado"}</Tag><Tag tone="blue">{item.channelLabel || "Canal não informado"}</Tag>{item.dueDate ? <Tag outline>{new Date(`${item.dueDate}T12:00:00`).toLocaleDateString("pt-BR")}</Tag> : null}</div>
 
-        <div className="cd-approval-steps">
-          <span className={copyStatus(item) === "approved" ? "is-done" : "is-current"}>{copyStatus(item) === "approved" ? <Check size={13} /> : null} 1. Texto</span>
-          <span className={creativeStage ? "is-current" : "is-locked"}>2. Criação</span>
+        <div className="cd-sections" role="tablist" aria-label="Seções do conteúdo">
+          {sectionCards.map((card) => (
+            <button type="button" role="tab" aria-selected={section === card.key} className={`cd-section-card${section === card.key ? " is-active" : ""}`} key={card.key} onClick={() => openSection(card.key)}>
+              <strong>{card.label}</strong>
+              <span className={`cd-pill ${card.pill.tone}`}>{card.pill.label}</span>
+            </button>
+          ))}
         </div>
 
         <ApprovalHistory entries={item.history || []} />
 
-        {item.description ? <div className="cd-item-description"><ItemDescription text={item.description} /></div> : <div className="cd-item-description cd-description-empty">Este conteúdo ainda não tem descrição.</div>}
+        {section === "direcionamento" ? (parts.direcionamento
+          ? <div className="cd-item-description"><span className="cd-eyebrow">A ideia deste conteúdo</span><ItemDescription text={parts.direcionamento} /></div>
+          : <div className="cd-item-description cd-description-empty">Este conteúdo não tem direcionamento. O texto está na seção Conteúdo.</div>) : null}
 
-        {item.reference ? <div className="cd-reference-card"><span className="cd-eyebrow">Referência</span><p>{item.reference}</p>{referenceUrl(item.reference) ? <a href={referenceUrl(item.reference)!} target="_blank" rel="noreferrer"><ExternalLink size={13} />Abrir referência</a> : null}</div> : null}
+        {section === "conteudo" ? (contentText
+          ? <div className="cd-item-description"><ItemDescription text={contentText} /></div>
+          : <div className="cd-item-description cd-description-empty">{item.description ? "O roteiro e a legenda ainda não foram escritos." : "Este conteúdo ainda não tem descrição."}</div>) : null}
 
-        {creativeStage && item.materialLink ? <a className="cd-material-link" href={item.materialLink} target="_blank" rel="noreferrer"><ExternalLink size={16} /><span><strong>Abrir material para revisar</strong><small>Confira o {item.formatLabel || "material"} antes de responder.</small></span></a> : !creativeStage && item.approvalStatus === "approved" ? <div className="cd-material-wait"><Clock3 size={15} /> Texto aprovado. A criação aparecerá quando estiver pronta.</div> : null}
+        {item.reference && section === (parts.direcionamento ? "direcionamento" : "conteudo") ? <div className="cd-reference-card"><span className="cd-eyebrow">Referência</span><p>{item.reference}</p>{referenceUrl(item.reference) ? <a href={referenceUrl(item.reference)!} target="_blank" rel="noreferrer"><ExternalLink size={13} />Abrir referência</a> : null}</div> : null}
+
+        {section === "criativo" ? (creativeStage && item.materialLink
+          ? <a className="cd-material-link" href={item.materialLink} target="_blank" rel="noreferrer"><ExternalLink size={16} /><span><strong>Abrir material para revisar</strong><small>Confira o {item.formatLabel || "material"} antes de responder.</small></span></a>
+          : <div className="cd-material-wait"><Clock3 size={15} /> {textState === "approved" ? "Texto aprovado. O criativo aparece aqui quando estiver pronto." : "O criativo começa depois que o texto for aprovado."}</div>) : null}
+
+        {section === "publicado" ? <div className="cd-material-wait">{item.status === "finalizado" ? <><Check size={15} /> Este conteúdo já foi publicado.</> : <><Clock3 size={15} /> Ainda não publicado. A publicação acontece depois que o criativo for aprovado.</>}</div> : null}
 
         {/* O nome já vem preenchido do portão de entrada. Isto aqui é pra
             corrigir/trocar — e pra avisar em voz alta se alguém apagar, em vez
@@ -704,8 +746,12 @@ function ApprovalModal({
             {item.approvalStatus === "approved" ? <Check size={18} className="cd-celebrate-icon" /> : <X size={18} />}
             <span><strong>{item.approvalStatus === "approved" ? "Aprovado" : item.approvalStatus === "changes_requested" ? "Ajuste solicitado" : "Reprovado"}</strong>Sua decisão nesta rodada foi registrada. Uma nova resposta só será liberada quando a equipe abrir outra versão.</span>
           </div>
-        ) : !canReviewItem(item) ? (
+        ) : !reviewable ? (
           <div className="cd-material-wait"><Clock3 size={15} />{creativeStage || item.status === "para_aprovacao" ? "A criação será liberada assim que a equipe disponibilizar o material para aprovação." : "Aguarde a equipe enviar este conteúdo para aprovação."}</div>
+        ) : section !== decisionSection ? (
+          <button type="button" className="cd-btn approve cd-next-section" onClick={() => openSection(decisionSection)}>
+            {section === "direcionamento" ? "Li o direcionamento · ver o conteúdo" : `Ir para ${creativeStage ? "o criativo" : "o conteúdo"} para responder`} <ArrowRight size={15} />
+          </button>
         ) : (
           <>
             {error ? <p className="cd-reviewer-warning" role="alert">{error}</p> : null}
