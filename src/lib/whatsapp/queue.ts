@@ -9,12 +9,11 @@ import { whatsappConfigured } from "./provider";
 
 export const DEFAULT_APPROVAL_DEADLINE_DAYS = 7;
 
-// O aviso nunca sai no instante em que o status muda. Ele espera este tempo
-// depois da última tarefa enviada, por dois motivos: quem colocou o status
-// errado sem querer tem tempo de voltar atrás (na hora de enviar, só entra o
-// que ainda está em aprovação), e enviar 20 conteúdos em sequência vira uma
-// mensagem só, em vez de 20.
-const DEBOUNCE_MS = 30_000;
+// Quando alguém coloca um conteúdo em aprovação, o grupo do cliente é avisado
+// em seguida. A espera é só o bastante para dois casos: quem clicou no status
+// errado consegue voltar atrás (na hora de enviar, só entra o que ainda está em
+// aprovação), e vários conteúdos colocados em sequência viram uma mensagem só.
+const DEBOUNCE_MS = 5_000;
 
 export type ProjectCommunication = {
   projectId: string;
@@ -75,9 +74,14 @@ export async function saveAutomationSettings(input: Partial<AutomationSettings>)
   return settings;
 }
 
-/** Uma tarefa do cliente entrou em aprovação: agenda (ou adia) o aviso no
- * grupo. Nunca lança — falha de aviso não pode impedir a troca de status. */
-export async function queueApprovalNotice(projectId: string): Promise<void> {
+/** Material esperando o cliente: agenda o aviso no grupo. Nunca lança — falha
+ * de aviso não pode impedir a troca de status.
+ *
+ * "instant" é quando alguém acabou de colocar o conteúdo em aprovação: sai em
+ * segundos, sem esperar a fila. "paced" é o aviso atrasado de material que já
+ * estava parado quando os avisos foram ligados: vai pela fila, espaçado como
+ * os lembretes, porque são vários clientes de uma vez. */
+export async function queueApprovalNotice(projectId: string, mode: "instant" | "paced" = "instant"): Promise<void> {
   try {
     if (!whatsappConfigured()) return;
     const automation = await getAutomationSettings();
@@ -85,14 +89,22 @@ export async function queueApprovalNotice(projectId: string): Promise<void> {
     const settings = await getProjectCommunication(projectId);
     if (!settings.whatsappGroupId || !settings.notifyEnabled) return;
     const db = getSupabase();
-    const key = `approval:${projectId}:pending`;
-    const scheduledAt = new Date(Date.now() + DEBOUNCE_MS).toISOString();
-    const postponed = await db.from("whatsapp_messages").update({ scheduled_at: scheduledAt }).eq("dedupe_key", key).eq("status", "pending").select("id");
-    if (postponed.data?.length) return;
-    await db.from("whatsapp_messages").upsert({
-      id: crypto.randomUUID(), project_id: projectId, kind: "approval", group_id: settings.whatsappGroupId,
-      dedupe_key: key, status: "pending", scheduled_at: scheduledAt,
-    }, { onConflict: "dedupe_key", ignoreDuplicates: true });
+    const key = `approval:${projectId}:${mode === "instant" ? "pending" : "catchup"}`;
+    const scheduledAt = new Date(Date.now() + (mode === "instant" ? DEBOUNCE_MS : 0)).toISOString();
+    const waiting = await db.from("whatsapp_messages").update(mode === "instant" ? { scheduled_at: scheduledAt } : {}).eq("dedupe_key", key).eq("status", "pending").select("id");
+    if (!waiting.data?.length) {
+      await db.from("whatsapp_messages").upsert({
+        id: crypto.randomUUID(), project_id: projectId, kind: "approval", group_id: settings.whatsappGroupId,
+        dedupe_key: key, status: "pending", scheduled_at: scheduledAt,
+      }, { onConflict: "dedupe_key", ignoreDuplicates: true });
+    }
+    if (mode === "instant") {
+      // Não espera a próxima volta da fila: dispara assim que a espera acaba.
+      // (Import dinâmico porque o serviço depende do storage, que depende daqui.)
+      setTimeout(() => {
+        void import("./service").then((service) => service.processApprovalNotices()).catch((error) => console.error("[whatsapp] aviso de aprovação falhou:", error));
+      }, DEBOUNCE_MS + 400).unref?.();
+    }
   } catch (error) {
     console.error("[whatsapp] não foi possível agendar o aviso de aprovação:", error);
   }

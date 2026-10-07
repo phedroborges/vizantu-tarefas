@@ -158,8 +158,10 @@ export async function processOutbox(): Promise<number> {
   // Comunicado é decisão de quem enviou e sai na hora combinada; aviso
   // automático respeita a janela do dia.
   const windowOpen = insideSendWindow(new Date(now), automation);
-  const due = unwrap<{ id: string; kind: string }[]>(await db.from("whatsapp_messages").select("id, kind").eq("status", "pending").lte("scheduled_at", new Date(now).toISOString()).order("scheduled_at").limit(20));
-  const next = due.find((message) => message.kind === "broadcast" || windowOpen);
+  const due = unwrap<{ id: string; kind: string; dedupe_key: string | null }[]>(await db.from("whatsapp_messages").select("id, kind, dedupe_key").eq("status", "pending").lte("scheduled_at", new Date(now).toISOString()).order("scheduled_at").limit(30));
+  // O aviso imediato de aprovação tem o próprio caminho (processApprovalNotices).
+  const paced = due.filter((message) => !(message.kind === "approval" && message.dedupe_key?.endsWith(":pending")));
+  const next = paced.find((message) => message.kind === "broadcast" || windowOpen);
   if (!next) return 0;
   const claimed = unwrap<MessageRow[]>(await db.from("whatsapp_messages").update({ status: "sent", sent_at: new Date(now).toISOString() }).eq("id", next.id).eq("status", "pending").select());
   if (!claimed.length) return 0;
@@ -171,6 +173,30 @@ export async function processOutbox(): Promise<number> {
     await finish(next.id, { status: "failed", error: error instanceof Error ? error.message.slice(0, 500) : "Falha no envio." }).catch(() => {});
     return 0;
   }
+}
+
+/** Avisos de conteúdo recém-colocado em aprovação. Saem na hora, fora da fila
+ * espaçada e da janela do dia: é a resposta a uma ação de quem está usando o
+ * sistema, para um cliente só, e ele precisa ver logo. A parada de emergência
+ * e o interruptor dos avisos continuam valendo. */
+export async function processApprovalNotices(): Promise<number> {
+  if (!whatsappConfigured()) return 0;
+  const automation = await getAutomationSettings();
+  if (automation.paused || !automation.enabled) return 0;
+  const db = getSupabase();
+  const due = unwrap<{ id: string }[]>(await db.from("whatsapp_messages").select("id").eq("status", "pending").eq("kind", "approval").like("dedupe_key", "approval:%:pending").lte("scheduled_at", new Date().toISOString()).order("scheduled_at").limit(10));
+  let sent = 0;
+  for (const { id } of due) {
+    const claimed = unwrap<MessageRow[]>(await db.from("whatsapp_messages").update({ status: "sent", sent_at: new Date().toISOString() }).eq("id", id).eq("status", "pending").select());
+    if (!claimed.length) continue;
+    try {
+      await deliver(claimed[0]);
+      sent += 1;
+    } catch (error) {
+      await finish(id, { status: "failed", error: error instanceof Error ? error.message.slice(0, 500) : "Falha no envio." }).catch(() => {});
+    }
+  }
+  return sent;
 }
 
 /** Quantas mensagens estão esperando para sair. */
@@ -220,7 +246,7 @@ export async function runDailyApprovalRoutine(now = new Date()): Promise<void> {
     // O relógio do prazo é o do primeiro aviso recebido. O que nunca foi
     // avisado gera o aviso de material novo e só começa a contar a partir dele.
     const { notified, unnotified } = startDeadlineClock(waiting, await noticeTimes(projectId));
-    if (unnotified.length) await queueApprovalNotice(projectId);
+    if (unnotified.length) await queueApprovalNotice(projectId, "paced");
     if (!notified.length) continue;
     const name = await clientName(projectId);
 
@@ -325,6 +351,8 @@ async function tick(): Promise<void> {
       await runDailyApprovalRoutine(now).catch((error) => console.error("[whatsapp] rotina diária falhou:", error));
     }
   }
+  // Rede de segurança do aviso imediato, caso o disparo direto não tenha rodado.
+  await processApprovalNotices().catch((error) => console.error("[whatsapp] aviso de aprovação falhou:", error));
   await processOutbox().catch((error) => console.error("[whatsapp] fila falhou:", error));
 }
 

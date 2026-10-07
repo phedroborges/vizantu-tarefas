@@ -630,6 +630,9 @@ export async function duplicateTask(id: string, createdBy?: string): Promise<Tas
   });
 }
 
+/** Regra de negócio que impede a alteração e pode ser dita a quem está na tela. */
+export class TaskRuleError extends Error {}
+
 export async function updateTask(
   id: string,
   patch: Partial<Omit<TaskInput, "assigneeId">> & { assigneeId?: string | null },
@@ -637,6 +640,13 @@ export async function updateTask(
 ): Promise<Task | undefined> {
   const current = await getTask(id);
   if (!current) return undefined;
+
+  // Conteúdo sem link do material não vai para "Para aprovação": é o link que
+  // o cliente abre para revisar, e sem ele o aviso no grupo nem sairia.
+  if (patch.status === "para_aprovacao" && current.status !== "para_aprovacao" && (current.planId || current.kind === "conteudo")) {
+    const link = patch.driveLink !== undefined ? patch.driveLink : current.driveLink;
+    if (!link?.trim()) throw new TaskRuleError("Cole o link do material antes de colocar em Para aprovação. É ele que o cliente abre para revisar.");
+  }
 
   // A data de uma tarefa atrasada já foi travada aqui, pra ninguém "resolver"
   // o atraso empurrando o prazo. Na prática a trava impedia o único conserto

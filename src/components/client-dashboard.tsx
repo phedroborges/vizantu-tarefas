@@ -643,14 +643,19 @@ function ApprovalModal({
   const [readDirection, setReadDirection] = useState(false);
   const reviewable = canReviewItem(item);
   const textState = creativeStage ? "approved" : displayStatus(item);
-  const pill = (state: string, canAnswer: boolean): SectionPill => state === "pending"
-    ? canAnswer ? { label: "Para revisar", tone: "status-pending" } : { label: "Em preparo", tone: "stage-locked" }
+  // Sem resposta do cliente a etapa pode estar em dois lugares bem diferentes:
+  // ainda sendo preparada, ou já resolvida pela equipe (o conteúdo seguiu, ou
+  // foi concluído). Dizer "em preparo" de algo já publicado não faz sentido.
+  const delivered = item.status === "aprovado" || item.status === "finalizado";
+  const textMovedOn = !creativeStage && !["rascunho", "aguardando_informacao", "aprovacao_copy", "problema"].includes(item.status);
+  const pill = (state: string, canAnswer: boolean, done?: string): SectionPill => state === "pending"
+    ? canAnswer ? { label: "Para revisar", tone: "status-pending" } : done ? { label: done, tone: "status-approved" } : { label: "Em preparo", tone: "stage-locked" }
     : { label: SECTION_STATE_LABEL[state] || state, tone: `status-${state}` };
-  const textPill = pill(textState, !creativeStage && reviewable);
+  const textPill = pill(textState, !creativeStage && reviewable, textMovedOn ? "Liberado" : undefined);
   const sectionCards: { key: SectionKey; label: string; pill: SectionPill }[] = [
     { key: "direcionamento", label: "Direcionamento", pill: !parts.direcionamento ? { label: "Sem direcionamento", tone: "stage-locked" } : readDirection && textState === "pending" ? { label: "Lido", tone: "status-approved" } : textPill },
     { key: "conteudo", label: "Conteúdo", pill: textPill },
-    { key: "criativo", label: "Criativo", pill: creativeStage ? pill(displayStatus(item), reviewable) : { label: textState === "approved" ? "Em produção" : "Depois do texto", tone: "stage-locked" } },
+    { key: "criativo", label: "Criativo", pill: creativeStage ? pill(displayStatus(item), reviewable, delivered ? "Concluído" : undefined) : { label: textState === "approved" ? "Em produção" : "Depois do texto", tone: "stage-locked" } },
     { key: "publicado", label: "Publicado", pill: item.status === "finalizado" ? { label: "Publicado", tone: "status-approved" } : { label: "Ainda não", tone: "stage-locked" } },
   ];
   function openSection(next: SectionKey) {
@@ -747,7 +752,11 @@ function ApprovalModal({
             <span><strong>{item.approvalStatus === "approved" ? "Aprovado" : item.approvalStatus === "changes_requested" ? "Ajuste solicitado" : "Reprovado"}</strong>Sua decisão nesta rodada foi registrada. Uma nova resposta só será liberada quando a equipe abrir outra versão.</span>
           </div>
         ) : !reviewable ? (
-          <div className="cd-material-wait"><Clock3 size={15} />{creativeStage || item.status === "para_aprovacao" ? "A criação será liberada assim que a equipe disponibilizar o material para aprovação." : "Aguarde a equipe enviar este conteúdo para aprovação."}</div>
+          <div className="cd-material-wait">{delivered
+            ? <><Check size={15} /> Este conteúdo já foi concluído pela equipe. Não precisa mais da sua resposta.</>
+            : textMovedOn
+              ? <><Check size={15} /> A equipe seguiu com este conteúdo. O texto não precisa mais da sua resposta.</>
+              : <><Clock3 size={15} />{creativeStage || item.status === "para_aprovacao" ? "A criação será liberada assim que a equipe disponibilizar o material para aprovação." : "Aguarde a equipe enviar este conteúdo para aprovação."}</>}</div>
         ) : section !== decisionSection ? (
           <button type="button" className="cd-btn approve cd-next-section" onClick={() => openSection(decisionSection)}>
             {section === "direcionamento" ? "Li o direcionamento · ver o conteúdo" : `Ir para ${creativeStage ? "o criativo" : "o conteúdo"} para responder`} <ArrowRight size={15} />

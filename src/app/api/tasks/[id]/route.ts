@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { apiFailure } from "@/lib/api-error";
 import { isResponse, requireUser } from "@/lib/authz";
 import { ROLES_DO_TIME, ROLES_QUE_PLANEJAM } from "@/lib/permissions";
-import { deleteTask, getTask, listTaskActivity, notifyTaskAssigned, updateTask } from "@/lib/storage";
+import { TaskRuleError, deleteTask, getTask, listTaskActivity, notifyTaskAssigned, updateTask } from "@/lib/storage";
 import { TASK_KINDS, TASK_STATUSES } from "@/lib/types";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -41,6 +41,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     await notifyTaskAssigned(task, auth.id, previous?.assigneeId);
     return NextResponse.json({ task });
   } catch (error) {
+    if (error instanceof TaskRuleError) return NextResponse.json({ error: error.message }, { status: 400 });
     return apiFailure(error, "salvar a tarefa");
   }
 }

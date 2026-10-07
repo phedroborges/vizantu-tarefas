@@ -184,6 +184,25 @@ describe("seções do conteúdo no portal", () => {
     expect(button("Aprovar criação")).toBeTruthy();
   });
 
+  // Conteúdo finalizado sem a resposta do cliente no portal: não pode
+  // aparecer como "em preparo", nem prometer um material que já saiu.
+  it("mostra como concluído o criativo que a equipe finalizou sem resposta", async () => {
+    await mount({ ...comSecoes, status: "finalizado", reviewVersion: 100, approvalStatus: "pending", materialLink: "https://drive.google.com/drive/folders/abc" });
+    expect(cartao("Criativo")?.querySelector(".cd-pill")?.textContent).toBe("Concluído");
+    expect(cartao("Publicado")?.querySelector(".cd-pill")?.textContent).toBe("Publicado");
+    expect(container.textContent).toContain("Este conteúdo já foi concluído pela equipe.");
+    expect(container.textContent).not.toContain("A criação será liberada");
+    expect(button("Aprovar criação")).toBeUndefined();
+  });
+
+  it("mostra como liberado o texto com que a equipe seguiu sem resposta", async () => {
+    await mount({ ...comSecoes, status: "em_criacao", reviewVersion: 1, approvalStatus: "pending" });
+    expect(cartao("Conteúdo")?.querySelector(".cd-pill")?.textContent).toBe("Liberado");
+    await click(cartao("Conteúdo"));
+    expect(container.textContent).toContain("A equipe seguiu com este conteúdo.");
+    expect(button("Aprovar texto")).toBeUndefined();
+  });
+
   it("marca como publicado o conteúdo finalizado", async () => {
     await mount({ ...comSecoes, status: "finalizado", reviewVersion: 100, approvalStatus: "approved", materialLink: "https://drive.google.com/drive/folders/abc" });
     expect(cartao("Publicado")?.querySelector(".cd-pill")?.textContent).toBe("Publicado");

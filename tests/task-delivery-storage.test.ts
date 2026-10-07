@@ -13,8 +13,14 @@ beforeEach(() => {
   } } }));
 });
 describe("responsável no instante da entrega", () => {
+  // É o link que o cliente abre para revisar; sem ele o aviso no grupo nem sai.
+  it("não deixa o conteúdo ir para aprovação sem o link do material", async () => {
+    await expect(updateTask("task", { status: "para_aprovacao" }, "luis")).rejects.toThrow("Cole o link do material antes de colocar em Para aprovação.");
+    await expect(updateTask("task", { status: "para_aprovacao", driveLink: "   " }, "luis")).rejects.toThrow("Cole o link do material");
+  });
+
   it("guarda quem assumiu e entregou na mesma alteração e mantém após repasse", async () => {
-    const delivered = await updateTask("task", { assigneeId: "luis", status: "para_aprovacao" }, "luis");
+    const delivered = await updateTask("task", { assigneeId: "luis", status: "para_aprovacao", driveLink: "https://drive.google.com/drive/folders/material" }, "luis");
     const event = delivered!.statusHistory.at(-1)!;
     expect(event).toMatchObject({ status: "para_aprovacao", assigneeId: "luis" });
     const assignment = delivered!.comments.find(c => c.fieldKey === "assigneeId")!;
