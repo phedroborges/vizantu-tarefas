@@ -26,6 +26,35 @@ describe("mensagens de aprovação no grupo do cliente", () => {
     expect(text).toContain("Prazo para responder: *14/10*");
   });
 
+  // A mensagem de um conteúdo só: tudo que o cliente precisa para decidir,
+  // sem abrir nada antes.
+  it("um conteúdo só vai com título, formato, datas, legenda e referência", () => {
+    const item: WaitingItem = { name: "Como começar na viola", stage: "text", format: "Carrossel", dueDate: "2026-10-16", caption: "Salva esse post.", reference: "https://exemplo.com/ref" };
+    const text = composeMessage("content", DEFAULT_AUTOMATION, { items: [item], link, deadlineDays: 7, deadlineIso: "2026-10-14T15:00:00.000Z", daysLeft: 7 }, first);
+    expect(text).toContain("👁️ *Conteúdo novo para aprovar!*");
+    expect(text).toContain("*Como começar na viola*");
+    expect(text).toContain("🎬 Formato: Carrossel");
+    expect(text).toContain("📅 Publicação: 16/10");
+    expect(text).toContain("⏳ Prazo para aprovar o texto: *14/10*");
+    expect(text).toContain("📝 Legenda: Salva esse post.");
+    expect(text).toContain("🔗 Referência: https://exemplo.com/ref");
+    expect(text).toContain(link);
+  });
+
+  it("some com a linha do que o conteúdo não tem", () => {
+    const text = composeMessage("content", DEFAULT_AUTOMATION, { items: [{ name: "Sem extras", stage: "creative" }], link, deadlineDays: 7, deadlineIso: "2026-10-14T15:00:00.000Z" }, first);
+    expect(text).toContain("*Sem extras*");
+    expect(text).toContain("Prazo para aprovar o criativo: *14/10*");
+    for (const ausente of ["Formato", "Publicação", "Legenda", "Referência"]) expect(text, ausente).not.toContain(ausente);
+    expect(text).not.toMatch(/\n{3,}/);
+  });
+
+  it("corta a legenda muito longa", () => {
+    const { legenda } = messageVariables({ items: [{ name: "X", stage: "text", caption: "a".repeat(900) }], link, deadlineDays: 7 });
+    expect(legenda).toHaveLength(601);
+    expect(legenda.endsWith("…")).toBe(true);
+  });
+
   it("diz qual é texto e qual é criativo quando a lista mistura os dois", () => {
     const variables = messageVariables({ items: [texto("A"), criativo("B")], link, deadlineDays: 7 });
     expect(variables.lista).toBe("• Carrossel - A (texto)\n• Reels - B (criativo)");

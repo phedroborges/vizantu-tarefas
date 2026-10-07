@@ -8,12 +8,22 @@
 // leva o link do portal, porque o objetivo de cada uma é a pessoa clicar e
 // responder ali.
 
-export type WaitingItem = { name: string; stage: "text" | "creative"; format?: string };
+export type WaitingItem = {
+  name: string;
+  stage: "text" | "creative";
+  format?: string;
+  /** Data de publicação (AAAA-MM-DD). */
+  dueDate?: string;
+  /** A legenda e a referência escritas no conteúdo. */
+  caption?: string;
+  reference?: string;
+};
 
-export type MessageKind = "approval" | "reminder" | "last_day" | "auto_approved";
+export type MessageKind = "content" | "approval" | "reminder" | "last_day" | "auto_approved";
 
 export const MESSAGE_KINDS: { kind: MessageKind; label: string; when: string }[] = [
-  { kind: "approval", label: "Material novo", when: "Quando um ou mais conteúdos entram em aprovação. Vários de uma vez viram uma mensagem só." },
+  { kind: "content", label: "Conteúdo para aprovar", when: "Quando um único conteúdo entra em aprovação. Leva os detalhes dele: título, formato, datas, legenda e referência." },
+  { kind: "approval", label: "Vários conteúdos de uma vez", when: "Quando dois ou mais conteúdos entram em aprovação juntos (o plano do mês, por exemplo). Viram uma mensagem só, em vez de uma por conteúdo." },
   { kind: "reminder", label: "Lembrete", when: "Enquanto houver material sem resposta, no intervalo de dias configurado." },
   { kind: "last_day", label: "Último dia", when: "No dia em que o prazo de aprovação do cliente termina." },
   { kind: "auto_approved", label: "Aprovado por prazo", when: "No dia seguinte ao aviso de último dia, se ninguém respondeu." },
@@ -28,9 +38,19 @@ export const MESSAGE_VARIABLES: { name: string; meaning: string }[] = [
   { name: "dias_prazo", meaning: "O prazo combinado. Ex.: 7 dias" },
   { name: "cliente", meaning: "O nome do cliente" },
   { name: "aprovados", meaning: "Só em “Aprovado por prazo”. Ex.: 3 conteúdos foram dados como aprovados" },
+  { name: "titulo", meaning: "Em “Conteúdo para aprovar”: o título do conteúdo" },
+  { name: "formato", meaning: "Em “Conteúdo para aprovar”: Carrossel, Reels…" },
+  { name: "etapa", meaning: "Em “Conteúdo para aprovar”: texto ou criativo" },
+  { name: "data_publicacao", meaning: "Em “Conteúdo para aprovar”: quando o conteúdo vai ao ar. Ex.: 16/10" },
+  { name: "legenda", meaning: "Em “Conteúdo para aprovar”: a legenda escrita no conteúdo" },
+  { name: "referencia", meaning: "Em “Conteúdo para aprovar”: a referência escrita no conteúdo" },
 ];
 
 export const DEFAULT_TEMPLATES: Record<MessageKind, string[]> = {
+  content: [
+    "👁️ *Conteúdo novo para aprovar!*\n\n*{{titulo}}*\n🎬 Formato: {{formato}}\n📅 Publicação: {{data_publicacao}}\n⏳ Prazo para aprovar o {{etapa}}: *{{prazo}}*\n\n📝 Legenda: {{legenda}}\n\n🔗 Referência: {{referencia}}\n\nAcesse abaixo e aprove ou peça ajuste em menos de 5 minutos:\n{{link}}",
+    "👁️ *Vizantu por aqui!* Tem {{etapa}} novo esperando vocês:\n\n*{{titulo}}* ({{formato}})\n📅 Vai ao ar em {{data_publicacao}}\n\n📝 Legenda: {{legenda}}\n\n🔗 Referência: {{referencia}}\n\nÉ rapidinho: entra no link, lê e aprova ou pede ajuste.\n{{link}}\n\n⏳ Vocês têm até *{{prazo}}* para responder.",
+  ],
   approval: [
     "👁️ *Vizantu por aqui!*\n\nTem material novo esperando vocês: {{resumo}}.\n\n{{lista}}\n\nAcesse abaixo e resolva isso em menos de 5 minutos:\n{{link}}\n\n📅 Prazo para responder: *{{prazo}}*",
     "👁️ Chegou conteúdo novo para vocês revisarem!\n\n{{lista}}\n\nÉ rapidinho: entra no link, lê e aprova ou pede ajuste.\n{{link}}\n\n📅 Vocês têm até *{{prazo}}* para responder.",
@@ -133,9 +153,26 @@ export type MessageContext = {
   approvedCount?: number;
 };
 
+// A legenda inteira de um post pode ter mais de mil caracteres; no grupo vai
+// o começo, e o resto está no portal.
+const CAPTION_LIMIT = 600;
+const shorten = (text: string | undefined, limit: number) => {
+  const clean = (text ?? "").trim();
+  return clean.length > limit ? `${clean.slice(0, limit).trimEnd()}…` : clean;
+};
+
 export function messageVariables(context: MessageContext): Record<string, string> {
   const left = context.daysLeft;
+  // Os detalhes são do primeiro conteúdo: só fazem sentido na mensagem de um
+  // conteúdo só.
+  const item = context.items[0];
   return {
+    titulo: item?.name ?? "",
+    formato: item?.format ?? "",
+    etapa: item ? (item.stage === "creative" ? "criativo" : "texto") : "",
+    data_publicacao: item?.dueDate ? dateLabel(`${item.dueDate.slice(0, 10)}T15:00:00.000Z`) : "",
+    legenda: shorten(item?.caption, CAPTION_LIMIT),
+    referencia: shorten(item?.reference, 300),
     resumo: summary(context.items),
     lista: list(context.items),
     link: context.link,
@@ -148,13 +185,16 @@ export function messageVariables(context: MessageContext): Record<string, string
 }
 
 /** Preenche as variáveis do modelo. Variável desconhecida fica como está, para
- * o erro de digitação aparecer na prévia em vez de sumir. Linha que ficou
- * vazia porque a variável não tinha valor é removida. */
+ * o erro de digitação aparecer na prévia em vez de sumir. A linha cujas
+ * variáveis vieram todas vazias some inteira: conteúdo sem referência não
+ * manda "Referência:" solto no grupo. */
 export function renderTemplate(template: string, variables: Record<string, string>): string {
-  return template
-    .replace(/\{\{\s*([a-z_]+)\s*\}\}/gi, (match, name: string) => name.toLowerCase() in variables ? variables[name.toLowerCase()] : match)
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  const pattern = /\{\{\s*([a-z_]+)\s*\}\}/gi;
+  return template.split("\n").flatMap((line) => {
+    const known = [...line.matchAll(pattern)].map((match) => match[1].toLowerCase()).filter((name) => name in variables);
+    if (known.length && known.every((name) => !variables[name])) return [];
+    return [line.replace(pattern, (match, name: string) => name.toLowerCase() in variables ? variables[name.toLowerCase()] : match)];
+  }).join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 /** A mensagem pronta. Com mais de uma variação do modelo, sorteia uma. */

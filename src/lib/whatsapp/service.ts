@@ -10,6 +10,7 @@
 
 import { AUTO_APPROVAL_REVIEWER } from "../approval-workflow";
 import { isoDateInSaoPaulo } from "../dates";
+import { parseDescription } from "../description-sections";
 import { horaEmSaoPaulo } from "../overdue-scheduler";
 import { submitPlanApprovalResponse } from "../storage";
 import { getSupabase } from "../supabase-client";
@@ -33,13 +34,13 @@ function unwrap<T>(result: { data: unknown; error: { message: string } | null })
 
 // ---------- O que cada cliente tem para aprovar ----------
 
-type Waiting = { taskId: string; name: string; stage: "text" | "creative"; since: number; format?: string };
+type Waiting = { taskId: string; name: string; stage: "text" | "creative"; since: number; format?: string; dueDate?: string; caption?: string; reference?: string };
 
 /** Conteúdos de plano parados com o cliente, por projeto. */
 export async function pendingApprovalsByProject(): Promise<Map<string, Waiting[]>> {
   const db = getSupabase();
-  const rows = unwrap<{ id: string; project_id: string; name: string; status: TaskStatus; drive_link: string | null; format_tag_ids: string[] | null; status_history: StatusHistoryEntry[] | null; updated_at: string }[]>(
-    await db.from("tasks").select("id, project_id, name, status, drive_link, format_tag_ids, status_history, updated_at").not("plan_id", "is", null).in("status", ["aprovacao_copy", "para_aprovacao"]),
+  const rows = unwrap<{ id: string; project_id: string; name: string; status: TaskStatus; drive_link: string | null; due_date: string | null; description: string | null; format_tag_ids: string[] | null; status_history: StatusHistoryEntry[] | null; updated_at: string }[]>(
+    await db.from("tasks").select("id, project_id, name, status, drive_link, due_date, description, format_tag_ids, status_history, updated_at").not("plan_id", "is", null).in("status", ["aprovacao_copy", "para_aprovacao"]),
   );
   // O formato vai na frente do nome na mensagem: "Carrossel - Como começar".
   const formatIds = [...new Set(rows.flatMap((row) => row.format_tag_ids ?? []))];
@@ -51,7 +52,11 @@ export async function pendingApprovalsByProject(): Promise<Map<string, Waiting[]
     const entered = (row.status_history ?? []).filter((entry) => entry.status === row.status).map((entry) => new Date(entry.enteredAt).getTime()).filter(Number.isFinite);
     const since = entered.length ? Math.max(...entered) : new Date(row.updated_at).getTime();
     const format = (row.format_tag_ids ?? []).map((id) => formats.get(id)).find(Boolean);
-    byProject.set(row.project_id, [...(byProject.get(row.project_id) || []), { taskId: row.id, name: row.name, stage: row.status === "para_aprovacao" ? "creative" : "text", since, format }]);
+    const sections = parseDescription(row.description || undefined);
+    byProject.set(row.project_id, [...(byProject.get(row.project_id) || []), {
+      taskId: row.id, name: row.name, stage: row.status === "para_aprovacao" ? "creative" : "text", since, format,
+      dueDate: row.due_date || undefined, caption: sections.legenda || undefined, reference: sections.referencia || undefined,
+    }]);
   }
   return byProject;
 }
@@ -115,7 +120,8 @@ async function deliver(row: MessageRow): Promise<void> {
     const { unnotified } = startDeadlineClock(waiting, await noticeTimes(row.project_id, row.id));
     if (!unnotified.length) return finish(row.id, { status: "skipped", error: "Tudo que está pendente já tinha sido avisado.", dedupe_key: freeKey });
     // Para o que é avisado agora, o prazo começa agora.
-    body = composeMessage("approval", automation, {
+    // Um conteúdo só vai com os detalhes dele; vários viram um resumo.
+    body = composeMessage(unnotified.length === 1 ? "content" : "approval", automation, {
       items: unnotified, link, clientName: await clientName(row.project_id), deadlineDays: days,
       deadlineIso: new Date(Date.now() + days * DAY).toISOString(), daysLeft: days,
     });
