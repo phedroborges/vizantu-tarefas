@@ -328,5 +328,7 @@ export function agendarWhatsapp(): void {
   scheduled = true;
   const run = () => { if (!running) running = tick().finally(() => { running = undefined; }); };
   run();
-  setInterval(run, 60_000).unref?.();
+  // A fila é olhada a cada 15 segundos para o aviso de material novo sair
+  // logo depois da espera, e não até um minuto mais tarde.
+  setInterval(run, 15_000).unref?.();
 }

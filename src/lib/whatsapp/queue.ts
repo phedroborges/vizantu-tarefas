@@ -14,7 +14,7 @@ export const DEFAULT_APPROVAL_DEADLINE_DAYS = 7;
 // errado sem querer tem tempo de voltar atrás (na hora de enviar, só entra o
 // que ainda está em aprovação), e enviar 20 conteúdos em sequência vira uma
 // mensagem só, em vez de 20.
-const DEBOUNCE_MS = 3 * 60_000;
+const DEBOUNCE_MS = 30_000;
 
 export type ProjectCommunication = {
   projectId: string;
