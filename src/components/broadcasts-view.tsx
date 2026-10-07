@@ -13,6 +13,8 @@ import { Button, Card, Field, Input, Select, Textarea } from "@/components/vz";
 import { useConfirm } from "@/components/confirm-dialog";
 import { formatDateTime } from "@/lib/dates";
 import { responseError } from "@/lib/request-error";
+import { WhatsappAutomationPanel } from "@/components/whatsapp-automation-panel";
+import type { AutomationSettings } from "@/lib/whatsapp/messages";
 import type { Broadcast } from "@/lib/whatsapp/service";
 
 export type BroadcastClient = { id: string; name: string; groupName?: string };
@@ -26,7 +28,8 @@ function duration(seconds: number): string {
   return minutes < 90 ? `${minutes} minutos` : `${(minutes / 60).toFixed(1).replace(".", ",")} horas`;
 }
 
-export function BroadcastsView({ clients, configured, initialBroadcasts }: { clients: BroadcastClient[]; configured: boolean; initialBroadcasts: Broadcast[] }) {
+export function BroadcastsView({ clients, configured, initialBroadcasts, initialAutomation }: { clients: BroadcastClient[]; configured: boolean; initialBroadcasts: Broadcast[]; initialAutomation: AutomationSettings }) {
+  const [tab, setTab] = useState<"automaticas" | "comunicados">("automaticas");
   const reachable = useMemo(() => clients.filter((client) => client.groupName), [clients]);
   const [broadcasts, setBroadcasts] = useState(initialBroadcasts);
   const [title, setTitle] = useState("");
@@ -90,7 +93,15 @@ export function BroadcastsView({ clients, configured, initialBroadcasts }: { cli
 
   return <>
     <main className="admin-page dashboard broadcasts">
-      <div className="dashboard-head"><div><span className="eyebrow">Clientes</span><h1>Comunicados</h1><p>Uma mensagem para o grupo de WhatsApp de vários clientes, enviada aos poucos.</p></div></div>
+      <div className="dashboard-head"><div><span className="eyebrow">Clientes</span><h1>Comunicação</h1><p>O que os clientes recebem no grupo de WhatsApp: os avisos automáticos de aprovação e os comunicados enviados por vocês.</p></div></div>
+
+      <div className="broadcasts__tabs" role="tablist">
+        <button type="button" role="tab" aria-selected={tab === "automaticas"} className={tab === "automaticas" ? "active" : ""} onClick={() => setTab("automaticas")}>Mensagens automáticas</button>
+        <button type="button" role="tab" aria-selected={tab === "comunicados"} className={tab === "comunicados" ? "active" : ""} onClick={() => setTab("comunicados")}>Comunicados</button>
+      </div>
+
+      {tab === "automaticas" ? <WhatsappAutomationPanel initialSettings={initialAutomation} configured={configured} /> : null}
+      {tab === "comunicados" ? <>
 
       {!configured ? <p className="form-message">O WhatsApp ainda não está conectado no servidor. Assim que as credenciais forem configuradas, os comunicados passam a ser enviados por aqui.</p> : null}
 
@@ -158,6 +169,7 @@ export function BroadcastsView({ clients, configured, initialBroadcasts }: { cli
           </li>;
         })}</ul> : <p className="broadcasts__hint">Nenhum comunicado enviado ainda.</p>}
       </Card>
+      </> : null}
     </main>
     {ConfirmDialog}
   </>;

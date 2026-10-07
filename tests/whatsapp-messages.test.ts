@@ -1,34 +1,112 @@
 import { describe, expect, it } from "vitest";
-import { approvalMessage, autoApprovedMessage, isBusinessDay, lastDayMessage, planBroadcast, reminderMessage, reminderStep } from "../src/lib/whatsapp/messages";
+import { DEFAULT_AUTOMATION, DEFAULT_TEMPLATES, MESSAGE_KINDS, MESSAGE_VARIABLES, composeMessage, isBusinessDay, messageVariables, normalizeAutomation, planBroadcast, reminderStep, renderTemplate, startDeadlineClock, type WaitingItem } from "../src/lib/whatsapp/messages";
 import { parseWhatsappGroups } from "../src/lib/whatsapp/provider";
 
-const link = "https://tarefas.vizantu.com.br/c/abc";
+const link = "https://tarefas.metricz.com.br/c/abc";
+const texto = (name: string, format = "Carrossel"): WaitingItem => ({ name, stage: "text", format });
+const criativo = (name: string, format = "Reels"): WaitingItem => ({ name, stage: "creative", format });
+const first = () => 0;
 
 describe("mensagens de aprovação no grupo do cliente", () => {
-  it("resume o que há para revisar e sempre leva o link do portal", () => {
-    const text = approvalMessage({ pending: { text: 10, creative: 3 }, link, deadlineIso: "2026-10-14T15:00:00.000Z" });
-    expect(text).toContain("*10 textos* para revisar");
-    expect(text).toContain("*3 criativos* para revisar");
+  // O pedido que originou isto: com poucos conteúdos, dizer quais são.
+  it("lista os conteúdos um por um quando são menos de cinco", () => {
+    const text = composeMessage("reminder", DEFAULT_AUTOMATION, { items: [texto("Como começar na viola"), texto("Porque meu carro é branco", "Reels")], link, deadlineDays: 7, daysLeft: 3 }, first);
+    expect(text).toContain("👁️ Tô passando aqui pra lembrar que vocês têm 2 conteúdos para aprovar o texto:");
+    expect(text).toContain("• Carrossel - Como começar na viola\n• Reels - Porque meu carro é branco");
+    expect(text).toContain("resolva isso em menos de 5 minutos:\n" + link);
+    expect(text).toContain("Faltam *3 dias* para o prazo.");
+  });
+
+  it("a partir de cinco mostra só as quantidades", () => {
+    const items = [...Array.from({ length: 10 }, (_, index) => texto(`Conteúdo ${index}`)), ...Array.from({ length: 3 }, (_, index) => criativo(`Criativo ${index}`))];
+    const text = composeMessage("approval", DEFAULT_AUTOMATION, { items, link, deadlineDays: 7, deadlineIso: "2026-10-14T15:00:00.000Z" }, first);
+    expect(text).toContain("10 textos e 3 criativos para aprovar");
+    expect(text).toContain("• *10 textos* para revisar\n• *3 criativos* para revisar");
+    expect(text).not.toContain("Conteúdo 0");
+    expect(text).toContain("Prazo para responder: *14/10*");
+  });
+
+  it("diz qual é texto e qual é criativo quando a lista mistura os dois", () => {
+    const variables = messageVariables({ items: [texto("A"), criativo("B")], link, deadlineDays: 7 });
+    expect(variables.lista).toBe("• Carrossel - A (texto)\n• Reels - B (criativo)");
+    expect(variables.resumo).toBe("1 texto e 1 criativo para aprovar");
+  });
+
+  it("concorda o singular e funciona sem formato", () => {
+    const variables = messageVariables({ items: [{ name: "Sem formato", stage: "text" }], link, deadlineDays: 1, daysLeft: 1 });
+    expect(variables).toMatchObject({ resumo: "1 conteúdo para aprovar o texto", lista: "• Sem formato", dias_restantes: "1 dia", dias_prazo: "1 dia" });
+    expect(messageVariables({ items: [criativo("X")], link, deadlineDays: 7 }).resumo).toBe("1 criativo para aprovar");
+  });
+
+  it("o último dia vem com o emoji de aviso e diz a consequência", () => {
+    const text = composeMessage("last_day", DEFAULT_AUTOMATION, { items: [texto("A")], link, deadlineDays: 7, daysLeft: 0 }, first);
+    expect(text.startsWith("⚠️ *Hoje é o último dia para aprovar!*")).toBe(true);
+    expect(text).toContain("será considerado *aprovado*");
     expect(text).toContain(link);
-    expect(text).toContain("Prazo para responder: *14/10*.");
   });
 
-  it("fala do conteúdo pelo nome quando é um só", () => {
-    expect(approvalMessage({ pending: { text: 1, creative: 0, singleName: "Convite para o Buteco" }, link })).toContain("O texto de *Convite para o Buteco* está pronto para a sua aprovação.");
-    expect(approvalMessage({ pending: { text: 0, creative: 1, singleName: "Convite para o Buteco" }, link })).toContain("O criativo de *Convite para o Buteco*");
+  it("avisa o que foi aprovado por prazo", () => {
+    expect(composeMessage("auto_approved", DEFAULT_AUTOMATION, { items: [], link, deadlineDays: 7, approvedCount: 3 }, first)).toContain("O prazo de 7 dias terminou sem resposta, então *3 conteúdos foram dados como aprovados*");
+    expect(messageVariables({ items: [], link, deadlineDays: 7, approvedCount: 1 }).aprovados).toBe("1 conteúdo foi dado como aprovado");
   });
 
-  it("não lista etapa que não tem nada pendente", () => {
-    expect(approvalMessage({ pending: { text: 2, creative: 0 }, link })).not.toContain("criativo");
+  it("toda mensagem padrão abre com a marca ou com o aviso e leva o link", () => {
+    for (const { kind } of MESSAGE_KINDS) {
+      for (const template of DEFAULT_TEMPLATES[kind]) {
+        expect(/^(👁️|⚠️)/.test(template), `${kind}: ${template.slice(0, 20)}`).toBe(true);
+        expect(template, kind).toContain("{{link}}");
+      }
+    }
+  });
+});
+
+describe("modelos editáveis", () => {
+  const variables = { resumo: "2 conteúdos para aprovar o texto", link, prazo: "" };
+
+  it("preenche as variáveis, aceitando espaços e maiúsculas", () => {
+    expect(renderTemplate("Oi! {{ resumo }}.\n{{LINK}}", variables)).toBe(`Oi! 2 conteúdos para aprovar o texto.\n${link}`);
   });
 
-  it("o lembrete diz quanto falta e o último dia avisa a consequência", () => {
-    expect(reminderMessage({ pending: { text: 15, creative: 0 }, link, daysLeft: 3 })).toContain("Faltam *3 dias* para o prazo.");
-    const last = lastDayMessage({ pending: { text: 15, creative: 0 }, link, deadlineDays: 7 });
-    expect(last).toContain("*Hoje é o último dia*");
-    expect(last).toContain("será considerado *aprovado*");
-    expect(last).toContain(link);
-    expect(autoApprovedMessage({ count: 1, link })).toContain("*1 conteúdo foi dado como aprovado*");
+  // Erro de digitação tem que aparecer na prévia, não sumir em silêncio.
+  it("deixa à mostra a variável que não existe", () => {
+    expect(renderTemplate("Oi {{clinte}}", variables)).toBe("Oi {{clinte}}");
+  });
+
+  it("não deixa buraco quando a variável vem vazia", () => {
+    expect(renderTemplate("Linha 1\n\n{{prazo}}\n\nLinha 2", variables)).toBe("Linha 1\n\nLinha 2");
+  });
+
+  it("todas as variáveis documentadas existem", () => {
+    const available = messageVariables({ items: [texto("A")], link, deadlineDays: 7 });
+    for (const { name } of MESSAGE_VARIABLES) expect(available, name).toHaveProperty(name);
+  });
+
+  it("sorteia entre as variações do texto", () => {
+    const settings = { templates: { ...DEFAULT_TEMPLATES, reminder: ["Primeira {{link}}", "Segunda {{link}}"] } };
+    const context = { items: [texto("A")], link, deadlineDays: 7 };
+    expect(composeMessage("reminder", settings, context, () => 0)).toBe(`Primeira ${link}`);
+    expect(composeMessage("reminder", settings, context, () => 0.99)).toBe(`Segunda ${link}`);
+  });
+});
+
+describe("configuração das mensagens automáticas", () => {
+  // Nada sai para cliente antes de alguém revisar os textos e ligar.
+  it("nasce desligada, com os padrões", () => {
+    expect(normalizeAutomation(null)).toEqual({ enabled: false, sendHour: 9, reminderEveryDays: 2, weekdaysOnly: true, templates: DEFAULT_TEMPLATES });
+    expect(normalizeAutomation({}).enabled).toBe(false);
+  });
+
+  it("guarda os textos editados e volta ao padrão no tipo que ficou vazio", () => {
+    const result = normalizeAutomation({ enabled: true, sendHour: 14, reminderEveryDays: 3, weekdaysOnly: false, templates: { ...DEFAULT_TEMPLATES, reminder: ["  Meu lembrete {{link}}  ", ""], last_day: ["", "  "] } });
+    expect(result).toMatchObject({ enabled: true, sendHour: 14, reminderEveryDays: 3, weekdaysOnly: false });
+    expect(result.templates.reminder).toEqual(["Meu lembrete {{link}}"]);
+    expect(result.templates.last_day).toEqual(DEFAULT_TEMPLATES.last_day);
+  });
+
+  it("segura a hora e o intervalo dentro do que faz sentido", () => {
+    expect(normalizeAutomation({ sendHour: 3, reminderEveryDays: 0 })).toMatchObject({ sendHour: 6, reminderEveryDays: 1 });
+    expect(normalizeAutomation({ sendHour: 23, reminderEveryDays: 30 })).toMatchObject({ sendHour: 20, reminderEveryDays: 7 });
+    expect(normalizeAutomation({ sendHour: Number.NaN })).toMatchObject({ sendHour: 9 });
   });
 });
 
@@ -37,9 +115,10 @@ describe("quando cada aviso sai", () => {
     expect([0, 1, 2, 3, 4, 5, 6, 7, 9].map((day) => reminderStep(day, 7))).toEqual([null, null, "reminder", null, "reminder", null, "reminder", "last_day", "last_day"]);
   });
 
-  it("respeita um prazo diferente do padrão", () => {
+  it("respeita o intervalo e o prazo configurados", () => {
+    expect([1, 2, 3, 4, 5, 6].map((day) => reminderStep(day, 10, 3))).toEqual([null, null, "reminder", null, null, "reminder"]);
+    expect([1, 2].map((day) => reminderStep(day, 7, 1))).toEqual(["reminder", "reminder"]);
     expect(reminderStep(3, 3)).toBe("last_day");
-    expect(reminderStep(2, 3)).toBe("reminder");
   });
 
   it("não cobra em fim de semana", () => {
@@ -48,6 +127,30 @@ describe("quando cada aviso sai", () => {
     expect(isBusinessDay(new Date("2026-10-11T15:00:00.000Z"))).toBe(false); // domingo
     // Segunda de madrugada em UTC ainda é domingo em São Paulo.
     expect(isBusinessDay(new Date("2026-10-12T01:00:00.000Z"))).toBe(false);
+  });
+});
+
+describe("quando o prazo começa a contar", () => {
+  const D = 86_400_000;
+
+  // Cliente com texto parado há semanas, que acabou de ter os avisos ligados:
+  // sem aviso enviado, nada está correndo.
+  it("não conta prazo do que o cliente nunca foi avisado", () => {
+    const antigo = { id: "antigo", since: 0 };
+    expect(startDeadlineClock([antigo], [])).toEqual({ notified: [], unnotified: [antigo] });
+  });
+
+  it("conta a partir do primeiro aviso depois de o conteúdo entrar em aprovação", () => {
+    const { notified, unnotified } = startDeadlineClock([{ id: "antigo", since: 0 }], [30 * D, 32 * D]);
+    expect(notified).toEqual([{ id: "antigo", since: 30 * D }]);
+    expect(unnotified).toEqual([]);
+  });
+
+  it("aviso anterior ao conteúdo não vale para ele", () => {
+    const novo = { id: "novo", since: 40 * D };
+    const { notified, unnotified } = startDeadlineClock([{ id: "antigo", since: 0 }, novo], [30 * D]);
+    expect(notified.map((item) => item.id)).toEqual(["antigo"]);
+    expect(unnotified).toEqual([novo]);
   });
 });
 

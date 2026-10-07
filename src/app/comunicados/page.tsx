@@ -3,14 +3,14 @@ import { BroadcastsView } from "@/components/broadcasts-view";
 import { requirePageAccess } from "@/lib/page-guard";
 import { listProjects } from "@/lib/storage";
 import { whatsappConfigured } from "@/lib/whatsapp/provider";
-import { listProjectCommunications } from "@/lib/whatsapp/queue";
+import { getAutomationSettings, listProjectCommunications } from "@/lib/whatsapp/queue";
 import { listBroadcasts } from "@/lib/whatsapp/service";
 
 export const dynamic = "force-dynamic";
 
 export default async function ComunicadosPage() {
   const user = await requirePageAccess("comunicados");
-  const [projects, communications, broadcasts] = await Promise.all([listProjects(), listProjectCommunications(), listBroadcasts()]);
+  const [projects, communications, broadcasts, automation] = await Promise.all([listProjects(), listProjectCommunications(), listBroadcasts(), getAutomationSettings()]);
   const groupByProject = new Map(communications.map((item) => [item.projectId, item.whatsappGroupId ? item.whatsappGroupName || item.whatsappGroupId : undefined]));
 
   return (
@@ -19,6 +19,7 @@ export default async function ComunicadosPage() {
         clients={projects.filter((project) => project.status === "ativo").map((project) => ({ id: project.id, name: project.client || project.name, groupName: groupByProject.get(project.id) }))}
         configured={whatsappConfigured()}
         initialBroadcasts={broadcasts}
+        initialAutomation={automation}
       />
     </AdminShell>
   );

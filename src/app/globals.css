@@ -2672,3 +2672,23 @@ audio.comment-attachment, .comment-attachment.is-audio audio { width: 100%; min-
 .broadcasts__status.is-sending { background: var(--vz-amber-bg); color: var(--vz-amber-ink); }
 .broadcasts__status.is-done { background: var(--vz-green-bg); color: var(--vz-green-ink); }
 @media (max-width: 860px) { .project-communication__grid, .broadcasts__layout { grid-template-columns: 1fr; } .broadcasts__media { grid-template-columns: 1fr; } }
+
+/* Mensagens automáticas do WhatsApp. */
+.broadcasts__tabs { display: flex; gap: 6px; margin-bottom: 16px; }
+.broadcasts__tabs button { padding: 8px 14px; border: 1px solid var(--vz-line); border-radius: var(--vz-r-pill); background: var(--vz-panel); color: var(--vz-text-muted); font: inherit; font-size: var(--vz-t-sm); font-weight: 600; cursor: pointer; }
+.broadcasts__tabs button.active { border-color: var(--vz-brand); background: var(--vz-brand-soft); color: var(--vz-brand-strong); }
+.automation { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr); gap: 16px; align-items: start; }
+.automation > .form-message, .automation__kind, .automation__save { grid-column: 1 / -1; }
+.automation__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.automation__variables ul { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.automation__variables li { display: grid; gap: 2px; font-size: var(--vz-t-xs); color: var(--vz-text-muted); }
+.automation__variables code { width: fit-content; padding: 1px 6px; border-radius: 5px; background: var(--vz-brand-soft); color: var(--vz-brand-strong); font-size: 11px; }
+.automation__kind-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.automation__kind-head > div { display: grid; gap: 3px; }
+.automation__variation { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.automation__preview { display: grid; gap: 6px; }
+.automation__preview > span { color: var(--vz-text-faint); font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.automation__preview p { margin: 0; padding: 12px 14px; border-radius: 4px 14px 14px 14px; background: var(--vz-green-bg); color: var(--vz-text); font-size: var(--vz-t-sm); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.automation__save { display: flex; align-items: center; justify-content: flex-end; gap: 14px; position: sticky; bottom: 12px; padding: 12px 16px; border: 1px solid var(--vz-line); border-radius: var(--vz-r-lg); background: var(--vz-panel); box-shadow: var(--vz-shadow-xs); }
+.automation__save p { margin: 0; }
+@media (max-width: 860px) { .automation, .automation__grid, .automation__variation { grid-template-columns: 1fr; } }

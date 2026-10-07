@@ -14,12 +14,11 @@ import { horaEmSaoPaulo } from "../overdue-scheduler";
 import { submitPlanApprovalResponse } from "../storage";
 import { getSupabase } from "../supabase-client";
 import type { StatusHistoryEntry, TaskStatus } from "../types";
-import { approvalMessage, autoApprovedMessage, isBusinessDay, lastDayMessage, planBroadcast, reminderMessage, reminderStep, type PendingApprovals } from "./messages";
+import { composeMessage, isBusinessDay, planBroadcast, reminderStep, startDeadlineClock } from "./messages";
 import { sendWhatsappMedia, sendWhatsappText, whatsappConfigured, type WhatsappMedia } from "./provider";
-import { listProjectCommunications, type ProjectCommunication } from "./queue";
+import { getAutomationSettings, listProjectCommunications, queueApprovalNotice, type ProjectCommunication } from "./queue";
 
 const DAY = 86_400_000;
-const HORA_DOS_LEMBRETES = 9;
 
 type MessageRow = {
   id: string; project_id: string | null; broadcast_id: string | null; kind: string; group_id: string; body: string | null;
@@ -34,30 +33,32 @@ function unwrap<T>(result: { data: unknown; error: { message: string } | null })
 
 // ---------- O que cada cliente tem para aprovar ----------
 
-type Waiting = { taskId: string; name: string; stage: "text" | "creative"; since: number };
+type Waiting = { taskId: string; name: string; stage: "text" | "creative"; since: number; format?: string };
 
 /** Conteúdos de plano parados com o cliente, por projeto. */
 export async function pendingApprovalsByProject(): Promise<Map<string, Waiting[]>> {
-  const rows = unwrap<{ id: string; project_id: string; name: string; status: TaskStatus; drive_link: string | null; status_history: StatusHistoryEntry[] | null; updated_at: string }[]>(
-    await getSupabase().from("tasks").select("id, project_id, name, status, drive_link, status_history, updated_at").not("plan_id", "is", null).in("status", ["aprovacao_copy", "para_aprovacao"]),
+  const db = getSupabase();
+  const rows = unwrap<{ id: string; project_id: string; name: string; status: TaskStatus; drive_link: string | null; format_tag_ids: string[] | null; status_history: StatusHistoryEntry[] | null; updated_at: string }[]>(
+    await db.from("tasks").select("id, project_id, name, status, drive_link, format_tag_ids, status_history, updated_at").not("plan_id", "is", null).in("status", ["aprovacao_copy", "para_aprovacao"]),
   );
+  // O formato vai na frente do nome na mensagem: "Carrossel - Como começar".
+  const formatIds = [...new Set(rows.flatMap((row) => row.format_tag_ids ?? []))];
+  const formats = new Map(formatIds.length ? unwrap<{ id: string; label: string }[]>(await db.from("tags").select("id, label").eq("kind", "formato").in("id", formatIds)).map((tag): [string, string] => [tag.id, tag.label]) : []);
   const byProject = new Map<string, Waiting[]>();
   for (const row of rows) {
     // Criativo sem link do material não tem o que o cliente revisar.
     if (row.status === "para_aprovacao" && !row.drive_link?.trim()) continue;
     const entered = (row.status_history ?? []).filter((entry) => entry.status === row.status).map((entry) => new Date(entry.enteredAt).getTime()).filter(Number.isFinite);
     const since = entered.length ? Math.max(...entered) : new Date(row.updated_at).getTime();
-    byProject.set(row.project_id, [...(byProject.get(row.project_id) || []), { taskId: row.id, name: row.name, stage: row.status === "para_aprovacao" ? "creative" : "text", since }]);
+    const format = (row.format_tag_ids ?? []).map((id) => formats.get(id)).find(Boolean);
+    byProject.set(row.project_id, [...(byProject.get(row.project_id) || []), { taskId: row.id, name: row.name, stage: row.status === "para_aprovacao" ? "creative" : "text", since, format }]);
   }
   return byProject;
 }
 
-function summarize(waiting: Waiting[]): PendingApprovals {
-  return {
-    text: waiting.filter((item) => item.stage === "text").length,
-    creative: waiting.filter((item) => item.stage === "creative").length,
-    singleName: waiting.length === 1 ? waiting[0].name : undefined,
-  };
+async function clientName(projectId: string): Promise<string | undefined> {
+  const project = unwrap<{ name: string; client: string | null } | null>(await getSupabase().from("projects").select("name, client").eq("id", projectId).maybeSingle());
+  return project?.client?.trim() || project?.name;
 }
 
 /** O endereço do portal daquele cliente. Sem link ativo não há para onde
@@ -70,6 +71,14 @@ export async function clientPortalLink(projectId: string): Promise<string | unde
   );
   const active = links.find((link) => !link.expires_at || new Date(link.expires_at).getTime() > Date.now());
   return active ? `${base}/c/${active.token}` : undefined;
+}
+
+/** Quando este cliente foi avisado de que tinha material para aprovar. */
+async function noticeTimes(projectId: string): Promise<number[]> {
+  const rows = unwrap<{ sent_at: string | null }[]>(
+    await getSupabase().from("whatsapp_messages").select("sent_at").eq("project_id", projectId).eq("status", "sent").in("kind", ["approval", "reminder", "last_day"]),
+  );
+  return rows.flatMap((row) => row.sent_at ? [new Date(row.sent_at).getTime()] : []);
 }
 
 // ---------- Fila ----------
@@ -91,14 +100,22 @@ async function deliver(row: MessageRow): Promise<void> {
   if (row.kind === "approval" && row.project_id) {
     // O texto é montado na hora de enviar: conta o que está pendente agora,
     // não o que estava quando a primeira tarefa entrou em aprovação.
+    const freeKey = `approval:${row.project_id}:${row.id}`;
+    const automation = await getAutomationSettings();
+    if (!automation.enabled) return finish(row.id, { status: "skipped", error: "Avisos automáticos desligados.", dedupe_key: freeKey });
     const waiting = (await pendingApprovalsByProject()).get(row.project_id) || [];
     const link = await clientPortalLink(row.project_id);
-    const freeKey = `approval:${row.project_id}:${row.id}`;
     if (!waiting.length) return finish(row.id, { status: "skipped", error: "Nada pendente na hora do envio.", dedupe_key: freeKey });
     if (!link) return finish(row.id, { status: "skipped", error: "Cliente sem link de aprovação ativo.", dedupe_key: freeKey });
-    const settings = (await listProjectCommunications()).find((item) => item.projectId === row.project_id);
-    const oldest = Math.min(...waiting.map((item) => item.since));
-    body = approvalMessage({ pending: summarize(waiting), link, deadlineIso: new Date(oldest + (settings?.approvalDeadlineDays ?? 7) * DAY).toISOString() });
+    const days = (await listProjectCommunications()).find((item) => item.projectId === row.project_id)?.approvalDeadlineDays ?? 7;
+    // Esta mensagem já conta como aviso: para o que ainda não tinha sido
+    // avisado, o prazo começa agora.
+    const { notified } = startDeadlineClock(waiting, await noticeTimes(row.project_id));
+    const clock = notified.length ? Math.min(...notified.map((item) => item.since)) : Date.now();
+    body = composeMessage("approval", automation, {
+      items: waiting, link, clientName: await clientName(row.project_id), deadlineDays: days,
+      deadlineIso: new Date(clock + days * DAY).toISOString(), daysLeft: Math.max(0, days - Math.floor((Date.now() - clock) / DAY)),
+    });
     // Libera a chave para o próximo aviso deste cliente.
     await finish(row.id, { body, dedupe_key: freeKey });
   }
@@ -146,10 +163,12 @@ async function autoApprove(projectId: string, overdue: Waiting[]): Promise<numbe
   return approved;
 }
 
-/** A rotina de uma vez por dia útil: aprova o que venceu depois do aviso de
- * último dia e manda o lembrete do dia para quem ainda deve resposta. */
+/** A rotina de uma vez por dia: aprova o que venceu depois do aviso de último
+ * dia e manda o lembrete do dia para quem ainda deve resposta. */
 export async function runDailyApprovalRoutine(now = new Date()): Promise<void> {
-  if (!whatsappConfigured() || !isBusinessDay(now) || horaEmSaoPaulo(now) < HORA_DOS_LEMBRETES) return;
+  if (!whatsappConfigured()) return;
+  const automation = await getAutomationSettings();
+  if (!automation.enabled || (automation.weekdaysOnly && !isBusinessDay(now)) || horaEmSaoPaulo(now) < automation.sendHour) return;
   const today = isoDateInSaoPaulo(now);
   const pending = await pendingApprovalsByProject();
   const settingsByProject = new Map((await listProjectCommunications()).map((item): [string, ProjectCommunication] => [item.projectId, item]));
@@ -158,7 +177,15 @@ export async function runDailyApprovalRoutine(now = new Date()): Promise<void> {
     if (!settings?.whatsappGroupId || !settings.notifyEnabled) continue;
     const link = await clientPortalLink(projectId);
     if (!link) continue;
-    const deadlineMs = settings.approvalDeadlineDays * DAY;
+    const deadlineDays = settings.approvalDeadlineDays;
+    const deadlineMs = deadlineDays * DAY;
+
+    // O relógio do prazo é o do primeiro aviso recebido. O que nunca foi
+    // avisado gera o aviso de material novo e só começa a contar a partir dele.
+    const { notified, unnotified } = startDeadlineClock(waiting, await noticeTimes(projectId));
+    if (unnotified.length) await queueApprovalNotice(projectId);
+    if (!notified.length) continue;
+    const name = await clientName(projectId);
 
     // Só vence o que o cliente foi avisado: precisa existir um aviso de último
     // dia enviado há pelo menos um dia, e o conteúdo já tinha que estar com ele
@@ -166,22 +193,20 @@ export async function runDailyApprovalRoutine(now = new Date()): Promise<void> {
     const lastDay = unwrap<{ sent_at: string }[]>(await getSupabase().from("whatsapp_messages").select("sent_at").eq("project_id", projectId).eq("kind", "last_day").eq("status", "sent").order("sent_at", { ascending: false }).limit(1))[0];
     const warnedAt = lastDay ? new Date(lastDay.sent_at).getTime() : undefined;
     if (warnedAt !== undefined && now.getTime() - warnedAt >= 20 * 3_600_000) {
-      const overdue = waiting.filter((item) => item.since < warnedAt && now.getTime() - item.since >= deadlineMs);
+      const overdue = notified.filter((item) => item.since < warnedAt && now.getTime() - item.since >= deadlineMs);
       if (overdue.length) {
         const approved = await autoApprove(projectId, overdue);
-        if (approved) await enqueue({ projectId, kind: "auto_approved", groupId: settings.whatsappGroupId, body: autoApprovedMessage({ count: approved, link }), dedupeKey: `auto:${projectId}:${today}` });
+        if (approved) await enqueue({ projectId, kind: "auto_approved", groupId: settings.whatsappGroupId, body: composeMessage("auto_approved", automation, { items: [], link, clientName: name, deadlineDays, approvedCount: approved }), dedupeKey: `auto:${projectId}:${today}` });
         continue;
       }
     }
 
-    const oldest = waiting.reduce((first, item) => item.since < first.since ? item : first);
+    const oldest = notified.reduce((first, item) => item.since < first.since ? item : first);
     const daysWaiting = Math.floor((now.getTime() - oldest.since) / DAY);
-    const step = reminderStep(daysWaiting, settings.approvalDeadlineDays);
-    if (step === "last_day") {
-      await enqueue({ projectId, kind: "last_day", groupId: settings.whatsappGroupId, body: lastDayMessage({ pending: summarize(waiting), link, deadlineDays: settings.approvalDeadlineDays }), dedupeKey: `last_day:${projectId}:${oldest.taskId}:${oldest.since}` });
-    } else if (step === "reminder") {
-      await enqueue({ projectId, kind: "reminder", groupId: settings.whatsappGroupId, body: reminderMessage({ pending: summarize(waiting), link, daysLeft: settings.approvalDeadlineDays - daysWaiting }), dedupeKey: `reminder:${projectId}:${today}` });
-    }
+    const step = reminderStep(daysWaiting, deadlineDays, automation.reminderEveryDays);
+    if (!step) continue;
+    const body = composeMessage(step, automation, { items: waiting, link, clientName: name, deadlineDays, deadlineIso: new Date(oldest.since + deadlineMs).toISOString(), daysLeft: deadlineDays - daysWaiting });
+    await enqueue({ projectId, kind: step, groupId: settings.whatsappGroupId, body, dedupeKey: step === "last_day" ? `last_day:${projectId}:${oldest.taskId}:${oldest.since}` : `reminder:${projectId}:${today}` });
   }
 }
 
@@ -253,9 +278,14 @@ async function tick(): Promise<void> {
   if (!whatsappConfigured()) return;
   const now = new Date();
   const today = isoDateInSaoPaulo(now);
-  if (lastDailyRun !== today && isBusinessDay(now) && horaEmSaoPaulo(now) >= HORA_DOS_LEMBRETES) {
-    lastDailyRun = today;
-    await runDailyApprovalRoutine(now).catch((error) => console.error("[whatsapp] rotina diária falhou:", error));
+  // A hora e os dias vêm da configuração, então são lidos a cada volta: ligar
+  // os avisos ou mudar o horário vale sem reiniciar o servidor.
+  if (lastDailyRun !== today) {
+    const automation = await getAutomationSettings().catch(() => undefined);
+    if (automation?.enabled && (!automation.weekdaysOnly || isBusinessDay(now)) && horaEmSaoPaulo(now) >= automation.sendHour) {
+      lastDailyRun = today;
+      await runDailyApprovalRoutine(now).catch((error) => console.error("[whatsapp] rotina diária falhou:", error));
+    }
   }
   await processOutbox().catch((error) => console.error("[whatsapp] fila falhou:", error));
 }

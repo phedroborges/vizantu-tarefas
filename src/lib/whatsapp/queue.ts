@@ -4,6 +4,7 @@
 // (quando uma tarefa entra em aprovação) e não pode depender dele de volta.
 
 import { getSupabase } from "../supabase-client";
+import { normalizeAutomation, type AutomationSettings } from "./messages";
 import { whatsappConfigured } from "./provider";
 
 export const DEFAULT_APPROVAL_DEADLINE_DAYS = 7;
@@ -59,11 +60,24 @@ export async function saveProjectCommunication(projectId: string, patch: Partial
   return fromRow(data as Row);
 }
 
+export async function getAutomationSettings(): Promise<AutomationSettings> {
+  const { data, error } = await getSupabase().from("whatsapp_settings").select("settings").eq("id", 1).maybeSingle();
+  if (error) throw new Error(error.message);
+  return normalizeAutomation((data as { settings: Partial<AutomationSettings> } | null)?.settings);
+}
+
+export async function saveAutomationSettings(input: Partial<AutomationSettings>): Promise<AutomationSettings> {
+  const settings = normalizeAutomation(input);
+  const { error } = await getSupabase().from("whatsapp_settings").upsert({ id: 1, settings, updated_at: new Date().toISOString() });
+  if (error) throw new Error(error.message);
+  return settings;
+}
+
 /** Uma tarefa do cliente entrou em aprovação: agenda (ou adia) o aviso no
  * grupo. Nunca lança — falha de aviso não pode impedir a troca de status. */
 export async function queueApprovalNotice(projectId: string): Promise<void> {
   try {
-    if (!whatsappConfigured()) return;
+    if (!whatsappConfigured() || !(await getAutomationSettings()).enabled) return;
     const settings = await getProjectCommunication(projectId);
     if (!settings.whatsappGroupId || !settings.notifyEnabled) return;
     const db = getSupabase();
