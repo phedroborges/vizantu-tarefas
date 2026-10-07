@@ -4,6 +4,7 @@ import { requirePageAccess } from "@/lib/page-guard";
 import { listProjects } from "@/lib/storage";
 import { whatsappConfigured } from "@/lib/whatsapp/provider";
 import { getAutomationSettings, listProjectCommunications } from "@/lib/whatsapp/queue";
+import { communicationOverview } from "@/lib/whatsapp/overview";
 import { countPendingMessages, listBroadcasts } from "@/lib/whatsapp/service";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +12,8 @@ export const dynamic = "force-dynamic";
 export default async function ComunicadosPage() {
   const user = await requirePageAccess("comunicados");
   const [projects, communications, broadcasts, automation, pending] = await Promise.all([listProjects(), listProjectCommunications(), listBroadcasts(), getAutomationSettings(), countPendingMessages()]);
+  const activeClients = projects.filter((project) => project.status === "ativo").map((project) => ({ id: project.id, name: project.client || project.name }));
+  const overview = await communicationOverview(activeClients);
   const groupByProject = new Map(communications.map((item) => [item.projectId, item.whatsappGroupId ? item.whatsappGroupName || item.whatsappGroupId : undefined]));
 
   return (
@@ -21,6 +24,7 @@ export default async function ComunicadosPage() {
         initialBroadcasts={broadcasts}
         initialAutomation={automation}
         initialPending={pending}
+        overview={overview}
       />
     </AdminShell>
   );

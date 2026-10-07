@@ -13,8 +13,10 @@ import { Button, Card, Field, Input, Select, Textarea } from "@/components/vz";
 import { useConfirm } from "@/components/confirm-dialog";
 import { formatDateTime } from "@/lib/dates";
 import { responseError } from "@/lib/request-error";
+import { CommunicationOverviewPanel } from "@/components/communication-overview";
 import { WhatsappAutomationPanel } from "@/components/whatsapp-automation-panel";
 import type { AutomationSettings } from "@/lib/whatsapp/messages";
+import type { CommunicationOverview } from "@/lib/whatsapp/overview";
 import type { Broadcast } from "@/lib/whatsapp/service";
 
 export type BroadcastClient = { id: string; name: string; groupName?: string };
@@ -28,11 +30,11 @@ function duration(seconds: number): string {
   return minutes < 90 ? `${minutes} minutos` : `${(minutes / 60).toFixed(1).replace(".", ",")} horas`;
 }
 
-export function BroadcastsView({ clients, configured, initialBroadcasts, initialAutomation, initialPending }: { clients: BroadcastClient[]; configured: boolean; initialBroadcasts: Broadcast[]; initialAutomation: AutomationSettings; initialPending: number }) {
+export function BroadcastsView({ clients, configured, initialBroadcasts, initialAutomation, initialPending, overview }: { clients: BroadcastClient[]; configured: boolean; initialBroadcasts: Broadcast[]; initialAutomation: AutomationSettings; initialPending: number; overview: CommunicationOverview }) {
   const [paused, setPaused] = useState(initialAutomation.paused);
   const [pending, setPending] = useState(initialPending);
   const [stopping, setStopping] = useState(false);
-  const [tab, setTab] = useState<"automaticas" | "comunicados">("automaticas");
+  const [tab, setTab] = useState<"geral" | "automaticas" | "comunicados">("geral");
   const reachable = useMemo(() => clients.filter((client) => client.groupName), [clients]);
   const [broadcasts, setBroadcasts] = useState(initialBroadcasts);
   const [title, setTitle] = useState("");
@@ -122,10 +124,12 @@ export function BroadcastsView({ clients, configured, initialBroadcasts, initial
       </div>
 
       <div className="broadcasts__tabs" role="tablist">
+        <button type="button" role="tab" aria-selected={tab === "geral"} className={tab === "geral" ? "active" : ""} onClick={() => setTab("geral")}>Visão geral</button>
         <button type="button" role="tab" aria-selected={tab === "automaticas"} className={tab === "automaticas" ? "active" : ""} onClick={() => setTab("automaticas")}>Mensagens automáticas</button>
         <button type="button" role="tab" aria-selected={tab === "comunicados"} className={tab === "comunicados" ? "active" : ""} onClick={() => setTab("comunicados")}>Comunicados</button>
       </div>
 
+      {tab === "geral" ? <CommunicationOverviewPanel overview={overview} automationEnabled={initialAutomation.enabled} paused={paused} /> : null}
       {tab === "automaticas" ? <WhatsappAutomationPanel initialSettings={initialAutomation} configured={configured} /> : null}
       {tab === "comunicados" ? <>
 
