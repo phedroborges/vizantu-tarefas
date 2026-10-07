@@ -113,3 +113,37 @@ describe("pacotes no painel do cliente", () => {
     expect(container.querySelector(".cd-modal")?.textContent || container.textContent).toContain("Vídeo posterior");
   });
 });
+
+describe("histórico de ajustes no portal", () => {
+  const pedido = { id: "e1", stage: "copy" as const, round: 1, action: "changes_requested" as const, reviewerName: "Richard", comment: "Trocar Boteco por Buteco", at: "2026-10-03T04:47:17.000Z" };
+  const texto: DashboardItem = { ...creative, id: "texto-1", name: "Convite para o Buteco", materialLink: null, reviewVersion: 1, description: "Convite para o Buteco" };
+
+  // O ajuste era simples e o conteúdo seguiu direto para a criação: o cliente
+  // precisa ver que pediu, que foi feito e o que mudou.
+  it("mostra o pedido, que foi aplicado e o que mudou no texto", async () => {
+    await mount({
+      ...texto, status: "pronto_para_criacao", approvalStatus: "changes_requested",
+      history: [{ ...pedido, outcome: "applied", resolvedAt: "2026-10-05T15:01:42.000Z", textBefore: "Convite para o Boteco", textAfter: "Convite para o Buteco" }],
+    });
+    expect(container.querySelector(".cd-sequence-stage .cd-pill")?.textContent).toBe("Texto: ajuste aplicado");
+    const history = container.querySelector(".cd-history")!;
+    expect(history.textContent).toContain("Richard pediu ajuste no texto");
+    expect(history.querySelector("blockquote")?.textContent).toBe("Trocar Boteco por Buteco");
+    expect(history.textContent).toContain("Ajuste aplicado pela equipe em 05 de out");
+    expect(history.querySelector(".cd-history__diff del")?.textContent).toBe("Boteco");
+    expect(history.querySelector(".cd-history__diff ins")?.textContent).toBe("Buteco");
+    expect(container.querySelector(".cd-decision-closed")?.textContent).toContain("Ajuste aplicado");
+  });
+
+  it("avisa que é uma nova versão quando o texto volta para aprovar", async () => {
+    await mount({ ...texto, status: "aprovacao_copy", approvalStatus: "pending", reviewVersion: 2, history: [{ ...pedido, outcome: "resent", resolvedAt: "2026-10-05T15:01:42.000Z" }] });
+    expect(container.querySelector(".cd-sequence-stage .cd-pill")?.textContent).toBe("Texto: nova versão para revisar");
+    expect(container.querySelector(".cd-history")?.textContent).toContain("Enviamos uma nova versão para você revisar");
+    expect(button("Aprovar texto")).toBeTruthy();
+  });
+
+  it("não mostra histórico em conteúdo que nunca teve pedido", async () => {
+    await mount(texto);
+    expect(container.querySelector(".cd-history")).toBeNull();
+  });
+});

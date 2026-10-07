@@ -1547,6 +1547,8 @@ audio.comment-attachment, .comment-attachment.is-audio audio { width: 100%; min-
 .approval-status { font-size: 10px; font-weight: 700; padding: 4px 8px; border-radius: 999px; white-space: nowrap; }
 .approval-approved { color: var(--vz-green-ink); background: var(--vz-green-bg); }
 .approval-changes_requested { color: var(--vz-amber-ink); background: var(--vz-amber-bg); }
+.approval-adjusted { color: var(--vz-blue-ink); background: var(--vz-blue-bg); }
+.approval-resent { color: var(--vz-brand-strong); background: var(--vz-brand-soft); }
 .approval-rejected { color: var(--vz-red-ink); background: var(--vz-red-bg); }
 .approval-pending { color: var(--vz-text-muted); background: var(--vz-slate-bg); }
 .plan-client-comment { display: inline-flex; align-items: center; gap: 4px; max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vz-amber-ink); }

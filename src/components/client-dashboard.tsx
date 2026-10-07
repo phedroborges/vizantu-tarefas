@@ -1,5 +1,6 @@
 "use client";
 
+import { approvalDisplay, diffWords, type ApprovalHistoryEntry } from "@/lib/approval-history";
 import { AlertCircle, CalendarClock, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Copy, ExternalLink, ImageIcon, Images, Link2, MessageCircleMore, Play, Sparkles, Video, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { renderMarkdownLite } from "@/components/markdown-lite";
@@ -31,12 +32,13 @@ export type DashboardItem = Partial<ClientPackageAssignment> & {
   materialLink: string | null;
   approvalStatus: "pending" | "approved" | "changes_requested" | "rejected";
   reviewVersion: number;
+  history?: ApprovalHistoryEntry[];
   updatedAt: string;
 };
 
 export type DashboardEvent = { id: string; title: string; date: string; eventType: string };
 
-const STATUS_LABEL: Record<string, string> = { pending: "pendente", approved: "aprovado", changes_requested: "em ajuste", rejected: "reprovado" };
+const STATUS_LABEL: Record<string, string> = { pending: "pendente", approved: "aprovado", changes_requested: "em ajuste", rejected: "reprovado", adjusted: "ajuste aplicado", resent: "nova versão para revisar" };
 const REVIEWER_KEY = "vizantu-client-reviewer-name";
 
 // O nome do revisor vive no localStorage, que é externo ao React. Lê-lo no
@@ -50,6 +52,34 @@ const readStoredNameOnServer = () => "";
 const isCreativeStage = (item: DashboardItem) => item.reviewVersion >= 100;
 const copyStatus = (item: DashboardItem) => isCreativeStage(item) ? "approved" : item.approvalStatus;
 const isReviewed = (item: DashboardItem) => item.approvalStatus !== "pending";
+// O que mostrar no selo: depois de um pedido, ele acompanha o que a equipe fez.
+const displayStatus = (item: DashboardItem) => approvalDisplay({
+  approvalStatus: item.approvalStatus, reviewVersion: item.reviewVersion, taskStatus: item.status,
+  hadRequest: (item.history || []).some((entry) => entry.action !== "approved" && (entry.stage === "creative") === isCreativeStage(item)),
+});
+
+function ApprovalHistory({ entries }: { entries: ApprovalHistoryEntry[] }) {
+  const requests = entries.filter((entry) => entry.action !== "approved");
+  if (!requests.length) return null;
+  const when = (iso?: string) => iso ? new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", timeZone: "America/Sao_Paulo" }).replace(".", "") : "";
+  return <section className="cd-history" aria-label="Histórico de ajustes">
+    <span className="cd-eyebrow">Histórico de ajustes</span>
+    <ol>{requests.map((entry) => <li key={entry.id} className={`outcome-${entry.outcome}`}>
+      <p className="cd-history__ask"><strong>{entry.reviewerName || "Você"} {entry.action === "rejected" ? "reprovou" : "pediu ajuste"} {entry.stage === "creative" ? "na criação" : "no texto"}</strong><time dateTime={entry.at}>{when(entry.at)}</time></p>
+      {entry.comment ? <blockquote>{entry.comment}</blockquote> : null}
+      <p className="cd-history__answer">
+        {entry.outcome === "open" ? <><Clock3 size={13} /> Estamos trabalhando neste ajuste.</> : null}
+        {entry.outcome === "applied" ? <><Check size={13} /> Ajuste aplicado pela equipe em {when(entry.resolvedAt)}. O conteúdo seguiu para a produção.</> : null}
+        {entry.outcome === "resent" ? <><Check size={13} /> Ajuste aplicado em {when(entry.resolvedAt)}. Enviamos uma nova versão para você revisar.</> : null}
+      </p>
+      {entry.textBefore !== undefined && entry.textAfter !== undefined ? <details className="cd-history__diff">
+        <summary>Ver o que mudou no texto</summary>
+        <div>{diffWords(entry.textBefore, entry.textAfter).map((part, index) => part.type === "added" ? <ins key={index}>{part.text}</ins> : part.type === "removed" ? <del key={index}>{part.text}</del> : <span key={index}>{part.text}</span>)}</div>
+        <small><ins>Verde</ins> é o que entrou, <del>riscado</del> é o que saiu.</small>
+      </details> : null}
+    </li>)}</ol>
+  </section>;
+}
 
 function ContentIcon({ format, size = 13 }: { format?: string | null; size?: number }) {
   const value = (format || "").toLowerCase();
@@ -349,7 +379,7 @@ export function ClientDashboard({
                     {item.categoryLabel ? <Tag>{item.categoryLabel}</Tag> : null}
                   </span>
                 </span>
-                <span className="cd-sequence-stage"><span className={`cd-pill status-${item.approvalStatus}`}>{isCreativeStage(item) ? "Criativo" : "Texto"}: {STATUS_LABEL[item.approvalStatus]}</span>{item.reference ? <small><Link2 size={10} /> referência</small> : null}</span>
+                <span className="cd-sequence-stage"><span className={`cd-pill status-${displayStatus(item)}`}>{isCreativeStage(item) ? "Criativo" : "Texto"}: {STATUS_LABEL[displayStatus(item)]}</span>{item.reference ? <small><Link2 size={10} /> referência</small> : null}</span>
               </button>
             ))}
                 </div>
@@ -626,6 +656,8 @@ function ApprovalModal({
           <span className={creativeStage ? "is-current" : "is-locked"}>2. Criação</span>
         </div>
 
+        <ApprovalHistory entries={item.history || []} />
+
         {item.description ? <div className="cd-item-description"><ItemDescription text={item.description} /></div> : <div className="cd-item-description cd-description-empty">Este conteúdo ainda não tem descrição.</div>}
 
         {item.reference ? <div className="cd-reference-card"><span className="cd-eyebrow">Referência</span><p>{item.reference}</p>{referenceUrl(item.reference) ? <a href={referenceUrl(item.reference)!} target="_blank" rel="noreferrer"><ExternalLink size={13} />Abrir referência</a> : null}</div> : null}
@@ -662,7 +694,12 @@ function ApprovalModal({
           <button type="button" className="cd-btn date" disabled={!requestedDate || !reviewerName.trim() || dateSending} onClick={requestDateChange}>{dateSending ? "Enviando…" : "Enviar sugestão de data"}</button>
         </div> : null}
 
-        {decisionClosed ? (
+        {decisionClosed && displayStatus(item) === "adjusted" ? (
+          <div className="cd-decision-closed status-adjusted">
+            <Check size={18} />
+            <span><strong>Ajuste aplicado</strong>A equipe fez o ajuste que você pediu e o conteúdo seguiu para a produção. O que mudou está no histórico acima.</span>
+          </div>
+        ) : decisionClosed ? (
           <div className={`cd-decision-closed status-${item.approvalStatus}`}>
             {item.approvalStatus === "approved" ? <Check size={18} className="cd-celebrate-icon" /> : <X size={18} />}
             <span><strong>{item.approvalStatus === "approved" ? "Aprovado" : item.approvalStatus === "changes_requested" ? "Ajuste solicitado" : "Reprovado"}</strong>Sua decisão nesta rodada foi registrada. Uma nova resposta só será liberada quando a equipe abrir outra versão.</span>

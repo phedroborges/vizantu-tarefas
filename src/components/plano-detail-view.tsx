@@ -1,5 +1,7 @@
 "use client";
 
+import { approvalStage } from "@/lib/approval-workflow";
+import { APPROVAL_DISPLAY_LABELS, approvalDisplay } from "@/lib/approval-history";
 import { CalendarDays, Camera, ChevronRight, ClipboardList, Filter, LayoutGrid, Link as LinkIcon, List, MessageSquareText, Package, Palette, Plus, Search, Send, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
@@ -268,7 +270,6 @@ export function PlanoDetailView({
     approvalResponses.forEach((response) => map.set(response.taskId, [...(map.get(response.taskId) || []), response]));
     return map;
   }, [approvalResponses]);
-  const approvalLabels = { pending: "Pendente", approved: "Aprovado", changes_requested: "Ajuste solicitado", rejected: "Reprovado" } as const;
   const coresPorEtapa = useMemo(() => statusColorMap(statusColors), [statusColors]);
 
   const copyApprovals = tasks.map((task) => {
@@ -548,7 +549,13 @@ export function PlanoDetailView({
     const assignee = task.assigneeId ? memberById.get(task.assigneeId)?.name : undefined;
     const approval = approvalByTask.get(task.id);
     const clientResponses = responsesByTask.get(task.id) || [];
-    const approvalStatus = approval?.status || "pending";
+    const reviewVersion = approval?.reviewVersion || 1;
+    // O selo conta o que aconteceu depois do pedido: se o conteúdo já saiu do
+    // ajuste, ele deixa de dizer "ajuste solicitado".
+    const approvalState = approvalDisplay({
+      approvalStatus: approval?.status || "pending", reviewVersion, taskStatus: task.status,
+      hadRequest: clientResponses.some((response) => response.status !== "approved" && approvalStage(response.reviewVersion) === approvalStage(reviewVersion)),
+    });
     return (
       <li key={task.id} className="plan-item-row">
         <div className="plan-item-row-main" onClick={() => setEditingTask(task)}>
@@ -570,7 +577,7 @@ export function PlanoDetailView({
               <Package size={11} /> {captacaoById.get(task.captacaoId)?.label}
             </span>
           ) : null}
-          <span className={`approval-status approval-${approvalStatus}`}>{approvalLabels[approvalStatus]}</span>
+          <span className={`approval-status approval-${approvalState}`}>{APPROVAL_DISPLAY_LABELS[approvalState]}</span>
           <StatusTag status={task.status} colorByStatus={coresPorEtapa} />
         </div>
       </li>

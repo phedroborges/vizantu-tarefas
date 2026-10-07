@@ -1,3 +1,4 @@
+import { buildApprovalHistory, type ApprovalHistoryEntry } from "./approval-history";
 import { organizeClientPackages, type ClientPackageAssignment } from "./client-packages";
 import { todayIso } from "./dates";
 import { canReviewItem, derivePlanStage, formatRequiresCapture, nextApprovalReviewVersion, taskStatusAfterClientDecision } from "./approval-workflow";
@@ -1229,6 +1230,8 @@ export type ProjectPlanItem = Partial<ClientPackageAssignment> & {
   materialLink: string | null;
   approvalStatus: PlanApprovalStatus;
   reviewVersion: number;
+  /** O que o cliente já pediu neste conteúdo e o que a equipe fez depois. */
+  history: ApprovalHistoryEntry[];
   updatedAt: string;
 };
 
@@ -1241,9 +1244,11 @@ export async function listProjectPlanItems(projectId: string): Promise<ProjectPl
   const rows = unwrap(
     await db
       .from("tasks")
-      .select("id, plan_id, captacao_id, sequence_order, name, status, due_date, format_tag_ids, channel_tag_ids, category_tag_ids, description, drive_link, updated_at")
+      .select("id, plan_id, captacao_id, sequence_order, name, status, due_date, format_tag_ids, channel_tag_ids, category_tag_ids, description, drive_link, updated_at, status_history, comments")
       .in("plan_id", planIds),
   ) as {
+    status_history: TaskRow["status_history"] | null;
+    comments: TaskRow["comments"] | null;
     id: string;
     plan_id: string;
     captacao_id: string | null;
@@ -1263,12 +1268,15 @@ export async function listProjectPlanItems(projectId: string): Promise<ProjectPl
   const taskIds = rows.map((t) => t.id);
   const tagIds = Array.from(new Set(rows.flatMap((t) => [...t.format_tag_ids, ...t.channel_tag_ids, ...t.category_tag_ids])));
 
-  const [captacoes, tags, approvals, events] = await Promise.all([
+  const [captacoes, tags, approvals, events, decisions] = await Promise.all([
     db.from("plan_captacoes").select("id, plan_id, label, package_kind, sequence_order").in("plan_id", planIds).then((result) => unwrap(result) as { id: string; plan_id: string; label: string; package_kind: "capture" | "creation"; sequence_order: number }[]),
     tagIds.length ? db.from("tags").select("id, label, kind").in("id", tagIds).then((result) => unwrap(result) as { id: string; label: string; kind: string }[]) : Promise.resolve([]),
     db.from("plan_item_approvals").select("task_id, status, review_version").in("task_id", taskIds).then((result) => unwrap(result) as { task_id: string; status: PlanApprovalStatus; review_version: number }[]),
     listPlanEvents(projectId),
+    db.from("plan_approval_events").select("*").in("task_id", taskIds).neq("action", "reopened").then((result) => (unwrap(result) as PlanApprovalEventRow[]).map(mapPlanApprovalEvent)),
   ]);
+  const decisionsByTask = new Map<string, PlanApprovalEvent[]>();
+  for (const decision of decisions) decisionsByTask.set(decision.taskId, [...(decisionsByTask.get(decision.taskId) || []), decision]);
 
   const captacaoById = new Map(captacoes.map((c) => [c.id, c.label]));
   const tagById = new Map(tags.map((t) => [t.id, t]));
@@ -1307,6 +1315,8 @@ export async function listProjectPlanItems(projectId: string): Promise<ProjectPl
       materialLink: t.drive_link,
       approvalStatus: approval?.status || "pending",
       reviewVersion: approval?.review_version || 1,
+      // Só o resumo vai para o cliente; os comentários internos ficam aqui.
+      history: buildApprovalHistory({ description: t.description, statusHistory: t.status_history ?? [], comments: t.comments ?? [] }, decisionsByTask.get(t.id) || []),
       updatedAt: t.updated_at,
     };
   }).sort((a, b) => (a.dueDate || "9999-12-31").localeCompare(b.dueDate || "9999-12-31") || a.name.localeCompare(b.name, "pt-BR"));
