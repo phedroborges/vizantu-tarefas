@@ -741,7 +741,12 @@ function ApprovalModal({
           <button type="button" className="cd-btn date" disabled={!requestedDate || !reviewerName.trim() || dateSending} onClick={requestDateChange}>{dateSending ? "Enviando…" : "Enviar sugestão de data"}</button>
         </div> : null}
 
-        {decisionClosed && displayStatus(item) === "adjusted" ? (
+        {item.status === "finalizado" ? (
+          <div className="cd-decision-closed status-approved">
+            <Check size={18} />
+            <span><strong>Concluído</strong>Este conteúdo já foi concluído pela equipe. Não precisa mais da sua resposta.</span>
+          </div>
+        ) : decisionClosed && displayStatus(item) === "adjusted" ? (
           <div className="cd-decision-closed status-adjusted">
             <Check size={18} />
             <span><strong>Ajuste aplicado</strong>A equipe fez o ajuste que você pediu e o conteúdo seguiu para a produção. O que mudou está no histórico acima.</span>

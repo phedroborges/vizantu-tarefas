@@ -2,7 +2,7 @@ import { queueApprovalNotice } from "./whatsapp/queue";
 import { buildApprovalHistory, type ApprovalHistoryEntry } from "./approval-history";
 import { organizeClientPackages, type ClientPackageAssignment } from "./client-packages";
 import { todayIso } from "./dates";
-import { canReviewItem, derivePlanStage, formatRequiresCapture, nextApprovalReviewVersion, taskStatusAfterClientDecision } from "./approval-workflow";
+import { canReviewItem, derivePlanStage, formatRequiresCapture, nextApprovalReviewVersion, settleApproval, taskStatusAfterClientDecision } from "./approval-workflow";
 import { mergePreferences, normalizePreferences, type MemberPreferences } from "./preferences";
 import { inheritsCaptureEditor } from "./assignee-inheritance";
 import { parseDescription } from "./description-sections";
@@ -1310,7 +1310,8 @@ export async function listProjectPlanItems(projectId: string): Promise<ProjectPl
   const items = rows.map((t) => {
     const formatId = t.format_tag_ids.find((id) => tagById.get(id)?.kind === "formato");
     const channelId = t.channel_tag_ids.find((id) => tagById.get(id)?.kind === "canal");
-    const approval = approvalByTask.get(t.id);
+    // Conteúdo finalizado conta como aprovado para o cliente também.
+    const approval = settleApproval({ status: approvalByTask.get(t.id)?.status || "pending", reviewVersion: approvalByTask.get(t.id)?.review_version || 1 }, t.status);
     const reference = parseDescription(t.description || undefined).referencia || null;
     return {
       id: t.id,
@@ -1329,8 +1330,8 @@ export async function listProjectPlanItems(projectId: string): Promise<ProjectPl
       reference,
       description: t.description,
       materialLink: t.drive_link,
-      approvalStatus: approval?.status || "pending",
-      reviewVersion: approval?.review_version || 1,
+      approvalStatus: approval.status,
+      reviewVersion: approval.reviewVersion,
       // Só o resumo vai para o cliente; os comentários internos ficam aqui.
       history: buildApprovalHistory({ description: t.description, statusHistory: t.status_history ?? [], comments: t.comments ?? [] }, decisionsByTask.get(t.id) || []),
       updatedAt: t.updated_at,
@@ -1360,7 +1361,7 @@ export async function listPlanStages(plans: { id: string; projectId: string }[])
 
   const [linkRows, taskRows] = await Promise.all([
     db.from("client_links").select("project_id, revoked_at, expires_at").in("project_id", projectIds).then((result) => unwrap(result) as { project_id: string; revoked_at: string | null; expires_at: string | null }[]),
-    db.from("tasks").select("id, plan_id").in("plan_id", plans.map((plan) => plan.id)).then((result) => unwrap(result) as { id: string; plan_id: string }[]),
+    db.from("tasks").select("id, plan_id, status").in("plan_id", plans.map((plan) => plan.id)).then((result) => unwrap(result) as { id: string; plan_id: string; status: TaskStatus }[]),
   ]);
   const approvalRows = taskRows.length
     ? (unwrap(await db.from("plan_item_approvals").select("task_id, status, review_version").in("task_id", taskRows.map((task) => task.id))) as { task_id: string; status: PlanApprovalStatus; review_version: number }[])
@@ -1375,14 +1376,17 @@ export async function listPlanStages(plans: { id: string; projectId: string }[])
       .map((link) => link.project_id),
   );
 
-  const planByTask = new Map(taskRows.map((task) => [task.id, task.plan_id]));
   const taskCounts = new Map<string, number>();
   taskRows.forEach((task) => taskCounts.set(task.plan_id, (taskCounts.get(task.plan_id) || 0) + 1));
   const approvalsByPlan = new Map<string, { status: PlanApprovalStatus; reviewVersion: number }[]>();
-  approvalRows.forEach((row) => {
-    const planId = planByTask.get(row.task_id);
-    if (!planId) return;
-    approvalsByPlan.set(planId, [...(approvalsByPlan.get(planId) || []), { status: row.status, reviewVersion: row.review_version }]);
+  // Tarefa finalizada conta como criativo aprovado, mesmo sem resposta do
+  // cliente registrada — senão um plano todo publicado nunca fecharia.
+  const approvalRowByTask = new Map(approvalRows.map((row) => [row.task_id, row]));
+  taskRows.forEach((task) => {
+    const row = approvalRowByTask.get(task.id);
+    if (!row && task.status !== "finalizado") return;
+    const approval = settleApproval({ status: row?.status || "pending", reviewVersion: row?.review_version || 1 }, task.status);
+    approvalsByPlan.set(task.plan_id, [...(approvalsByPlan.get(task.plan_id) || []), approval]);
   });
 
   return Object.fromEntries(plans.map((plan) => [

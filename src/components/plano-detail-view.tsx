@@ -1,6 +1,6 @@
 "use client";
 
-import { approvalStage } from "@/lib/approval-workflow";
+import { approvalStage, settleApproval } from "@/lib/approval-workflow";
 import { APPROVAL_DISPLAY_LABELS, approvalDisplay } from "@/lib/approval-history";
 import { CalendarDays, Camera, ChevronRight, ClipboardList, Filter, LayoutGrid, Link as LinkIcon, List, MessageSquareText, Package, Palette, Plus, Search, Send, Trash2, X } from "lucide-react";
 import Link from "next/link";
@@ -264,7 +264,17 @@ export function PlanoDetailView({
   const { confirm, ConfirmDialog } = useConfirm();
 
   const isContent = plan.kind === "content";
-  const approvalByTask = useMemo(() => new Map(initialApprovals.map((approval) => [approval.taskId, approval])), [initialApprovals]);
+  // Finalizado é absoluto: a tarefa finalizada conta como aprovada, mesmo que
+  // o cliente nunca tenha respondido pelo portal.
+  const approvalByTask = useMemo(() => {
+    const stored = new Map(initialApprovals.map((approval) => [approval.taskId, approval]));
+    const map = new Map<string, PlanItemApproval>();
+    for (const task of tasks) {
+      const approval = stored.get(task.id) ?? (task.status === "finalizado" ? { taskId: task.id, status: "pending" as const, reviewVersion: 1, updatedAt: task.updatedAt } : undefined);
+      if (approval) map.set(task.id, settleApproval(approval, task.status));
+    }
+    return map;
+  }, [initialApprovals, tasks]);
   const responsesByTask = useMemo(() => {
     const map = new Map<string, PlanApprovalResponse[]>();
     approvalResponses.forEach((response) => map.set(response.taskId, [...(map.get(response.taskId) || []), response]));
@@ -277,7 +287,7 @@ export function PlanoDetailView({
     if (!approval) return { taskId: task.id, status: "pending" as const, reviewVersion: 1, updatedAt: task.updatedAt };
     return approval.reviewVersion >= 100 ? { ...approval, status: "approved" as const, reviewVersion: 1 } : approval;
   });
-  const hasCreativeRound = initialApprovals.some((approval) => approval.reviewVersion >= 100);
+  const hasCreativeRound = [...approvalByTask.values()].some((approval) => approval.reviewVersion >= 100);
   const creativeApprovals = tasks.map((task) => {
     const approval = approvalByTask.get(task.id);
     return approval?.reviewVersion && approval.reviewVersion >= 100

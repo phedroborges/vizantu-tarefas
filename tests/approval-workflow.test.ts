@@ -1,5 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { canReviewItem, approvalRound, approvalStage, derivePlanStage, formatRequiresCapture, nextApprovalReviewVersion, planStageLabel, summarizeApprovalRound, taskStatusAfterClientDecision } from "../src/lib/approval-workflow";
+import { canReviewItem, approvalRound, approvalStage, derivePlanStage, formatRequiresCapture, nextApprovalReviewVersion, planStageLabel, settleApproval, summarizeApprovalRound, taskStatusAfterClientDecision } from "../src/lib/approval-workflow";
+
+describe("finalizado é absoluto", () => {
+  it("conta como criativo aprovado o que foi finalizado sem resposta do cliente", () => {
+    expect(settleApproval({ status: "pending", reviewVersion: 100 }, "finalizado")).toEqual({ status: "approved", reviewVersion: 100 });
+    // Mesmo que o texto nunca tenha sido aprovado, ou tenha ficado em ajuste.
+    expect(settleApproval({ status: "pending", reviewVersion: 1 }, "finalizado")).toEqual({ status: "approved", reviewVersion: 100 });
+    expect(settleApproval({ status: "changes_requested", reviewVersion: 2 }, "finalizado")).toEqual({ status: "approved", reviewVersion: 100 });
+  });
+
+  it("não mexe no que ainda não foi finalizado", () => {
+    const pendente = { status: "pending" as const, reviewVersion: 100 };
+    expect(settleApproval(pendente, "aprovado")).toBe(pendente);
+    expect(settleApproval(pendente, "para_aprovacao")).toBe(pendente);
+  });
+
+  it("um plano com tudo finalizado fecha como aprovado", () => {
+    const approvals = [{ status: "pending" as const, reviewVersion: 1 }, { status: "pending" as const, reviewVersion: 100 }].map((approval) => settleApproval(approval, "finalizado"));
+    expect(derivePlanStage({ hasClientLink: true, approvals, taskCount: 2 })).toBe("aprovado");
+    expect(summarizeApprovalRound(approvals, "creative")).toMatchObject({ total: 2, reviewed: 2, approved: 2, fullyReviewed: true });
+  });
+});
 
 describe("fluxo de aprovação em duas etapas", () => {
   it("separa versões de texto e criativo em rodadas legíveis", () => {

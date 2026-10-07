@@ -8,6 +8,14 @@ export type ApprovalStage = "copy" | "creative";
 // aprovou" no histórico e nos números de adesão.
 export const AUTO_APPROVAL_REVIEWER = "Aprovação automática (prazo)";
 
+/** Finalizado é absoluto: se a tarefa foi finalizada, tudo que havia para
+ * aprovar nela está resolvido, com ou sem resposta registrada no portal. Um
+ * conteúdo publicado não pode aparecer como "pendente de revisão" nem segurar
+ * o plano como incompleto. */
+export function settleApproval<T extends { status: PlanApprovalStatus; reviewVersion: number }>(approval: T, taskStatus: string): T {
+  return taskStatus === "finalizado" ? { ...approval, status: "approved", reviewVersion: Math.max(approval.reviewVersion, 100) } : approval;
+}
+
 export function approvalStage(reviewVersion: number): ApprovalStage {
   return reviewVersion >= 100 ? "creative" : "copy";
 }
