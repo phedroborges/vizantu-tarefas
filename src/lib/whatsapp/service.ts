@@ -14,7 +14,7 @@ import { horaEmSaoPaulo } from "../overdue-scheduler";
 import { submitPlanApprovalResponse } from "../storage";
 import { getSupabase } from "../supabase-client";
 import type { StatusHistoryEntry, TaskStatus } from "../types";
-import { composeMessage, isBusinessDay, planBroadcast, reminderStep, startDeadlineClock } from "./messages";
+import { composeMessage, insideSendWindow, isBusinessDay, nextGapMs, planBroadcast, reminderStep, shuffled, startDeadlineClock } from "./messages";
 import { sendWhatsappMedia, sendWhatsappText, whatsappConfigured, type WhatsappMedia } from "./provider";
 import { getAutomationSettings, listProjectCommunications, queueApprovalNotice, type ProjectCommunication } from "./queue";
 
@@ -124,24 +124,51 @@ async function deliver(row: MessageRow): Promise<void> {
   else await sendWhatsappText(row.group_id, body);
 }
 
-/** Envia o que está na hora. Poucas por vez: é uma conta de WhatsApp comum,
- * não um canal de disparo. */
-export async function processOutbox(limit = 3): Promise<number> {
+// Lembrete escrito de manhã não pode sair de noite, nem no dia seguinte, com
+// "faltam 3 dias" já errado. O que ficou tempo demais na fila é descartado.
+const STALE_MS = 20 * 3_600_000;
+let nextSendAt = 0;
+
+/** Envia a próxima mensagem da fila, se já passou o intervalo desde a última.
+ * Uma por vez, espaçadas: é uma conta de WhatsApp comum, não um canal de
+ * disparo, e várias mensagens seguidas para grupos diferentes dão bloqueio. */
+export async function processOutbox(): Promise<number> {
   if (!whatsappConfigured()) return 0;
+  const automation = await getAutomationSettings();
+  if (automation.paused) return 0;
   const db = getSupabase();
-  const due = unwrap<{ id: string }[]>(await db.from("whatsapp_messages").select("id").eq("status", "pending").lte("scheduled_at", new Date().toISOString()).order("scheduled_at").limit(limit));
-  let sent = 0;
-  for (const { id } of due) {
-    const claimed = unwrap<MessageRow[]>(await db.from("whatsapp_messages").update({ status: "sent", sent_at: new Date().toISOString() }).eq("id", id).eq("status", "pending").select());
-    if (!claimed.length) continue;
-    try {
-      await deliver(claimed[0]);
-      sent += 1;
-    } catch (error) {
-      await finish(id, { status: "failed", error: error instanceof Error ? error.message.slice(0, 500) : "Falha no envio." }).catch(() => {});
-    }
+  const now = Date.now();
+  unwrap(await db.from("whatsapp_messages").update({ status: "skipped", error: "Ficou tempo demais na fila." }).eq("status", "pending").in("kind", ["reminder", "last_day", "auto_approved"]).lt("scheduled_at", new Date(now - STALE_MS).toISOString()));
+
+  if (now < nextSendAt) return 0;
+  // Depois de reiniciar o servidor a memória do último envio se perde: o
+  // banco diz quando foi, e o intervalo mínimo continua valendo.
+  const last = unwrap<{ sent_at: string | null }[]>(await db.from("whatsapp_messages").select("sent_at").eq("status", "sent").order("sent_at", { ascending: false }).limit(1))[0];
+  if (last?.sent_at && now - new Date(last.sent_at).getTime() < automation.minGapMinutes * 60_000) return 0;
+
+  // Comunicado é decisão de quem enviou e sai na hora combinada; aviso
+  // automático respeita a janela do dia.
+  const windowOpen = insideSendWindow(new Date(now), automation);
+  const due = unwrap<{ id: string; kind: string }[]>(await db.from("whatsapp_messages").select("id, kind").eq("status", "pending").lte("scheduled_at", new Date(now).toISOString()).order("scheduled_at").limit(20));
+  const next = due.find((message) => message.kind === "broadcast" || windowOpen);
+  if (!next) return 0;
+  const claimed = unwrap<MessageRow[]>(await db.from("whatsapp_messages").update({ status: "sent", sent_at: new Date(now).toISOString() }).eq("id", next.id).eq("status", "pending").select());
+  if (!claimed.length) return 0;
+  nextSendAt = now + nextGapMs(automation.minGapMinutes);
+  try {
+    await deliver(claimed[0]);
+    return 1;
+  } catch (error) {
+    await finish(next.id, { status: "failed", error: error instanceof Error ? error.message.slice(0, 500) : "Falha no envio." }).catch(() => {});
+    return 0;
   }
-  return sent;
+}
+
+/** Quantas mensagens estão esperando para sair. */
+export async function countPendingMessages(): Promise<number> {
+  const { count, error } = await getSupabase().from("whatsapp_messages").select("id", { count: "exact", head: true }).eq("status", "pending");
+  if (error) throw new Error(error.message);
+  return count ?? 0;
 }
 
 // ---------- Lembretes e prazo ----------
@@ -168,11 +195,12 @@ async function autoApprove(projectId: string, overdue: Waiting[]): Promise<numbe
 export async function runDailyApprovalRoutine(now = new Date()): Promise<void> {
   if (!whatsappConfigured()) return;
   const automation = await getAutomationSettings();
-  if (!automation.enabled || (automation.weekdaysOnly && !isBusinessDay(now)) || horaEmSaoPaulo(now) < automation.sendHour) return;
+  if (automation.paused || !automation.enabled || (automation.weekdaysOnly && !isBusinessDay(now)) || horaEmSaoPaulo(now) < automation.sendHour) return;
   const today = isoDateInSaoPaulo(now);
   const pending = await pendingApprovalsByProject();
   const settingsByProject = new Map((await listProjectCommunications()).map((item): [string, ProjectCommunication] => [item.projectId, item]));
-  for (const [projectId, waiting] of pending) {
+  // Ordem sorteada a cada dia; o espaçamento entre os envios é da fila.
+  for (const [projectId, waiting] of shuffled([...pending])) {
     const settings = settingsByProject.get(projectId);
     if (!settings?.whatsappGroupId || !settings.notifyEnabled) continue;
     const link = await clientPortalLink(projectId);
@@ -223,6 +251,7 @@ export class BroadcastError extends Error {}
 
 export async function createBroadcast(input: { title: string; variations: string[]; media?: WhatsappMedia; projectIds: string[]; intervalSeconds: number; createdBy?: string }): Promise<{ id: string; queued: number; withoutGroup: string[] }> {
   if (!whatsappConfigured()) throw new BroadcastError("O WhatsApp ainda não está configurado no servidor.");
+  if ((await getAutomationSettings()).paused) throw new BroadcastError("Os envios do WhatsApp estão pausados pela parada de emergência.");
   const variations = input.variations.map((text) => text.trim()).filter(Boolean);
   if (!variations.length && !input.media) throw new BroadcastError("Escreva a mensagem ou anexe uma mídia.");
   const settings = new Map((await listProjectCommunications()).map((item): [string, ProjectCommunication] => [item.projectId, item]));
@@ -282,7 +311,7 @@ async function tick(): Promise<void> {
   // os avisos ou mudar o horário vale sem reiniciar o servidor.
   if (lastDailyRun !== today) {
     const automation = await getAutomationSettings().catch(() => undefined);
-    if (automation?.enabled && (!automation.weekdaysOnly || isBusinessDay(now)) && horaEmSaoPaulo(now) >= automation.sendHour) {
+    if (automation?.enabled && !automation.paused && (!automation.weekdaysOnly || isBusinessDay(now)) && horaEmSaoPaulo(now) >= automation.sendHour) {
       lastDailyRun = today;
       await runDailyApprovalRoutine(now).catch((error) => console.error("[whatsapp] rotina diária falhou:", error));
     }

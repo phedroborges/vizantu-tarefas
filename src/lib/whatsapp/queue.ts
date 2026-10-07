@@ -77,7 +77,9 @@ export async function saveAutomationSettings(input: Partial<AutomationSettings>)
  * grupo. Nunca lança — falha de aviso não pode impedir a troca de status. */
 export async function queueApprovalNotice(projectId: string): Promise<void> {
   try {
-    if (!whatsappConfigured() || !(await getAutomationSettings()).enabled) return;
+    if (!whatsappConfigured()) return;
+    const automation = await getAutomationSettings();
+    if (automation.paused || !automation.enabled) return;
     const settings = await getProjectCommunication(projectId);
     if (!settings.whatsappGroupId || !settings.notifyEnabled) return;
     const db = getSupabase();

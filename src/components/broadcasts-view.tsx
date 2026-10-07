@@ -7,7 +7,7 @@
 // a mesma mensagem, idêntica, disparada em sequência para vários grupos é o
 // comportamento que faz o WhatsApp bloquear um número.
 
-import { Megaphone, Plus, Trash2, Upload } from "lucide-react";
+import { Megaphone, OctagonX, Play, Plus, Trash2, Upload } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { Button, Card, Field, Input, Select, Textarea } from "@/components/vz";
 import { useConfirm } from "@/components/confirm-dialog";
@@ -28,7 +28,10 @@ function duration(seconds: number): string {
   return minutes < 90 ? `${minutes} minutos` : `${(minutes / 60).toFixed(1).replace(".", ",")} horas`;
 }
 
-export function BroadcastsView({ clients, configured, initialBroadcasts, initialAutomation }: { clients: BroadcastClient[]; configured: boolean; initialBroadcasts: Broadcast[]; initialAutomation: AutomationSettings }) {
+export function BroadcastsView({ clients, configured, initialBroadcasts, initialAutomation, initialPending }: { clients: BroadcastClient[]; configured: boolean; initialBroadcasts: Broadcast[]; initialAutomation: AutomationSettings; initialPending: number }) {
+  const [paused, setPaused] = useState(initialAutomation.paused);
+  const [pending, setPending] = useState(initialPending);
+  const [stopping, setStopping] = useState(false);
   const [tab, setTab] = useState<"automaticas" | "comunicados">("automaticas");
   const reachable = useMemo(() => clients.filter((client) => client.groupName), [clients]);
   const [broadcasts, setBroadcasts] = useState(initialBroadcasts);
@@ -45,7 +48,22 @@ export function BroadcastsView({ clients, configured, initialBroadcasts, initial
   const nameById = useMemo(() => new Map(clients.map((client) => [client.id, client.name])), [clients]);
 
   const texts = variations.map((text) => text.trim()).filter(Boolean);
-  const canSend = configured && selected.length > 0 && (texts.length > 0 || mediaUrl.trim()) && busy === "";
+  const canSend = configured && !paused && selected.length > 0 && (texts.length > 0 || mediaUrl.trim()) && busy === "";
+
+  // Parada de emergência: vale na hora, sem depender de salvar mais nada.
+  async function togglePause() {
+    if (paused) {
+      const ok = await confirm({ title: "Retomar os envios?", message: pending ? `Há ${pending} ${pending === 1 ? "mensagem" : "mensagens"} na fila. Elas voltam a sair uma por vez, respeitando o intervalo e a janela de envio.` : "Os avisos automáticos e os comunicados voltam a funcionar.", confirmLabel: "Retomar envios" });
+      if (!ok) return;
+    }
+    setStopping(true);
+    const response = await fetch("/api/whatsapp/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ paused: !paused }) });
+    setStopping(false);
+    if (!response.ok) return setMessage({ text: await responseError(response, "alterar a parada de emergência"), error: true });
+    const result = await response.json();
+    setPaused(result.settings.paused);
+    setPending(result.pending);
+  }
 
   async function reload() {
     const response = await fetch("/api/whatsapp/broadcasts");
@@ -95,6 +113,14 @@ export function BroadcastsView({ clients, configured, initialBroadcasts, initial
     <main className="admin-page dashboard broadcasts">
       <div className="dashboard-head"><div><span className="eyebrow">Clientes</span><h1>Comunicação</h1><p>O que os clientes recebem no grupo de WhatsApp: os avisos automáticos de aprovação e os comunicados enviados por vocês.</p></div></div>
 
+      <div className={`broadcasts__stop${paused ? " is-paused" : ""}`} role="status">
+        <div>
+          <strong>{paused ? "Envios pausados" : "Envios ativos"}</strong>
+          <span>{paused ? `Nada sai pelo WhatsApp: nem aviso automático, nem comunicado, nem mensagem de teste.${pending ? ` ${pending} ${pending === 1 ? "mensagem espera" : "mensagens esperam"} na fila.` : ""}` : `Em caso de urgência, pause todos os envios do WhatsApp de uma vez.${pending ? ` ${pending} ${pending === 1 ? "mensagem" : "mensagens"} na fila agora.` : ""}`}</span>
+        </div>
+        <Button type="button" variant={paused ? "primary" : "danger"} onClick={togglePause} disabled={stopping}>{paused ? <><Play size={14} /> Retomar envios</> : <><OctagonX size={14} /> Pausar tudo agora</>}</Button>
+      </div>
+
       <div className="broadcasts__tabs" role="tablist">
         <button type="button" role="tab" aria-selected={tab === "automaticas"} className={tab === "automaticas" ? "active" : ""} onClick={() => setTab("automaticas")}>Mensagens automáticas</button>
         <button type="button" role="tab" aria-selected={tab === "comunicados"} className={tab === "comunicados" ? "active" : ""} onClick={() => setTab("comunicados")}>Comunicados</button>
@@ -130,7 +156,7 @@ export function BroadcastsView({ clients, configured, initialBroadcasts, initial
             </span>
           </Field>
 
-          <Field label="Intervalo entre os envios (segundos)" hint={selected.length > 1 ? `Com ${selected.length} grupos, o último recebe em cerca de ${duration(interval * 1.15 * (selected.length - 1))}.` : "O tempo entre um grupo e o próximo, com uma folga aleatória."}>
+          <Field label="Intervalo entre os envios (segundos)" hint={selected.length > 1 ? `Com ${selected.length} grupos, o último recebe em cerca de ${duration(Math.max(interval * 1.15, initialAutomation.minGapMinutes * 60 * 1.3) * (selected.length - 1))}. Vale o maior entre este intervalo e o mínimo geral (${initialAutomation.minGapMinutes} min).` : `O tempo entre um grupo e o próximo, com uma folga aleatória. Nunca menor que o intervalo mínimo geral (${initialAutomation.minGapMinutes} min).`}>
             <Input type="number" min={20} max={3600} value={interval} onChange={(event) => setIntervalSeconds(Math.min(3600, Math.max(20, Number(event.target.value) || 20)))} />
           </Field>
 

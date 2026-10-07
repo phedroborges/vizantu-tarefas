@@ -48,10 +48,17 @@ export const DEFAULT_TEMPLATES: Record<MessageKind, string[]> = {
 };
 
 export type AutomationSettings = {
-  /** Interruptor geral. Desligado, nenhum aviso automático sai e nenhum prazo corre. */
+  /** Parada de emergência: enquanto estiver ligada, NADA sai pelo WhatsApp —
+   * nem aviso automático, nem comunicado, nem mensagem de teste. */
+  paused: boolean;
+  /** Interruptor dos avisos de aprovação. Desligado, nenhum aviso automático sai e nenhum prazo corre. */
   enabled: boolean;
-  /** A partir de que hora (São Paulo) os lembretes do dia saem. */
+  /** A partir de que hora (São Paulo) os avisos automáticos podem sair. */
   sendHour: number;
+  /** Até que hora eles saem. Depois disso, esperam o dia seguinte. */
+  sendUntilHour: number;
+  /** Tempo mínimo, em minutos, entre duas mensagens quaisquer. */
+  minGapMinutes: number;
   /** De quantos em quantos dias o lembrete se repete. */
   reminderEveryDays: number;
   /** Lembrete e último dia só de segunda a sexta. */
@@ -59,7 +66,7 @@ export type AutomationSettings = {
   templates: Record<MessageKind, string[]>;
 };
 
-export const DEFAULT_AUTOMATION: AutomationSettings = { enabled: false, sendHour: 9, reminderEveryDays: 2, weekdaysOnly: true, templates: DEFAULT_TEMPLATES };
+export const DEFAULT_AUTOMATION: AutomationSettings = { paused: false, enabled: false, sendHour: 9, sendUntilHour: 18, minGapMinutes: 4, reminderEveryDays: 2, weekdaysOnly: true, templates: DEFAULT_TEMPLATES };
 
 /** Junta o que veio do banco com os padrões: tipo sem modelo válido volta ao
  * texto padrão, para nunca sair mensagem vazia. */
@@ -70,10 +77,17 @@ export function normalizeAutomation(stored: Partial<AutomationSettings> | null |
     if (custom.length) templates[kind] = custom.slice(0, 5);
   }
   const hour = Math.round(Number(stored?.sendHour));
+  const until = Math.round(Number(stored?.sendUntilHour));
+  const gap = Math.round(Number(stored?.minGapMinutes));
   const every = Math.round(Number(stored?.reminderEveryDays));
+  const sendHour = Number.isFinite(hour) ? Math.min(20, Math.max(6, hour)) : DEFAULT_AUTOMATION.sendHour;
   return {
+    paused: stored?.paused === true,
     enabled: stored?.enabled === true,
-    sendHour: Number.isFinite(hour) ? Math.min(20, Math.max(6, hour)) : DEFAULT_AUTOMATION.sendHour,
+    sendHour,
+    // A janela tem pelo menos uma hora, para a fila do dia conseguir sair.
+    sendUntilHour: Math.min(22, Math.max(sendHour + 1, Number.isFinite(until) ? until : DEFAULT_AUTOMATION.sendUntilHour)),
+    minGapMinutes: Number.isFinite(gap) ? Math.min(30, Math.max(1, gap)) : DEFAULT_AUTOMATION.minGapMinutes,
     reminderEveryDays: Number.isFinite(every) ? Math.min(7, Math.max(1, every)) : DEFAULT_AUTOMATION.reminderEveryDays,
     weekdaysOnly: stored?.weekdaysOnly !== false,
     templates,
@@ -180,6 +194,34 @@ export function startDeadlineClock<T extends { since: number }>(waiting: T[], no
 export function isBusinessDay(date: Date): boolean {
   const weekday = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "America/Sao_Paulo" }).format(date);
   return weekday !== "Sat" && weekday !== "Sun";
+}
+
+const hourInSaoPaulo = (date: Date) => Number(new Intl.DateTimeFormat("en-GB", { timeZone: "America/Sao_Paulo", hour: "2-digit", hour12: false }).format(date));
+
+/** Os avisos automáticos só saem dentro da janela do dia. Fora dela ficam na
+ * fila: ninguém recebe cobrança às onze da noite porque o time subiu conteúdo
+ * tarde. */
+export function insideSendWindow(date: Date, settings: Pick<AutomationSettings, "sendHour" | "sendUntilHour" | "weekdaysOnly">): boolean {
+  if (settings.weekdaysOnly && !isBusinessDay(date)) return false;
+  const hour = hourInSaoPaulo(date);
+  return hour >= settings.sendHour && hour < settings.sendUntilHour;
+}
+
+/** Quanto esperar até a próxima mensagem: o mínimo configurado mais uma folga
+ * de até 60%. Vários grupos recebendo no mesmo minuto, ou em intervalos
+ * exatos, é o padrão de disparo em massa que derruba um número. */
+export function nextGapMs(minGapMinutes: number, random: () => number = Math.random): number {
+  return Math.round(minGapMinutes * 60_000 * (1 + random() * 0.6));
+}
+
+/** Embaralha a ordem: o mesmo cliente não é sempre o primeiro a receber. */
+export function shuffled<T>(items: T[], random: () => number = Math.random): T[] {
+  const result = [...items];
+  for (let index = result.length - 1; index > 0; index -= 1) {
+    const other = Math.floor(random() * (index + 1));
+    [result[index], result[other]] = [result[other], result[index]];
+  }
+  return result;
 }
 
 /** Espalha um comunicado pelos grupos: um intervalo entre cada envio, com uma

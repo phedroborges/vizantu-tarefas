@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_AUTOMATION, DEFAULT_TEMPLATES, MESSAGE_KINDS, MESSAGE_VARIABLES, composeMessage, isBusinessDay, messageVariables, normalizeAutomation, planBroadcast, reminderStep, renderTemplate, startDeadlineClock, type WaitingItem } from "../src/lib/whatsapp/messages";
+import { DEFAULT_AUTOMATION, DEFAULT_TEMPLATES, MESSAGE_KINDS, MESSAGE_VARIABLES, composeMessage, insideSendWindow, isBusinessDay, messageVariables, nextGapMs, normalizeAutomation, planBroadcast, reminderStep, renderTemplate, shuffled, startDeadlineClock, type WaitingItem } from "../src/lib/whatsapp/messages";
 import { parseWhatsappGroups } from "../src/lib/whatsapp/provider";
 
 const link = "https://tarefas.metricz.com.br/c/abc";
@@ -92,7 +92,7 @@ describe("modelos editáveis", () => {
 describe("configuração das mensagens automáticas", () => {
   // Nada sai para cliente antes de alguém revisar os textos e ligar.
   it("nasce desligada, com os padrões", () => {
-    expect(normalizeAutomation(null)).toEqual({ enabled: false, sendHour: 9, reminderEveryDays: 2, weekdaysOnly: true, templates: DEFAULT_TEMPLATES });
+    expect(normalizeAutomation(null)).toEqual({ paused: false, enabled: false, sendHour: 9, sendUntilHour: 18, minGapMinutes: 4, reminderEveryDays: 2, weekdaysOnly: true, templates: DEFAULT_TEMPLATES });
     expect(normalizeAutomation({}).enabled).toBe(false);
   });
 
@@ -107,6 +107,48 @@ describe("configuração das mensagens automáticas", () => {
     expect(normalizeAutomation({ sendHour: 3, reminderEveryDays: 0 })).toMatchObject({ sendHour: 6, reminderEveryDays: 1 });
     expect(normalizeAutomation({ sendHour: 23, reminderEveryDays: 30 })).toMatchObject({ sendHour: 20, reminderEveryDays: 7 });
     expect(normalizeAutomation({ sendHour: Number.NaN })).toMatchObject({ sendHour: 9 });
+  });
+});
+
+describe("ritmo dos envios", () => {
+  const janela = { sendHour: 9, sendUntilHour: 18, weekdaysOnly: true };
+
+  // 12h UTC = 9h em São Paulo.
+  it("os avisos automáticos só saem dentro da janela do dia", () => {
+    expect(insideSendWindow(new Date("2026-10-07T11:59:00.000Z"), janela)).toBe(false);
+    expect(insideSendWindow(new Date("2026-10-07T12:00:00.000Z"), janela)).toBe(true);
+    expect(insideSendWindow(new Date("2026-10-07T20:59:00.000Z"), janela)).toBe(true);
+    expect(insideSendWindow(new Date("2026-10-07T21:00:00.000Z"), janela)).toBe(false);
+  });
+
+  it("no fim de semana a janela só abre se estiver liberado", () => {
+    const sabado = new Date("2026-10-10T15:00:00.000Z");
+    expect(insideSendWindow(sabado, janela)).toBe(false);
+    expect(insideSendWindow(sabado, { ...janela, weekdaysOnly: false })).toBe(true);
+  });
+
+  // Vários grupos no mesmo minuto, ou em intervalos exatos, é padrão de
+  // disparo em massa.
+  it("espera pelo menos o intervalo mínimo, com folga aleatória de até 60%", () => {
+    expect(nextGapMs(4, () => 0)).toBe(240_000);
+    expect(nextGapMs(4, () => 0.5)).toBe(312_000);
+    expect(nextGapMs(4, () => 1)).toBe(384_000);
+  });
+
+  it("embaralha a ordem sem perder nem repetir ninguém", () => {
+    const clientes = ["a", "b", "c", "d", "e"];
+    const ordem = shuffled(clientes, () => 0);
+    expect(ordem).not.toEqual(clientes);
+    expect([...ordem].sort()).toEqual(clientes);
+    expect(clientes).toEqual(["a", "b", "c", "d", "e"]);
+  });
+
+  it("a parada de emergência e o ritmo têm padrão seguro e limites", () => {
+    expect(normalizeAutomation({ paused: true }).paused).toBe(true);
+    expect(normalizeAutomation({ minGapMinutes: 0 }).minGapMinutes).toBe(1);
+    expect(normalizeAutomation({ minGapMinutes: 500 }).minGapMinutes).toBe(30);
+    // A janela nunca fecha antes de abrir.
+    expect(normalizeAutomation({ sendHour: 14, sendUntilHour: 10 })).toMatchObject({ sendHour: 14, sendUntilHour: 15 });
   });
 });
 

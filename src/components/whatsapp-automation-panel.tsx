@@ -76,8 +76,14 @@ export function WhatsappAutomationPanel({ initialSettings, configured }: { initi
           <span><strong>Avisos automáticos de aprovação {settings.enabled ? "ligados" : "desligados"}</strong>{settings.enabled ? "Material novo, lembretes, último dia e aprovação por prazo saem para os clientes com grupo configurado." : "Nada sai para os clientes e nenhum prazo corre. Os comunicados manuais continuam funcionando."}</span>
         </label>
         <div className="automation__grid">
-          <Field label="Hora dos lembretes" hint="Lembrete e último dia saem a partir desta hora. O aviso de material novo sai na hora em que o conteúdo é enviado para aprovação.">
-            <Select value={settings.sendHour} onChange={(event) => setSettings({ ...settings, sendHour: Number(event.target.value) })}>{HOURS.map((hour) => <option key={hour} value={hour}>{String(hour).padStart(2, "0")}:00</option>)}</Select>
+          <Field label="Enviar a partir de" hint="Início da janela do dia. Não é um disparo: as mensagens saem uma por vez a partir desta hora.">
+            <Select value={settings.sendHour} onChange={(event) => { const sendHour = Number(event.target.value); setSettings({ ...settings, sendHour, sendUntilHour: Math.max(settings.sendUntilHour, sendHour + 1) }); }}>{HOURS.map((hour) => <option key={hour} value={hour}>{String(hour).padStart(2, "0")}:00</option>)}</Select>
+          </Field>
+          <Field label="Enviar até" hint="Depois desta hora os avisos automáticos esperam o dia seguinte.">
+            <Select value={settings.sendUntilHour} onChange={(event) => setSettings({ ...settings, sendUntilHour: Number(event.target.value) })}>{Array.from({ length: 22 - settings.sendHour }, (_, index) => settings.sendHour + 1 + index).map((hour) => <option key={hour} value={hour}>{String(hour).padStart(2, "0")}:00</option>)}</Select>
+          </Field>
+          <Field label="Intervalo mínimo entre mensagens" hint={`Vale para tudo que sai, com uma folga aleatória de até 60% em cima. Com 5 grupos, o último recebe cerca de ${Math.round(settings.minGapMinutes * 1.3 * 4)} minutos depois do primeiro.`}>
+            <Select value={settings.minGapMinutes} onChange={(event) => setSettings({ ...settings, minGapMinutes: Number(event.target.value) })}>{[1, 2, 3, 4, 5, 8, 10, 15, 20, 30].map((minutes) => <option key={minutes} value={minutes}>{minutes} {minutes === 1 ? "minuto" : "minutos"}</option>)}</Select>
           </Field>
           <Field label="Repetir o lembrete" hint="Enquanto houver material sem resposta e o prazo não tiver chegado.">
             <Select value={settings.reminderEveryDays} onChange={(event) => setSettings({ ...settings, reminderEveryDays: Number(event.target.value) })}>{[1, 2, 3, 4, 5, 6, 7].map((days) => <option key={days} value={days}>{days === 1 ? "Todo dia" : `A cada ${days} dias`}</option>)}</Select>

@@ -3,7 +3,7 @@ import { apiFailure } from "@/lib/api-error";
 import { isResponse, podeAbrirProjeto, requireUser } from "@/lib/authz";
 import { ROLES_QUE_PLANEJAM } from "@/lib/permissions";
 import { sendWhatsappText, whatsappConfigured } from "@/lib/whatsapp/provider";
-import { getProjectCommunication, saveProjectCommunication } from "@/lib/whatsapp/queue";
+import { getAutomationSettings, getProjectCommunication, saveProjectCommunication } from "@/lib/whatsapp/queue";
 
 // Comunicação do cliente: o grupo de WhatsApp dele e o prazo de aprovação.
 
@@ -42,6 +42,7 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
   const { id } = await params;
   if (!podeAbrirProjeto(auth, id)) return NextResponse.json({ error: "Projeto não encontrado." }, { status: 404 });
   if (!whatsappConfigured()) return NextResponse.json({ error: "O WhatsApp ainda não está configurado no servidor." }, { status: 409 });
+  if ((await getAutomationSettings()).paused) return NextResponse.json({ error: "Os envios do WhatsApp estão pausados pela parada de emergência." }, { status: 409 });
   const { whatsappGroupId } = await getProjectCommunication(id);
   if (!whatsappGroupId) return NextResponse.json({ error: "Escolha o grupo do cliente antes de testar." }, { status: 400 });
   try {
