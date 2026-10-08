@@ -36,7 +36,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   if (!project) return NextResponse.redirect(absoluteUrl(request, "/c/invalido"));
 
-  const response = NextResponse.redirect(absoluteUrl(request, "/c/dashboard"));
+  // O aviso de um conteúdo específico traz ?item=<id>: o portal já abre nele,
+  // em vez de deixar o cliente procurar na lista.
+  const item = request.nextUrl.searchParams.get("item");
+  const destination = item && /^[0-9a-f-]{36}$/i.test(item) ? `/c/dashboard?item=${item}` : "/c/dashboard";
+  const response = NextResponse.redirect(absoluteUrl(request, destination));
   response.cookies.set(CLIENT_SESSION_COOKIE, signClientSession(project.id), {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",

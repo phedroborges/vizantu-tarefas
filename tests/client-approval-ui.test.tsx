@@ -148,6 +148,21 @@ describe("histórico de ajustes no portal", () => {
   });
 });
 
+describe("link direto para um conteúdo", () => {
+  // O aviso no WhatsApp leva ?item=<id>: o cliente cai no conteúdo certo, já
+  // com os botões de resposta, sem procurar na lista.
+  it("abre o conteúdo do link sem o cliente clicar em nada", async () => {
+    await act(async () => root.render(<ClientDashboard clientName="Cliente" roleTitle={null} city={null} instagramHandle={null} initialItems={[creative]} initialItemId={creative.id} events={[]} initialScore={null} />));
+    expect(container.querySelector(".cd-approval-modal h3")?.textContent).toBe(creative.name);
+    expect(button("Aprovar criação")).toBeTruthy();
+  });
+
+  it("ignora um link para conteúdo que não existe mais", async () => {
+    await act(async () => root.render(<ClientDashboard clientName="Cliente" roleTitle={null} city={null} instagramHandle={null} initialItems={[creative]} initialItemId="outro-id" events={[]} initialScore={null} />));
+    expect(container.querySelector(".cd-approval-modal")).toBeNull();
+  });
+});
+
 describe("seções do conteúdo no portal", () => {
   const comSecoes: DashboardItem = {
     ...creative, id: "secoes-1", name: "Conteúdo com seções", status: "aprovacao_copy", materialLink: null, reviewVersion: 1,

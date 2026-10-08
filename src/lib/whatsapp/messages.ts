@@ -17,6 +17,8 @@ export type WaitingItem = {
   /** A legenda e a referência escritas no conteúdo. */
   caption?: string;
   reference?: string;
+  /** O link do material (Drive), quando o criativo já existe. */
+  materialLink?: string;
 };
 
 export type MessageKind = "content" | "standalone" | "approval" | "reminder" | "last_day" | "auto_approved";
@@ -33,7 +35,8 @@ export const MESSAGE_KINDS: { kind: MessageKind; label: string; when: string }[]
 export const MESSAGE_VARIABLES: { name: string; meaning: string }[] = [
   { name: "resumo", meaning: "Quanto há para aprovar. Ex.: 4 conteúdos para aprovar o texto" },
   { name: "lista", meaning: "Os conteúdos, um por linha, quando são menos de 5; acima disso, só as quantidades" },
-  { name: "link", meaning: "O endereço do portal do cliente" },
+  { name: "link", meaning: "Onde o cliente aprova. Na mensagem de um conteúdo, abre o portal direto nele; nas outras, abre o portal" },
+  { name: "link_material", meaning: "Em “Conteúdo para aprovar”: o link do material (Drive), quando o criativo já existe" },
   { name: "prazo", meaning: "A data limite. Ex.: 14/10" },
   { name: "dias_restantes", meaning: "Quanto falta para o prazo. Ex.: 3 dias" },
   { name: "dias_prazo", meaning: "O prazo combinado. Ex.: 7 dias" },
@@ -49,8 +52,8 @@ export const MESSAGE_VARIABLES: { name: string; meaning: string }[] = [
 
 export const DEFAULT_TEMPLATES: Record<MessageKind, string[]> = {
   content: [
-    "👁️ *Conteúdo novo para aprovar!*\n\n*{{titulo}}*\n🎬 Formato: {{formato}}\n📅 Publicação: {{data_publicacao}}\n⏳ Prazo para aprovar o {{etapa}}: *{{prazo}}*\n\n📝 Legenda: {{legenda}}\n\n🔗 Referência: {{referencia}}\n\nAcesse abaixo e aprove ou peça ajuste em menos de 5 minutos:\n{{link}}",
-    "👁️ *Vizantu por aqui!* Tem {{etapa}} novo esperando vocês:\n\n*{{titulo}}* ({{formato}})\n📅 Vai ao ar em {{data_publicacao}}\n\n📝 Legenda: {{legenda}}\n\n🔗 Referência: {{referencia}}\n\nÉ rapidinho: entra no link, lê e aprova ou pede ajuste.\n{{link}}\n\n⏳ Vocês têm até *{{prazo}}* para responder.",
+    "👁️ *Conteúdo novo para aprovar!*\n\n*{{titulo}}*\n🎬 Formato: {{formato}}\n📅 Publicação: {{data_publicacao}}\n⏳ Prazo para aprovar o {{etapa}}: *{{prazo}}*\n\n📝 Legenda: {{legenda}}\n\n🔗 Referência: {{referencia}}\n\n📂 Material: {{link_material}}\n\nAprove ou peça ajuste por aqui, em menos de 5 minutos:\n{{link}}",
+    "👁️ *Vizantu por aqui!* Tem {{etapa}} novo esperando vocês:\n\n*{{titulo}}* ({{formato}})\n📅 Vai ao ar em {{data_publicacao}}\n\n📝 Legenda: {{legenda}}\n\n🔗 Referência: {{referencia}}\n\n📂 Material: {{link_material}}\n\nÉ rapidinho: entra no link, lê e aprova ou pede ajuste.\n{{link}}\n\n⏳ Vocês têm até *{{prazo}}* para responder.",
   ],
   standalone: [
     "👁️ *Material novo para aprovar!*\n\n*{{titulo}}*\n🎬 Formato: {{formato}}\n📅 Publicação: {{data_publicacao}}\n\n📝 Legenda: {{legenda}}\n\n🔗 Referência: {{referencia}}\n\nConfira o material no link abaixo e responda aqui no grupo se está aprovado ou o que ajustar:\n{{link}}",
@@ -178,6 +181,7 @@ export function messageVariables(context: MessageContext): Record<string, string
     data_publicacao: item?.dueDate ? dateLabel(`${item.dueDate.slice(0, 10)}T15:00:00.000Z`) : "",
     legenda: shorten(item?.caption, CAPTION_LIMIT),
     referencia: shorten(item?.reference, 300),
+    link_material: item?.materialLink?.trim() ?? "",
     resumo: summary(context.items),
     lista: list(context.items),
     link: context.link,

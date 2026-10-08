@@ -55,11 +55,20 @@ describe("mensagens de aprovação no grupo do cliente", () => {
     expect(text).not.toContain("Legenda");
   });
 
+  it("no criativo, a mensagem também leva o link do material", () => {
+    const item: WaitingItem = { name: "Horário no feriado", stage: "creative", format: "Stories", materialLink: "https://drive.google.com/drive/folders/abc" };
+    const text = composeMessage("content", DEFAULT_AUTOMATION, { items: [item], link: `${link}?item=t1`, deadlineDays: 7 }, first);
+    expect(text).toContain("📂 Material: https://drive.google.com/drive/folders/abc");
+    expect(text).toContain(`${link}?item=t1`);
+    // No texto ainda não existe material: a linha não aparece.
+    expect(composeMessage("content", DEFAULT_AUTOMATION, { items: [{ name: "Só texto", stage: "text" }], link, deadlineDays: 7 }, first)).not.toContain("Material");
+  });
+
   it("some com a linha do que o conteúdo não tem", () => {
     const text = composeMessage("content", DEFAULT_AUTOMATION, { items: [{ name: "Sem extras", stage: "creative" }], link, deadlineDays: 7, deadlineIso: "2026-10-14T15:00:00.000Z" }, first);
     expect(text).toContain("*Sem extras*");
     expect(text).toContain("Prazo para aprovar o criativo: *14/10*");
-    for (const ausente of ["Formato", "Publicação", "Legenda", "Referência"]) expect(text, ausente).not.toContain(ausente);
+    for (const ausente of ["Formato", "Publicação", "Legenda", "Referência", "Material"]) expect(text, ausente).not.toContain(ausente);
     expect(text).not.toMatch(/\n{3,}/);
   });
 

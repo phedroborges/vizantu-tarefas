@@ -8,7 +8,8 @@ import { getProject, listPlanEvents, listProjectPlanItems, listSatisfactionScore
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Seu painel — Vizantu" };
 
-export default async function ClientDashboardPage() {
+export default async function ClientDashboardPage({ searchParams }: { searchParams: Promise<{ item?: string }> }) {
+  const { item: initialItemId } = await searchParams;
   const cookieStore = await cookies();
   const projectId = verifyClientSession(cookieStore.get(CLIENT_SESSION_COOKIE)?.value);
   if (!projectId) redirect("/c/invalido");
@@ -38,6 +39,7 @@ export default async function ClientDashboardPage() {
       city={project.clientCity ?? null}
       instagramHandle={project.clientInstagram ?? null}
       initialItems={items}
+      initialItemId={initialItemId}
       events={events.map((e: { id: string; title: string; eventDate: string; eventType: string }) => ({ id: e.id, title: e.title, date: e.eventDate, eventType: e.eventType }))}
       initialScore={scores[0]?.score ?? null}
     />

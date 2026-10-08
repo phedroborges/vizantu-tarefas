@@ -34,7 +34,7 @@ function unwrap<T>(result: { data: unknown; error: { message: string } | null })
 
 // ---------- O que cada cliente tem para aprovar ----------
 
-type Waiting = { taskId: string; name: string; stage: "text" | "creative"; since: number; format?: string; dueDate?: string; caption?: string; reference?: string };
+type Waiting = { taskId: string; name: string; stage: "text" | "creative"; since: number; format?: string; dueDate?: string; caption?: string; reference?: string; materialLink?: string };
 
 /** Conteúdos de plano parados com o cliente, por projeto. */
 export async function pendingApprovalsByProject(): Promise<Map<string, Waiting[]>> {
@@ -56,6 +56,7 @@ export async function pendingApprovalsByProject(): Promise<Map<string, Waiting[]
     byProject.set(row.project_id, [...(byProject.get(row.project_id) || []), {
       taskId: row.id, name: row.name, stage: row.status === "para_aprovacao" ? "creative" : "text", since, format,
       dueDate: row.due_date || undefined, caption: sections.legenda || undefined, reference: sections.referencia || undefined,
+      materialLink: row.status === "para_aprovacao" ? row.drive_link?.trim() || undefined : undefined,
     }]);
   }
   return byProject;
@@ -149,8 +150,10 @@ async function deliver(row: MessageRow): Promise<void> {
     if (!unnotified.length) return finish(row.id, { status: "skipped", error: "Tudo que está pendente já tinha sido avisado.", dedupe_key: freeKey });
     // Para o que é avisado agora, o prazo começa agora.
     // Um conteúdo só vai com os detalhes dele; vários viram um resumo.
-    body = composeMessage(unnotified.length === 1 ? "content" : "approval", automation, {
-      items: unnotified, link, clientName: await clientName(row.project_id), deadlineDays: days,
+    // O link de um conteúdo só abre o portal direto nele, pronto para aprovar.
+    const single = unnotified.length === 1 ? unnotified[0] : undefined;
+    body = composeMessage(single ? "content" : "approval", automation, {
+      items: unnotified, link: single ? `${link}?item=${single.taskId}` : link, clientName: await clientName(row.project_id), deadlineDays: days,
       deadlineIso: new Date(Date.now() + days * DAY).toISOString(), daysLeft: days,
     });
     // Libera a chave para o próximo aviso deste cliente.

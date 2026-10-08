@@ -18,7 +18,7 @@ const MAX_VARIATIONS = 5;
 const HOURS = Array.from({ length: 15 }, (_, index) => index + 6);
 
 const FEW: WaitingItem[] = [
-  { name: "Como começar na viola", stage: "text", format: "Carrossel", dueDate: "2026-10-16", caption: "Quer aprender viola e não sabe por onde começar? Salva esse post e chama no direct.", reference: "https://instagram.com/p/exemplo" },
+  { name: "Como começar na viola", stage: "text", format: "Carrossel", dueDate: "2026-10-16", caption: "Quer aprender viola e não sabe por onde começar? Salva esse post e chama no direct.", reference: "https://instagram.com/p/exemplo", materialLink: "https://drive.google.com/drive/folders/exemplo" },
   { name: "Porque meu carro é branco", stage: "text", format: "Reels" },
 ];
 const MANY: WaitingItem[] = [

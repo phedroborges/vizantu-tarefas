@@ -121,6 +121,7 @@ export function ClientDashboard({
   city,
   instagramHandle,
   initialItems,
+  initialItemId,
   events,
   initialScore,
 }: {
@@ -129,6 +130,8 @@ export function ClientDashboard({
   city: string | null;
   instagramHandle: string | null;
   initialItems: DashboardItem[];
+  /** Conteúdo que já abre na tela, quando o cliente veio pelo link de um aviso. */
+  initialItemId?: string;
   events: DashboardEvent[];
   initialScore: number | null;
 }) {
@@ -172,7 +175,7 @@ export function ClientDashboard({
   // Guarda só o id, não o objeto — assim o modal sempre reflete o item mais
   // recente de `items` depois de um approve/ajuste/reprova, em vez de ficar
   // preso a um snapshot de antes da resposta chegar.
-  const [activeItemId, setActiveItemId] = useState<string | null>(null);
+  const [activeItemId, setActiveItemId] = useState<string | null>(() => initialItems.some((item) => item.id === initialItemId) ? initialItemId! : null);
   const activeItem = items.find((i) => i.id === activeItemId) || null;
   const [month, setMonth] = useState(() => {
     const counts = new Map<string, number>();
