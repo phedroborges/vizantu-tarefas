@@ -56,6 +56,9 @@ export type ResultsReport = {
   kpis?: ResultsMetric[];
   sections: ResultsSection[];
   nextSteps?: string[];
+  /** Título do bloco final. O padrão é "Próximos passos"; num balanço de algo
+   * que já terminou, vira "Com o que se preocupar na próxima". */
+  nextStepsTitle?: string;
   /** Fonte dos dados e observações de método. */
   notes?: string[];
 };

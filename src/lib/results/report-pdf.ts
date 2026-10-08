@@ -253,7 +253,7 @@ export function buildResultsPdf(input: { clientName: string; title: string; repo
     const height = 16 + lines.reduce((sum, item) => sum + item.length * 4.6 + 2.5, 0);
     ensure(Math.min(height, 120));
     box(LEFT, y, WIDTH, height, C.soft);
-    text("Próximos passos", 23, y + 9, 11, true, C.deep);
+    text(report.nextStepsTitle?.trim() || "Próximos passos", 23, y + 9, 11, true, C.deep);
     let rowY = y + 17;
     lines.forEach((item, index) => {
       text(String(index + 1).padStart(2, "0"), 23, rowY, 8, true, C.strong);
