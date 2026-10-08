@@ -11,7 +11,7 @@ import type { StatementAssets } from "../finance/statement-assets";
 import type { ResultsMetric, ResultsReport, ResultsSection } from "./types";
 
 // A paleta de impressão espelha src/styles/vizantu.css (tema claro).
-const C = { brand: "#9147ff", strong: "#6435e7", deep: "#4b23b8", soft: "#f2ecff", bg: "#f6f6fa", line: "#ebecf2", text: "#14151c", muted: "#6d7183", white: "#ffffff", green: "#1c7a3f", red: "#b3322b" };
+const C = { brand: "#9147ff", strong: "#6435e7", deep: "#4b23b8", soft: "#f2ecff", bg: "#f6f6fa", line: "#ebecf2", text: "#14151c", muted: "#6d7183", white: "#ffffff", green: "#1c7a3f", red: "#b3322b", redBg: "#fdeeee", redLine: "#f3c9c6", gray: "#b9bcc9" };
 
 /** Imagem já carregada: os bytes em data URL e o tamanho original, para manter
  * a proporção. */
@@ -135,10 +135,12 @@ export function buildResultsPdf(input: { clientName: string; title: string; repo
     if (chart.title) { text(chart.title, LEFT, y + 3, 8, true, C.muted); y += 7; }
     for (const item of items) {
       ensure(8);
-      text(wrap(item.label, 62, 8.5)[0], LEFT, y + 4, 8.5);
+      text(wrap(item.label, 62, 8.5, Boolean(item.highlight))[0], LEFT, y + 4, 8.5, Boolean(item.highlight), item.highlight ? C.strong : C.text);
       pdf.setFillColor(C.bg); pdf.roundedRect(82, y + 0.5, 84, 4.5, 2, 2, "F");
-      pdf.setFillColor(C.brand); pdf.roundedRect(82, y + 0.5, Math.max(2.5, (item.value / maximum) * 84), 4.5, 2, 2, "F");
-      text(item.display ?? String(item.value), RIGHT, y + 4, 8.5, true, C.text, "right");
+      // Numa comparação, só a barra do cliente fica na cor da marca.
+      const compared = items.some((entry) => entry.highlight);
+      pdf.setFillColor(compared && !item.highlight ? C.gray : C.brand); pdf.roundedRect(82, y + 0.5, Math.max(2.5, (item.value / maximum) * 84), 4.5, 2, 2, "F");
+      text(item.display ?? String(item.value), RIGHT, y + 4, 8.5, true, item.highlight ? C.strong : C.text, "right");
       y += 7.5;
     }
     y += 3;
@@ -150,15 +152,18 @@ export function buildResultsPdf(input: { clientName: string; title: string; repo
     // A primeira coluna costuma ser o nome (campanha, post): fica mais larga.
     const first = columns > 1 ? WIDTH * 0.4 : WIDTH;
     const rest = columns > 1 ? (WIDTH - first) / (columns - 1) : 0;
-    const x = (index: number) => index === 0 ? LEFT + 3 : LEFT + first + rest * index - 3;
+    // Coluna de número alinha à direita; coluna de texto, à esquerda.
+    const numeric = data.columns.map((_, index) => index > 0 && data.rows.filter((cells) => /\d/.test(String(cells[index] ?? ""))).length * 2 > data.rows.length);
+    const x = (index: number) => index === 0 ? LEFT + 3 : numeric[index] ? LEFT + first + rest * index - 3 : LEFT + first + rest * (index - 1) + 3;
     const row = (cells: string[], headerRow: boolean) => {
       const size = headerRow ? 6.8 : 8.5;
-      // Título de coluna comprido quebra em até duas linhas em vez de cortar.
-      const lines = cells.slice(0, columns).map((cell, index) => wrap(String(cell), (index === 0 ? first : rest) - 6, size, headerRow || index === 0).slice(0, headerRow ? 2 : 1));
-      const height = 7 + (Math.max(...lines.map((cell) => cell.length), 1) - 1) * 3.4;
+      // Texto comprido quebra em linhas em vez de ser cortado.
+      const lines = cells.slice(0, columns).map((cell, index) => wrap(String(cell), (index === 0 ? first : rest) - 6, size, headerRow || index === 0).slice(0, headerRow ? 2 : 4));
+      const step = headerRow ? 3.4 : 4.2;
+      const height = 7 + (Math.max(...lines.map((cell) => cell.length), 1) - 1) * step;
       ensure(height + 1);
       if (headerRow) { pdf.setFillColor(C.bg); pdf.rect(LEFT, y, WIDTH, height, "F"); }
-      lines.forEach((cell, index) => cell.forEach((line, rowIndex) => text(line, x(index), y + 4.8 + rowIndex * 3.4, size, headerRow || index === 0, headerRow ? C.muted : C.text, index === 0 ? "left" : "right")));
+      lines.forEach((cell, index) => cell.forEach((line, rowIndex) => text(line, x(index), y + 4.8 + rowIndex * step, size, headerRow || index === 0, headerRow ? C.muted : C.text, numeric[index] ? "right" : "left")));
       y += height;
       if (!headerRow) { pdf.setDrawColor(C.line); pdf.setLineWidth(0.2); pdf.line(LEFT, y, RIGHT, y); }
     };
@@ -181,12 +186,32 @@ export function buildResultsPdf(input: { clientName: string; title: string; repo
     y += 3;
   };
 
-  const gallery = (items: NonNullable<ResultsSection["images"]>) => {
+  const alertCards = (items: NonNullable<ResultsSection["alerts"]>) => {
+    for (const item of items) {
+      const titleLines = wrap(item.title, WIDTH - 16, 10, true);
+      const detailLines = item.detail ? wrap(item.detail, WIDTH - 16, 8.5) : [];
+      const height = 15 + titleLines.length * 4.8 + (detailLines.length ? detailLines.length * 4.2 + 2 : 0);
+      ensure(height + 4);
+      box(LEFT, y, WIDTH, height, C.redBg, C.redLine);
+      pdf.setFillColor(C.red); pdf.rect(LEFT, y + 2.5, 1.4, height - 5, "F");
+      const tag = item.tag.toUpperCase();
+      font(6.5, true);
+      const tagWidth = pdf.getTextWidth(tag) + 5;
+      pdf.setFillColor(C.red); pdf.roundedRect(LEFT + 7, y + 4.5, tagWidth, 5, 1.5, 1.5, "F");
+      text(tag, LEFT + 9.5, y + 8, 6.5, true, C.white);
+      titleLines.forEach((line, row) => text(line, LEFT + 7, y + 15.5 + row * 4.8, 10, true));
+      detailLines.forEach((line, row) => text(line, LEFT + 7, y + 16.5 + titleLines.length * 4.8 + row * 4.2, 8.5, false, C.muted));
+      y += height + 4;
+    }
+    y += 2;
+  };
+
+  const gallery = (items: NonNullable<ResultsSection["images"]>, columns = 2) => {
     const loaded = items.flatMap((item) => images[item.url] ? [{ ...item, image: images[item.url] }] : []);
-    const gap = 6;
-    const width = (WIDTH - gap) / 2;
-    for (let start = 0; start < loaded.length; start += 2) {
-      const pair = loaded.slice(start, start + 2).map((item) => {
+    const gap = columns > 2 ? 4 : 6;
+    const width = (WIDTH - gap * (columns - 1)) / columns;
+    for (let start = 0; start < loaded.length; start += columns) {
+      const pair = loaded.slice(start, start + columns).map((item) => {
         // Cabe na coluna e não passa de 95 mm de altura, mantendo a proporção.
         const scale = Math.min(width / item.image.width, 95 / item.image.height);
         return { ...item, w: item.image.width * scale, h: item.image.height * scale, caption: item.caption ? wrap(item.caption, width, 7.5) : [] };
@@ -204,8 +229,9 @@ export function buildResultsPdf(input: { clientName: string; title: string; repo
   };
 
   for (const section of report.sections) {
-    // O título nunca fica sozinho no fim da página.
-    ensure(34);
+    // O título nunca fica sozinho no fim da página: precisa caber junto com o
+    // começo do conteúdo da seção.
+    ensure(34 + (section.summary ? 8 : 0) + (section.metrics?.length ? 26 : section.alerts?.length ? 30 : 14));
     pdf.setDrawColor(C.line); pdf.setLineWidth(0.25); pdf.line(LEFT, y, RIGHT, y);
     y += 8;
     if (section.eyebrow) { text(section.eyebrow.toUpperCase(), LEFT, y, 6.8, true, C.strong); y += 6; }
@@ -215,8 +241,9 @@ export function buildResultsPdf(input: { clientName: string; title: string; repo
     if (section.metrics?.length) metricGrid(section.metrics);
     if (section.bars) barChart(section.bars);
     if (section.table) table(section.table);
-    if (section.highlights?.length) bullets(section.highlights, "O QUE FUNCIONOU");
-    if (section.images?.length) gallery(section.images);
+    if (section.highlights?.length) bullets(section.highlights, (section.highlightsTitle || "O que funcionou").toUpperCase());
+    if (section.alerts?.length) alertCards(section.alerts);
+    if (section.images?.length) gallery(section.images, section.imageColumns ?? 2);
     y += 4;
   }
 

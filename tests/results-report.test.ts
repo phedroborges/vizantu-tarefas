@@ -51,6 +51,19 @@ describe("PDF do relatório de resultados", () => {
     expect(buildResultsPdf({ clientName: "Cliente", title: "Relatório de resultados", report: many, assets }).pdf.getNumberOfPages()).toBeGreaterThan(2);
   });
 
+  it("aceita alertas, comparação com destaque e imagens em mais colunas", () => {
+    const pixel = { data: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", width: 1, height: 1 };
+    const full: ResultsReport = { period: "Campanha 2026", sections: [{
+      title: "Resultado nas urnas",
+      bars: { items: [{ label: "Concorrente", value: 200 }, { label: "Cliente", value: 100, highlight: true }] },
+      highlights: ["Aprendizado"], highlightsTitle: "Aprendizados",
+      alerts: [{ tag: "Alerta vermelho", title: "Verba de anúncios travada", detail: "O repasse não chegou a tempo." }],
+      images: [{ url: "a" }, { url: "b" }, { url: "c" }], imageColumns: 3,
+    }] };
+    const { pdf } = buildResultsPdf({ clientName: "Cliente", title: "Relatório de resultados", report: full, assets, images: { a: pixel, b: pixel, c: pixel } });
+    expect(pdf.getNumberOfPages()).toBe(1);
+  });
+
   it("ignora a imagem que não foi carregada em vez de quebrar", () => {
     const withImage: ResultsReport = { period: "Outubro de 2026", sections: [{ title: "Instagram", images: [{ url: "https://exemplo.com/print.png", caption: "Melhor post" }] }] };
     expect(() => buildResultsPdf({ clientName: "Cliente", title: "Relatório de resultados", report: withImage, assets })).not.toThrow();

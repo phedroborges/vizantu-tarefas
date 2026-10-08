@@ -28,13 +28,20 @@ export type ResultsSection = {
   /** Leitura dos números, em texto corrido. */
   summary?: string;
   metrics?: ResultsMetric[];
-  /** Comparação em barras horizontais: melhores posts, campanhas, públicos. */
-  bars?: { title?: string; items: { label: string; value: number; display?: string }[] };
+  /** Comparação em barras horizontais: melhores posts, campanhas, públicos.
+   * `highlight` marca a barra do cliente quando ele é comparado com outros. */
+  bars?: { title?: string; items: { label: string; value: number; display?: string; highlight?: boolean }[] };
   table?: { columns: string[]; rows: string[][] };
-  /** O que funcionou, em tópicos. */
+  /** Tópicos. O título padrão é "O que funcionou". */
   highlights?: string[];
+  highlightsTitle?: string;
+  /** Pontos de atenção: o que deu errado ou precisa de decisão. Saem em
+   * cartões vermelhos, com a etiqueta em destaque. */
+  alerts?: { tag: string; title: string; detail?: string }[];
   /** Prints e criativos. `url` é um endereço público (https). */
   images?: { url: string; caption?: string }[];
+  /** Quantas imagens por linha (padrão 2). */
+  imageColumns?: 2 | 3 | 4;
 };
 
 export type ResultsReport = {
