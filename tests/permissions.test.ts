@@ -91,10 +91,10 @@ describe("o que cada cargo pode fazer", () => {
   });
 
   it("as abas do cliente seguem as mesmas regras do menu", () => {
-    expect(abasDoProjeto("dono")).toEqual(["informacoes", "calendario", "planos", "pesquisas", "documentos", "acessos", "equipe", "comunicacao"]);
-    expect(abasDoProjeto("gestor")).toEqual(["informacoes", "calendario", "planos", "pesquisas", "documentos", "acessos", "equipe", "comunicacao"]);
-    expect(abasDoProjeto("social_media")).toEqual(["informacoes", "calendario", "planos", "pesquisas", "acessos", "comunicacao"]);
-    expect(abasDoProjeto("diretor_criativo")).toEqual(["informacoes", "calendario", "planos"]);
+    expect(abasDoProjeto("dono")).toEqual(["informacoes", "calendario", "planos", "resultados", "pesquisas", "documentos", "acessos", "equipe", "comunicacao"]);
+    expect(abasDoProjeto("gestor")).toEqual(["informacoes", "calendario", "planos", "resultados", "pesquisas", "documentos", "acessos", "equipe", "comunicacao"]);
+    expect(abasDoProjeto("social_media")).toEqual(["informacoes", "calendario", "planos", "resultados", "pesquisas", "acessos", "comunicacao"]);
+    expect(abasDoProjeto("diretor_criativo")).toEqual(["informacoes", "calendario", "planos", "resultados"]);
     // Contrato não aparece para quem não o vê no menu; senha, só para quem publica.
     for (const cargo of ["social_media", "diretor_criativo"] as UserRole[]) {
       expect(abasDoProjeto(cargo), cargo).not.toContain("documentos");
