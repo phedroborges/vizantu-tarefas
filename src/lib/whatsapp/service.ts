@@ -100,9 +100,37 @@ async function finish(id: string, patch: Partial<Pick<MessageRow, "status" | "er
   unwrap(await getSupabase().from("whatsapp_messages").update(patch).eq("id", id));
 }
 
+/** Aviso de tarefa avulsa: os dados são lidos na hora do envio, e só sai se a
+ * tarefa ainda estiver em "Para aprovação" com o link do material. */
+async function composeStandalone(row: MessageRow, taskId: string): Promise<string | undefined> {
+  const freeKey = `standalone:${taskId}:${row.id}`;
+  const db = getSupabase();
+  const task = unwrap<{ name: string; status: TaskStatus; drive_link: string | null; due_date: string | null; description: string | null; format_tag_ids: string[] | null } | null>(
+    await db.from("tasks").select("name, status, drive_link, due_date, description, format_tag_ids").eq("id", taskId).maybeSingle(),
+  );
+  const link = task?.drive_link?.trim();
+  if (!task || task.status !== "para_aprovacao" || !link) {
+    await finish(row.id, { status: "skipped", error: "A tarefa saiu de Para aprovação antes do envio.", dedupe_key: freeKey });
+    return undefined;
+  }
+  const formatIds = task.format_tag_ids ?? [];
+  const formats = formatIds.length ? unwrap<{ label: string }[]>(await db.from("tags").select("label").eq("kind", "formato").in("id", formatIds)) : [];
+  const sections = parseDescription(task.description || undefined);
+  const body = composeMessage("standalone", await getAutomationSettings(), {
+    items: [{ name: task.name, stage: "creative", format: formats[0]?.label, dueDate: task.due_date || undefined, caption: sections.legenda || undefined, reference: sections.referencia || undefined }],
+    link, clientName: row.project_id ? await clientName(row.project_id) : undefined, deadlineDays: 0,
+  });
+  await finish(row.id, { body, dedupe_key: freeKey });
+  return body;
+}
+
 async function deliver(row: MessageRow): Promise<void> {
   let body = row.body ?? "";
-  if (row.kind === "approval" && row.project_id) {
+  if (row.kind === "approval" && row.dedupe_key?.startsWith("standalone:")) {
+    const composed = await composeStandalone(row, row.dedupe_key.split(":")[1]);
+    if (composed === undefined) return;
+    body = composed;
+  } else if (row.kind === "approval" && row.project_id) {
     // O texto é montado na hora de enviar: conta o que está pendente agora,
     // não o que estava quando a primeira tarefa entrou em aprovação.
     const freeKey = `approval:${row.project_id}:${row.id}`;
@@ -184,7 +212,10 @@ export async function processApprovalNotices(): Promise<number> {
   const automation = await getAutomationSettings();
   if (automation.paused || !automation.enabled) return 0;
   const db = getSupabase();
-  const due = unwrap<{ id: string }[]>(await db.from("whatsapp_messages").select("id").eq("status", "pending").eq("kind", "approval").like("dedupe_key", "approval:%:pending").lte("scheduled_at", new Date().toISOString()).order("scheduled_at").limit(10));
+  // Os avisos imediatos são os de chave terminada em ":pending": conteúdo de
+  // plano (approval:…) e tarefa avulsa (standalone:…).
+  const candidates = unwrap<{ id: string; dedupe_key: string | null }[]>(await db.from("whatsapp_messages").select("id, dedupe_key").eq("status", "pending").eq("kind", "approval").lte("scheduled_at", new Date().toISOString()).order("scheduled_at").limit(30));
+  const due = candidates.filter((message) => message.dedupe_key?.endsWith(":pending"));
   let sent = 0;
   for (const { id } of due) {
     const claimed = unwrap<MessageRow[]>(await db.from("whatsapp_messages").update({ status: "sent", sent_at: new Date().toISOString() }).eq("id", id).eq("status", "pending").select());

@@ -109,3 +109,31 @@ export async function queueApprovalNotice(projectId: string, mode: "instant" | "
     console.error("[whatsapp] não foi possível agendar o aviso de aprovação:", error);
   }
 }
+
+/** Tarefa avulsa (fora de plano) entrou em "Para aprovação". Ela não aparece no
+ * portal do cliente, então tem o próprio aviso, com o link do material. Sai em
+ * segundos, como o aviso de conteúdo de plano, e também nunca lança. */
+export async function queueStandaloneNotice(projectId: string, taskId: string): Promise<void> {
+  try {
+    if (!whatsappConfigured()) return;
+    const automation = await getAutomationSettings();
+    if (automation.paused || !automation.enabled) return;
+    const settings = await getProjectCommunication(projectId);
+    if (!settings.whatsappGroupId || !settings.notifyEnabled) return;
+    const db = getSupabase();
+    const key = `standalone:${taskId}:pending`;
+    const scheduledAt = new Date(Date.now() + DEBOUNCE_MS).toISOString();
+    const waiting = await db.from("whatsapp_messages").update({ scheduled_at: scheduledAt }).eq("dedupe_key", key).eq("status", "pending").select("id");
+    if (!waiting.data?.length) {
+      await db.from("whatsapp_messages").upsert({
+        id: crypto.randomUUID(), project_id: projectId, kind: "approval", group_id: settings.whatsappGroupId,
+        dedupe_key: key, status: "pending", scheduled_at: scheduledAt,
+      }, { onConflict: "dedupe_key", ignoreDuplicates: true });
+    }
+    setTimeout(() => {
+      void import("./service").then((service) => service.processApprovalNotices()).catch((error) => console.error("[whatsapp] aviso de tarefa avulsa falhou:", error));
+    }, DEBOUNCE_MS + 400).unref?.();
+  } catch (error) {
+    console.error("[whatsapp] não foi possível agendar o aviso da tarefa avulsa:", error);
+  }
+}

@@ -19,10 +19,11 @@ export type WaitingItem = {
   reference?: string;
 };
 
-export type MessageKind = "content" | "approval" | "reminder" | "last_day" | "auto_approved";
+export type MessageKind = "content" | "standalone" | "approval" | "reminder" | "last_day" | "auto_approved";
 
 export const MESSAGE_KINDS: { kind: MessageKind; label: string; when: string }[] = [
   { kind: "content", label: "Conteúdo para aprovar", when: "Quando um único conteúdo entra em aprovação. Leva os detalhes dele: título, formato, datas, legenda e referência." },
+  { kind: "standalone", label: "Tarefa avulsa para aprovar", when: "Quando uma tarefa que não faz parte de um plano entra em Para aprovação. Ela não aparece no portal do cliente, então o link da mensagem é o do material, e a resposta vem pelo grupo." },
   { kind: "approval", label: "Vários conteúdos de uma vez", when: "Quando dois ou mais conteúdos entram em aprovação juntos (o plano do mês, por exemplo). Viram uma mensagem só, em vez de uma por conteúdo." },
   { kind: "reminder", label: "Lembrete", when: "Enquanto houver material sem resposta, no intervalo de dias configurado." },
   { kind: "last_day", label: "Último dia", when: "No dia em que o prazo de aprovação do cliente termina." },
@@ -50,6 +51,10 @@ export const DEFAULT_TEMPLATES: Record<MessageKind, string[]> = {
   content: [
     "👁️ *Conteúdo novo para aprovar!*\n\n*{{titulo}}*\n🎬 Formato: {{formato}}\n📅 Publicação: {{data_publicacao}}\n⏳ Prazo para aprovar o {{etapa}}: *{{prazo}}*\n\n📝 Legenda: {{legenda}}\n\n🔗 Referência: {{referencia}}\n\nAcesse abaixo e aprove ou peça ajuste em menos de 5 minutos:\n{{link}}",
     "👁️ *Vizantu por aqui!* Tem {{etapa}} novo esperando vocês:\n\n*{{titulo}}* ({{formato}})\n📅 Vai ao ar em {{data_publicacao}}\n\n📝 Legenda: {{legenda}}\n\n🔗 Referência: {{referencia}}\n\nÉ rapidinho: entra no link, lê e aprova ou pede ajuste.\n{{link}}\n\n⏳ Vocês têm até *{{prazo}}* para responder.",
+  ],
+  standalone: [
+    "👁️ *Material novo para aprovar!*\n\n*{{titulo}}*\n🎬 Formato: {{formato}}\n📅 Publicação: {{data_publicacao}}\n\n📝 Legenda: {{legenda}}\n\n🔗 Referência: {{referencia}}\n\nConfira o material no link abaixo e responda aqui no grupo se está aprovado ou o que ajustar:\n{{link}}",
+    "👁️ *Vizantu por aqui!* Tem material pronto esperando vocês:\n\n*{{titulo}}* ({{formato}})\n📅 Vai ao ar em {{data_publicacao}}\n\n📝 Legenda: {{legenda}}\n\nÉ só abrir o link e responder aqui no grupo: aprovado ou o que precisa ajustar.\n{{link}}",
   ],
   approval: [
     "👁️ *Vizantu por aqui!*\n\nTem material novo esperando vocês: {{resumo}}.\n\n{{lista}}\n\nAcesse abaixo e resolva isso em menos de 5 minutos:\n{{link}}\n\n📅 Prazo para responder: *{{prazo}}*",

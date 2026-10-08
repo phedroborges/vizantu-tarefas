@@ -41,6 +41,20 @@ describe("mensagens de aprovação no grupo do cliente", () => {
     expect(text).toContain(link);
   });
 
+  // Tarefa fora de plano não aparece no portal: o link é o do material e a
+  // resposta vem pelo grupo.
+  it("tarefa avulsa leva o link do material e pede a resposta no grupo", () => {
+    const material = "https://drive.google.com/drive/folders/abc";
+    const text = composeMessage("standalone", DEFAULT_AUTOMATION, { items: [{ name: "Lembrete Hoje Repescagem", stage: "creative", format: "Story", dueDate: "2026-10-08" }], link: material, deadlineDays: 0 }, first);
+    expect(text).toContain("👁️ *Material novo para aprovar!*");
+    expect(text).toContain("*Lembrete Hoje Repescagem*");
+    expect(text).toContain("🎬 Formato: Story");
+    expect(text).toContain("📅 Publicação: 08/10");
+    expect(text).toContain("responda aqui no grupo");
+    expect(text).toContain(material);
+    expect(text).not.toContain("Legenda");
+  });
+
   it("some com a linha do que o conteúdo não tem", () => {
     const text = composeMessage("content", DEFAULT_AUTOMATION, { items: [{ name: "Sem extras", stage: "creative" }], link, deadlineDays: 7, deadlineIso: "2026-10-14T15:00:00.000Z" }, first);
     expect(text).toContain("*Sem extras*");

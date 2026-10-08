@@ -1,4 +1,4 @@
-import { queueApprovalNotice } from "./whatsapp/queue";
+import { queueApprovalNotice, queueStandaloneNotice } from "./whatsapp/queue";
 import { buildApprovalHistory, type ApprovalHistoryEntry } from "./approval-history";
 import { organizeClientPackages, type ClientPackageAssignment } from "./client-packages";
 import { todayIso } from "./dates";
@@ -716,6 +716,11 @@ export async function updateTask(
   // que vários conteúdos entrem em sequência).
   if (updated.planId && updated.status !== current.status && (updated.status === "aprovacao_copy" || updated.status === "para_aprovacao")) {
     void queueApprovalNotice(updated.projectId);
+  }
+  // Tarefa avulsa não aparece no portal, mas o cliente também precisa saber
+  // que há material para ver: o aviso leva o link do material.
+  if (!updated.planId && updated.status !== current.status && updated.status === "para_aprovacao" && updated.driveLink?.trim()) {
+    void queueStandaloneNotice(updated.projectId, updated.id);
   }
   return updated;
 }
