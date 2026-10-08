@@ -712,9 +712,11 @@ export async function updateTask(
     if (activityRow) [updated] = await attachPlanKind([mapTask(activityRow as TaskRow)]);
   }
   await syncApprovalRoundFromTask(updated);
-  // Entrou na mão do cliente: o grupo dele é avisado (uma mensagem só, mesmo
-  // que vários conteúdos entrem em sequência).
-  if (updated.planId && updated.status !== current.status && (updated.status === "aprovacao_copy" || updated.status === "para_aprovacao")) {
+  // O criativo ficou pronto para o cliente: o grupo dele é avisado na hora
+  // (uma mensagem só, mesmo que vários entrem em sequência). Só "Para
+  // aprovação" dispara mensagem direta; texto em "Aprovação de texto" entra no
+  // aviso do dia e nos lembretes, sem mensagem a cada troca de status.
+  if (updated.planId && updated.status !== current.status && updated.status === "para_aprovacao") {
     void queueApprovalNotice(updated.projectId);
   }
   // Tarefa avulsa não aparece no portal, mas o cliente também precisa saber

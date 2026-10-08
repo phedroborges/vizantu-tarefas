@@ -15,7 +15,7 @@ import { horaEmSaoPaulo } from "../overdue-scheduler";
 import { submitPlanApprovalResponse } from "../storage";
 import { getSupabase } from "../supabase-client";
 import type { StatusHistoryEntry, TaskStatus } from "../types";
-import { composeMessage, insideSendWindow, isBusinessDay, nextGapMs, planBroadcast, reminderStep, shuffled, startDeadlineClock } from "./messages";
+import { composeMessage, insideSendWindow, isBusinessDay, nextGapMs, noticeFromKey, planBroadcast, reminderStep, shuffled, startDeadlineClockByStage, type SentNotice } from "./messages";
 import { sendWhatsappMedia, sendWhatsappText, whatsappConfigured, type WhatsappMedia } from "./provider";
 import { getAutomationSettings, listProjectCommunications, queueApprovalNotice, type ProjectCommunication } from "./queue";
 
@@ -80,11 +80,14 @@ export async function clientPortalLink(projectId: string): Promise<string | unde
 }
 
 /** Quando este cliente foi avisado de que tinha material para aprovar. */
-async function noticeTimes(projectId: string, exceptMessageId?: string): Promise<number[]> {
-  const rows = unwrap<{ id: string; sent_at: string | null }[]>(
-    await getSupabase().from("whatsapp_messages").select("id, sent_at").eq("project_id", projectId).eq("status", "sent").in("kind", ["approval", "reminder", "last_day"]),
+async function sentNotices(projectId: string, exceptMessageId?: string): Promise<SentNotice[]> {
+  const rows = unwrap<{ id: string; sent_at: string | null; dedupe_key: string | null }[]>(
+    await getSupabase().from("whatsapp_messages").select("id, sent_at, dedupe_key").eq("project_id", projectId).eq("status", "sent").in("kind", ["approval", "reminder", "last_day"]),
   );
-  return rows.flatMap((row) => row.sent_at && row.id !== exceptMessageId ? [new Date(row.sent_at).getTime()] : []);
+  return rows.flatMap((row) => {
+    const notice = row.sent_at && row.id !== exceptMessageId ? noticeFromKey(row.dedupe_key, new Date(row.sent_at).getTime()) : undefined;
+    return notice ? [notice] : [];
+  });
 }
 
 // ---------- Fila ----------
@@ -134,7 +137,11 @@ async function deliver(row: MessageRow): Promise<void> {
   } else if (row.kind === "approval" && row.project_id) {
     // O texto é montado na hora de enviar: conta o que está pendente agora,
     // não o que estava quando a primeira tarefa entrou em aprovação.
-    const freeKey = `approval:${row.project_id}:${row.id}`;
+    // A mensagem direta (disparada pelo status "Para aprovação") fala só dos
+    // criativos; o aviso do dia fala de tudo que está pendente. A chave final
+    // registra o que foi coberto, para o relógio do prazo de cada etapa.
+    const creativeOnly = Boolean(row.dedupe_key?.endsWith(":pending"));
+    const freeKey = `approval:${row.project_id}:${row.id}${creativeOnly ? ":creative" : ""}`;
     const automation = await getAutomationSettings();
     if (!automation.enabled) return finish(row.id, { status: "skipped", error: "Avisos automáticos desligados.", dedupe_key: freeKey });
     const waiting = (await pendingApprovalsByProject()).get(row.project_id) || [];
@@ -146,7 +153,7 @@ async function deliver(row: MessageRow): Promise<void> {
     // repetido a cada conteúdo novo; volta a ser avisado apenas se sair da
     // aprovação (um ajuste, por exemplo) e entrar de novo, porque aí mudou de
     // fato. Esta própria mensagem não conta: ela é o aviso que está saindo.
-    const { unnotified } = startDeadlineClock(waiting, await noticeTimes(row.project_id, row.id));
+    const unnotified = startDeadlineClockByStage(waiting, await sentNotices(row.project_id, row.id)).unnotified.filter((item) => !creativeOnly || item.stage === "creative");
     if (!unnotified.length) return finish(row.id, { status: "skipped", error: "Tudo que está pendente já tinha sido avisado.", dedupe_key: freeKey });
     // Para o que é avisado agora, o prazo começa agora.
     // Um conteúdo só vai com os detalhes dele; vários viram um resumo.
@@ -279,7 +286,7 @@ export async function runDailyApprovalRoutine(now = new Date()): Promise<void> {
 
     // O relógio do prazo é o do primeiro aviso recebido. O que nunca foi
     // avisado gera o aviso de material novo e só começa a contar a partir dele.
-    const { notified, unnotified } = startDeadlineClock(waiting, await noticeTimes(projectId));
+    const { notified, unnotified } = startDeadlineClockByStage(waiting, await sentNotices(projectId));
     if (unnotified.length) await queueApprovalNotice(projectId, "paced");
     if (!notified.length) continue;
     const name = await clientName(projectId);

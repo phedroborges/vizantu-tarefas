@@ -6,7 +6,7 @@
 
 import { isoDateInSaoPaulo } from "../dates";
 import { getSupabase } from "../supabase-client";
-import { startDeadlineClock } from "./messages";
+import { noticeFromKey, startDeadlineClockByStage } from "./messages";
 import { listProjectCommunications } from "./queue";
 import { pendingApprovalsByProject } from "./service";
 
@@ -70,7 +70,7 @@ export async function communicationOverview(projects: { id: string; name: string
     db.from("whatsapp_messages").select(columns).eq("status", "pending").lt("created_at", since).then((result) => unwrap<MessageRow[]>(result)),
     // Todos os avisos já enviados, sem limite de data: um conteúdo pode estar
     // esperando há mais de uma semana.
-    db.from("whatsapp_messages").select("project_id, kind, sent_at").eq("status", "sent").in("kind", ["approval", "reminder", "last_day"]).then((result) => unwrap<{ project_id: string | null; kind: string; sent_at: string | null }[]>(result)),
+    db.from("whatsapp_messages").select("project_id, kind, sent_at, dedupe_key").eq("status", "sent").in("kind", ["approval", "reminder", "last_day"]).then((result) => unwrap<{ project_id: string | null; kind: string; sent_at: string | null; dedupe_key: string | null }[]>(result)),
     db.from("client_links").select("project_id, revoked_at, expires_at").then((result) => unwrap<{ project_id: string; revoked_at: string | null; expires_at: string | null }[]>(result)),
   ]);
 
@@ -83,7 +83,7 @@ export async function communicationOverview(projects: { id: string; name: string
     const setting = settings.get(project.id);
     const waiting = pending.get(project.id) || [];
     const sent = notices.filter((notice) => notice.project_id === project.id && notice.sent_at).sort((a, b) => a.sent_at!.localeCompare(b.sent_at!));
-    const { notified, unnotified } = startDeadlineClock(waiting, sent.map((notice) => new Date(notice.sent_at!).getTime()));
+    const { notified, unnotified } = startDeadlineClockByStage(waiting, sent.flatMap((notice) => { const parsed = noticeFromKey(notice.dedupe_key, new Date(notice.sent_at!).getTime()); return parsed ? [parsed] : []; }));
     const last = sent.at(-1);
     const clock = notified.length ? Math.min(...notified.map((item) => item.since)) : undefined;
     const deadlineMs = clock === undefined ? undefined : clock + (setting?.approvalDeadlineDays ?? 7) * DAY;

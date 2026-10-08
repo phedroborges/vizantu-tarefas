@@ -24,9 +24,9 @@ export type WaitingItem = {
 export type MessageKind = "content" | "standalone" | "approval" | "reminder" | "last_day" | "auto_approved";
 
 export const MESSAGE_KINDS: { kind: MessageKind; label: string; when: string }[] = [
-  { kind: "content", label: "Conteúdo para aprovar", when: "Quando um único conteúdo entra em aprovação. Leva os detalhes dele: título, formato, datas, legenda e referência." },
+  { kind: "content", label: "Conteúdo para aprovar", when: "Na hora em que o criativo de um conteúdo entra em “Para aprovação”. Leva os detalhes dele e o link que abre o portal direto nele." },
   { kind: "standalone", label: "Tarefa avulsa para aprovar", when: "Quando uma tarefa que não faz parte de um plano entra em Para aprovação. Ela não aparece no portal do cliente, então o link da mensagem é o do material, e a resposta vem pelo grupo." },
-  { kind: "approval", label: "Vários conteúdos de uma vez", when: "Quando dois ou mais conteúdos entram em aprovação juntos (o plano do mês, por exemplo). Viram uma mensagem só, em vez de uma por conteúdo." },
+  { kind: "approval", label: "Vários conteúdos de uma vez", when: "Quando vários criativos entram em “Para aprovação” em sequência, e no aviso do dia do que está esperando e ainda não foi avisado, incluindo os textos em “Aprovação de texto”." },
   { kind: "reminder", label: "Lembrete", when: "Enquanto houver material sem resposta, no intervalo de dias configurado." },
   { kind: "last_day", label: "Último dia", when: "No dia em que o prazo de aprovação do cliente termina." },
   { kind: "auto_approved", label: "Aprovado por prazo", when: "No dia seguinte ao aviso de último dia, se ninguém respondeu." },
@@ -236,6 +236,25 @@ export function startDeadlineClock<T extends { since: number }>(waiting: T[], no
     else notified.push({ ...item, since: first });
   }
   return { notified, unnotified };
+}
+
+export type SentNotice = { at: number; /** O aviso falou só dos criativos. */ creativeOnly: boolean };
+
+/** O mesmo relógio, respeitando o que cada aviso cobriu: a mensagem direta de
+ * um criativo não avisa o cliente dos textos que estão esperando, então não
+ * conta como aviso para eles. */
+export function startDeadlineClockByStage<T extends { since: number; stage: "text" | "creative" }>(waiting: T[], notices: SentNotice[]): { notified: T[]; unnotified: T[] } {
+  const text = startDeadlineClock(waiting.filter((item) => item.stage === "text"), notices.filter((notice) => !notice.creativeOnly).map((notice) => notice.at));
+  const creative = startDeadlineClock(waiting.filter((item) => item.stage === "creative"), notices.map((notice) => notice.at));
+  return { notified: [...text.notified, ...creative.notified], unnotified: [...text.unnotified, ...creative.unnotified] };
+}
+
+/** Lê, da chave de uma mensagem enviada, se ela conta como aviso de aprovação
+ * de plano e o que cobriu. Aviso de tarefa avulsa não conta: fala de outra
+ * tarefa, fora do portal. */
+export function noticeFromKey(dedupeKey: string | null | undefined, sentAt: number): SentNotice | undefined {
+  if (dedupeKey?.startsWith("standalone:")) return undefined;
+  return { at: sentAt, creativeOnly: Boolean(dedupeKey?.endsWith(":creative")) };
 }
 
 /** Sábado e domingo ninguém recebe cobrança; o que cairia no fim de semana

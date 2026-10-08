@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_AUTOMATION, DEFAULT_TEMPLATES, MESSAGE_KINDS, MESSAGE_VARIABLES, composeMessage, insideSendWindow, isBusinessDay, messageVariables, nextGapMs, normalizeAutomation, planBroadcast, reminderStep, renderTemplate, shuffled, startDeadlineClock, type WaitingItem } from "../src/lib/whatsapp/messages";
+import { DEFAULT_AUTOMATION, DEFAULT_TEMPLATES, MESSAGE_KINDS, MESSAGE_VARIABLES, composeMessage, insideSendWindow, isBusinessDay, messageVariables, nextGapMs, normalizeAutomation, noticeFromKey, planBroadcast, reminderStep, renderTemplate, shuffled, startDeadlineClock, startDeadlineClockByStage, type WaitingItem } from "../src/lib/whatsapp/messages";
 import { parseWhatsappGroups } from "../src/lib/whatsapp/provider";
 
 const link = "https://tarefas.metricz.com.br/c/abc";
@@ -248,6 +248,26 @@ describe("quando o prazo começa a contar", () => {
     const { notified, unnotified } = startDeadlineClock([jaAvisado, voltouDoAjuste], [12 * D]);
     expect(notified.map((item) => item.id)).toEqual(["avisado"]);
     expect(unnotified).toEqual([voltouDoAjuste]);
+  });
+
+  // A mensagem direta de um criativo não fala dos textos: eles continuam sem
+  // aviso, e o prazo deles não começa a correr por causa dela.
+  it("o aviso só de criativo não conta para os textos que estão esperando", () => {
+    const texto = { id: "texto", since: 10 * D, stage: "text" as const };
+    const criativo = { id: "criativo", since: 10 * D, stage: "creative" as const };
+    const soCriativo = startDeadlineClockByStage([texto, criativo], [{ at: 12 * D, creativeOnly: true }]);
+    expect(soCriativo.notified.map((item) => item.id)).toEqual(["criativo"]);
+    expect(soCriativo.unnotified).toEqual([texto]);
+    const geral = startDeadlineClockByStage([texto, criativo], [{ at: 12 * D, creativeOnly: false }]);
+    expect(geral.unnotified).toEqual([]);
+  });
+
+  it("lê da chave da mensagem o que o aviso cobriu", () => {
+    expect(noticeFromKey("approval:p1:m1:creative", 5)).toEqual({ at: 5, creativeOnly: true });
+    expect(noticeFromKey("approval:p1:m1", 5)).toEqual({ at: 5, creativeOnly: false });
+    expect(noticeFromKey("reminder:p1:2026-10-08", 5)).toEqual({ at: 5, creativeOnly: false });
+    // Aviso de tarefa avulsa fala de outra tarefa: não conta para o plano.
+    expect(noticeFromKey("standalone:t1:m1", 5)).toBeUndefined();
   });
 
   it("aviso anterior ao conteúdo não vale para ele", () => {
