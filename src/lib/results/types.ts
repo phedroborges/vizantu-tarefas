@@ -45,6 +45,9 @@ export type ResultsSection = {
 };
 
 export type ResultsReport = {
+  /** Como o cliente deve ser chamado no documento, quando difere do nome do
+   * cadastro: "Dr. Lourival Lobo". */
+  clientName?: string;
   /** Mês ou intervalo, como deve aparecer: "Setembro de 2026". */
   period: string;
   /** Resumo executivo: o que o cliente precisa saber se ler só isto. */
