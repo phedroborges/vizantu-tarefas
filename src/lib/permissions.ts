@@ -49,10 +49,11 @@ export const ROLE_PROFILES: Record<UserRole, RoleProfile> = {
   },
   social_media: {
     areas: ["projetos", "tarefas", "notificacoes", "planos", "pesquisas", "assistente"],
-    // Quem publica precisa da senha do Instagram do cliente. Cadastrar e apagar
-    // esses acessos continua sendo do dono.
+    // Quem publica precisa da senha do Instagram do cliente, e é quem recebe
+    // esses acessos dele: cadastra, altera e apaga, só nos clientes em que
+    // trabalha.
     planeja: true, gerenciaEquipe: false, gerenciaMembros: false, veCredenciais: true,
-    gerenciaCredenciais: false, veTodosOsProjetos: false, inicio: "/planos",
+    gerenciaCredenciais: true, veTodosOsProjetos: false, inicio: "/planos",
   },
   diretor_criativo: {
     areas: ["projetos", "tarefas", "notificacoes", "planos", "marcas", "assistente"],
@@ -154,6 +155,6 @@ export const ROLES_QUE_PLANEJAM: UserRole[] = TODOS_OS_ROLES.filter(podePlanejar
 export const ROLES_DE_GESTAO: UserRole[] = TODOS_OS_ROLES.filter(podeGerenciarEquipe);
 
 /** Quem abre a senha do cliente. Ver não é o mesmo que cadastrar: alterar e
- * apagar continua só com o dono (ROLES_QUE_GERENCIAM_CREDENCIAIS). */
+ * apagar é do dono e do social media (ROLES_QUE_GERENCIAM_CREDENCIAIS). */
 export const ROLES_QUE_VEEM_CREDENCIAIS: UserRole[] = TODOS_OS_ROLES.filter(podeVerCredenciais);
 export const ROLES_QUE_GERENCIAM_CREDENCIAIS: UserRole[] = TODOS_OS_ROLES.filter(podeGerenciarCredenciais);

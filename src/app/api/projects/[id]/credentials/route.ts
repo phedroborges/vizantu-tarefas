@@ -7,7 +7,7 @@ import { createProjectCredential, listProjectCredentials } from "@/lib/storage";
 import { CREDENTIAL_KINDS } from "@/lib/types";
 
 // Credencial de cliente é acesso à casa dele: quem publica precisa entrar na
-// conta, então lê; cadastrar e apagar continua sendo do dono.
+// conta, então lê; cadastrar e apagar é do dono e do social media do cliente.
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireUser(ROLES_QUE_VEEM_CREDENCIAIS);
   if (isResponse(auth)) return auth;
@@ -20,6 +20,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const auth = await requireUser(ROLES_QUE_GERENCIAM_CREDENCIAIS);
   if (isResponse(auth)) return auth;
   const { id } = await params;
+  if (!podeAbrirProjeto(auth, id)) return NextResponse.json({ error: "Você não trabalha neste cliente." }, { status: 403 });
   const body = await request.json();
 
   const kind = CREDENTIAL_KINDS.some((item) => item.value === body.kind) ? body.kind : "outro";

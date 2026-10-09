@@ -274,7 +274,7 @@ export function ProjectProfileView({
                     ))}
                   </ul>
                 ) : !isAdding ? (
-                  <EmptyState icon={<KeyRound size={24} />} title="Nenhum acesso ainda" description={canManageCredentials ? "Instagram, Meta, Google, hospedagem ou chave de API — seguros e disponíveis para quem publica." : "Nenhuma senha foi guardada para este cliente. Peça ao dono da conta para cadastrar."} />
+                  <EmptyState icon={<KeyRound size={24} />} title="Nenhum acesso ainda" description={canManageCredentials ? "Instagram, Meta, Google, hospedagem ou chave de API — seguros e disponíveis para quem publica." : "Nenhuma senha foi guardada para este cliente. Peça ao dono da conta ou ao social media do cliente para cadastrar."} />
                 ) : null}
               </div>
             )}

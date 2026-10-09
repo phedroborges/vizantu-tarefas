@@ -51,11 +51,11 @@ describe("o que cada cargo enxerga", () => {
   });
 
   // Quem publica precisa entrar na conta do cliente. O diretor criativo produz
-  // o material mas não sobe nada, então fica de fora — e cadastrar ou apagar
-  // senha continua sendo só do dono.
-  it("a senha do cliente abre para quem publica, mas só o dono cadastra", () => {
+  // o material mas não sobe nada, então fica de fora. Cadastrar ou apagar
+  // senha é do dono e do social media, que é quem recebe o acesso do cliente.
+  it("a senha do cliente abre para quem publica; dono e social media cadastram", () => {
     expect(CARGOS.filter(podeVerCredenciais)).toEqual(["dono", "gestor", "social_media"]);
-    expect(CARGOS.filter(podeGerenciarCredenciais)).toEqual(["dono"]);
+    expect(CARGOS.filter(podeGerenciarCredenciais)).toEqual(["dono", "social_media"]);
     expect(podeVerCredenciais("diretor_criativo")).toBe(false);
   });
 
