@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildDashboardMetrics } from "../src/lib/dashboard-metrics";
+import { buildDashboardMetrics, buildDashboardReport } from "../src/lib/dashboard-metrics";
+import { dayRangeInstants, resolveDashboardPeriod } from "../src/lib/dashboard-period";
 import type { Member, Project, Tag, Task } from "../src/lib/types";
 
 const NOW = "2026-09-09T15:00:00.000Z";
@@ -375,4 +376,54 @@ it("usa o dia de São Paulo, e não o de Londres, para decidir atraso e pontuali
   const result = buildDashboardMetrics({ tasks: [venceHoje, fechouHoje], projects, members, tags, nowIso: noite });
   expect(result.overdueTasks).toBe(0);
   expect(result.punctuality).toMatchObject({ delivered: 1, keptCurrent: 1, keptOriginal: 1 });
+});
+
+describe("período do dashboard", () => {
+  it("resolve os atalhos e compara com a mesma quantidade de dias antes", () => {
+    expect(resolveDashboardPeriod({ periodo: "7d" }, "2026-10-09")).toMatchObject({
+      preset: "7d", days: 7, range: { from: "2026-10-03", to: "2026-10-09" }, previous: { from: "2026-09-26", to: "2026-10-02" }, endsInPast: false,
+    });
+    expect(resolveDashboardPeriod({ periodo: "mes-passado" }, "2026-10-09")).toMatchObject({
+      days: 30, range: { from: "2026-09-01", to: "2026-09-30" }, previous: { from: "2026-08-02", to: "2026-08-31" }, endsInPast: true,
+    });
+    expect(resolveDashboardPeriod({ periodo: "tudo" }, "2026-10-09")).toEqual({ preset: "tudo", label: "Todo o período", endsInPast: false });
+    expect(resolveDashboardPeriod({ periodo: "qualquer-coisa" }, "2026-10-09").preset).toBe("30d");
+  });
+
+  it("aceita intervalo livre, mesmo invertido ou passando de hoje", () => {
+    expect(resolveDashboardPeriod({ de: "2026-10-20", ate: "2026-10-05" }, "2026-10-09")).toMatchObject({
+      preset: "personalizado", days: 5, range: { from: "2026-10-05", to: "2026-10-09" }, previous: { from: "2026-09-30", to: "2026-10-04" },
+    });
+    expect(resolveDashboardPeriod({ de: "2026-02-31" }, "2026-10-09").preset).toBe("30d");
+  });
+
+  it("conta no período só o que aconteceu nele", () => {
+    const { metrics, comparison } = buildDashboardReport({
+      tasks, projects, members, tags, nowIso: NOW,
+      window: dayRangeInstants({ from: "2026-09-08", to: "2026-09-09" }),
+      previous: dayRangeInstants({ from: "2026-09-06", to: "2026-09-07" }),
+    });
+    // t2 fechou no dia 9: entra a entrega, com o ciclo inteiro.
+    expect(metrics.periodTotals).toEqual({ created: 0, completed: 1 });
+    expect(metrics.averageCreativeMs).toBe(7 * 86_400_000 + 22 * 3_600_000);
+    // Do tempo em criação de t2, só as 31h a partir da 0h do dia 8.
+    expect(metrics.flowEfficiency.workingMs).toBe(31 * 3_600_000);
+    // O ajuste de t1 acabou no dia 7 e ela já estava com o cliente.
+    expect(metrics.creativeTasks).toBe(1);
+    expect(metrics.reworkedTasks).toBe(0);
+    expect(metrics.bucketUnit).toBe("dia");
+    expect(metrics.throughput).toHaveLength(7);
+    // Nos dois dias anteriores nada fechou, e t1 estava em ajuste.
+    expect(comparison).toMatchObject({ completed: 0, created: 0, averageCreativeMs: undefined, reworkRate: 50, overdueTasks: 0 });
+  });
+
+  it("volta as tarefas ao estado do fim de um período que já acabou", () => {
+    const { metrics } = buildDashboardReport({ tasks, projects, members, tags, nowIso: NOW, window: dayRangeInstants({ from: "2026-09-01", to: "2026-09-03" }) });
+    // No dia 3 nada tinha sido entregue nem remarcado, e as três estavam abertas.
+    expect(metrics.activeTasks).toBe(3);
+    expect(metrics.periodTotals).toEqual({ created: 3, completed: 0 });
+    expect(metrics.reschedules).toEqual([]);
+    expect(metrics.clientWait.creative.tasks).toBe(0);
+    expect(metrics.members.find((member) => member.memberId === "m2")!.comments).toBe(0);
+  });
 });

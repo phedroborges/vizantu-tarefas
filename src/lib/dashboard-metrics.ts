@@ -164,10 +164,51 @@ function weekStart(ms: number): number {
   return day - ((local.getUTCDay() + 6) % 7) * DAY + SP_OFFSET;
 }
 
+/** 00:00 de São Paulo do dia que contém o instante. */
+function dayStart(ms: number): number {
+  const local = new Date(ms - SP_OFFSET);
+  return Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()) + SP_OFFSET;
+}
+
+/** Dia 1º, 00:00 de São Paulo, do mês que contém o instante (ou de meses adiante). */
+function monthStart(ms: number, shift = 0): number {
+  const local = new Date(ms - SP_OFFSET);
+  return Date.UTC(local.getUTCFullYear(), local.getUTCMonth() + shift, 1) + SP_OFFSET;
+}
+
 const shortDateFormatter = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", timeZone: "America/Sao_Paulo" });
+const shortMonthFormatter = new Intl.DateTimeFormat("pt-BR", { month: "short", year: "2-digit", timeZone: "America/Sao_Paulo" });
 
 function shortDate(ms: number): string {
   return shortDateFormatter.format(new Date(ms)).replace(".", "");
+}
+
+export type DashboardBucketUnit = "dia" | "semana" | "mes";
+type ChartBucket = { startMs: number; endMs: number; label: string };
+
+/** As colunas dos gráficos de fluxo. Sem período, as últimas 8 semanas. Com
+ * período, o grão acompanha o tamanho dele: dia até um mês, semana até um
+ * semestre, mês daí em diante. Período curto ganha os 7 dias até o fim dele,
+ * porque um ponto sozinho não desenha tendência nenhuma. */
+function chartBuckets(fromMs: number, nowMs: number): { unit: DashboardBucketUnit; buckets: ChartBucket[] } {
+  const weekly = (firstMs: number) => {
+    const buckets: ChartBucket[] = [];
+    for (let startMs = firstMs; startMs <= nowMs; startMs += 7 * DAY) buckets.push({ startMs, endMs: startMs + 7 * DAY, label: shortDate(startMs) });
+    return { unit: "semana" as const, buckets };
+  };
+  if (fromMs === -Infinity) return weekly(weekStart(nowMs) - 7 * 7 * DAY);
+  const span = nowMs - fromMs;
+  if (span <= 31 * DAY) {
+    const buckets: ChartBucket[] = [];
+    for (let startMs = Math.min(dayStart(fromMs), dayStart(nowMs) - 6 * DAY); startMs <= nowMs; startMs += DAY) buckets.push({ startMs, endMs: startMs + DAY, label: shortDate(startMs) });
+    return { unit: "dia", buckets };
+  }
+  if (span <= 182 * DAY) return weekly(weekStart(fromMs));
+  const buckets: ChartBucket[] = [];
+  for (let startMs = monthStart(fromMs); startMs <= nowMs; startMs = monthStart(startMs, 1)) {
+    buckets.push({ startMs, endMs: monthStart(startMs, 1), label: shortMonthFormatter.format(new Date(startMs)).replace(".", "").replace(" de ", "/") });
+  }
+  return { unit: "mes", buckets };
 }
 
 export type DashboardMemberMetric = {
@@ -363,6 +404,10 @@ export type DashboardMetrics = {
   alerts: DashboardDataAlert[];
   reschedules: DashboardReschedule[];
   delayBuckets: { label: string; count: number; color: string }[];
+  /** Tarefas criadas e finalizadas dentro do período. */
+  periodTotals: { created: number; completed: number };
+  /** O grão das colunas dos gráficos de fluxo. */
+  bucketUnit: DashboardBucketUnit;
   throughput: { label: string; start: string; created: number; completed: number }[];
   cumulativeFlow: DashboardFlowPoint[];
   projectHealth: DashboardProjectHealth[];
@@ -375,6 +420,7 @@ export function buildDashboardMetrics({
   tags,
   clientActivity,
   nowIso,
+  fromIso,
 }: {
   tasks: Task[];
   projects: Project[];
@@ -382,8 +428,16 @@ export function buildDashboardMetrics({
   tags: Tag[];
   clientActivity?: DashboardClientActivity;
   nowIso: string;
+  /** Início do período. Sem ele, entra o histórico inteiro. */
+  fromIso?: string;
 }): DashboardMetrics {
   const nowMs = new Date(nowIso).getTime();
+  // O período recorta de três jeitos. Tempo em status: só conta a parte que
+  // caiu dentro dele. Acontecimentos (criação, entrega, comentário, resposta
+  // do cliente): só os que aconteceram nele. Situação (carga aberta, atrasos,
+  // bloqueios): a fotografia do fim dele.
+  const fromMs = timestamp(fromIso) ?? -Infinity;
+  const inWindow = (value?: number) => value === undefined ? fromMs === -Infinity : value >= fromMs;
   const today = isoDateInSaoPaulo(nowMs);
   const projectNames = new Map(projects.map((project) => [project.id, project.name]));
   const activeMembers = members.filter((member) => member.active);
@@ -454,38 +508,57 @@ export function buildDashboardMetrics({
     let creativeClient = 0;
     let creativeStarted = false;
     let creativeDelivered = false;
+    // A tarefa esteve na criação dentro do período.
+    let creativeActive = false;
+    // Quando o ciclo fechou: a entrada em Aprovado/Finalizado mais recente.
+    let creativeClosedAt: number | undefined;
+    let previousStop = false;
     let measured = false;
     for (const interval of intervals) {
-      if (CREATIVE_START.has(interval.status)) creativeStarted = true;
-      if (creativeStarted && CREATIVE_STOP.has(interval.status)) creativeDelivered = true;
+      if (CREATIVE_START.has(interval.status)) {
+        creativeStarted = true;
+        if (interval.end > fromMs) creativeActive = true;
+      }
+      const stop = creativeStarted && CREATIVE_STOP.has(interval.status);
+      if (stop) {
+        creativeDelivered = true;
+        if (!previousStop) creativeClosedAt = interval.start;
+      }
+      previousStop = stop;
       if (TERMINAL_STATUSES.has(interval.status) || interval.end <= interval.start) continue;
-      const { status, start, end } = interval;
-      if (WORKING_STATUSES.has(status)) { workingMs += end - start; measured = true; }
-      else if (WAITING_STATUSES.has(status)) { waitingMs += end - start; measured = true; }
-      else if (CLIENT_STATUSES.has(status)) { clientMs += end - start; measured = true; }
-      const phase = PHASE_BY_STATUS[status];
-      if (phase) {
-        const totals = phaseTotals.get(phase)!;
-        if (CLIENT_STATUSES.has(status)) totals.clientMs += end - start; else totals.teamMs += end - start;
-        phasesSeen.add(phase);
-      }
-      if (CLIENT_STATUSES.has(status)) {
-        const approval = status === "aprovacao_copy" ? approvals.text : approvals.creative;
-        approval.ms += end - start;
-        approval.rounds += 1;
-      }
+      const { status, end } = interval;
+      const start = Math.max(interval.start, fromMs);
+      // O ciclo criativo é medido inteiro, inclusive a parte anterior ao
+      // período: o que o período decide é quais entregas fecharam nele.
       const running = creativeStarted && CREATIVE_START.has(status);
-      if (running) creativeTotal += end - start;
-      if (creativeStarted && status === "para_aprovacao") creativeClient += end - start;
-      const points = [start, ...assignmentBoundaries.filter((boundary) => boundary > start && boundary < end), end];
+      if (running) creativeTotal += end - interval.start;
+      if (creativeStarted && status === "para_aprovacao") creativeClient += end - interval.start;
+      if (end > start) {
+        if (WORKING_STATUSES.has(status)) { workingMs += end - start; measured = true; }
+        else if (WAITING_STATUSES.has(status)) { waitingMs += end - start; measured = true; }
+        else if (CLIENT_STATUSES.has(status)) { clientMs += end - start; measured = true; }
+        const phase = PHASE_BY_STATUS[status];
+        if (phase) {
+          const totals = phaseTotals.get(phase)!;
+          if (CLIENT_STATUSES.has(status)) totals.clientMs += end - start; else totals.teamMs += end - start;
+          phasesSeen.add(phase);
+        }
+        if (CLIENT_STATUSES.has(status)) {
+          const approval = status === "aprovacao_copy" ? approvals.text : approvals.creative;
+          approval.ms += end - start;
+          approval.rounds += 1;
+        }
+      }
+      const points = [interval.start, ...assignmentBoundaries.filter((boundary) => boundary > interval.start && boundary < end), end];
       for (let index = 0; index < points.length - 1; index += 1) {
         const owner = assigneeAt(task, points[index]);
         if (!owner || !memberMetrics.has(owner)) continue;
-        const duration = points[index + 1] - points[index];
+        if (running) creativeByOwner.set(owner, (creativeByOwner.get(owner) || 0) + points[index + 1] - points[index]);
+        const duration = points[index + 1] - Math.max(points[index], fromMs);
+        if (duration <= 0) continue;
         const held = heldByOwner.get(owner) ?? new Map<TaskStatus, number>();
         held.set(status, (held.get(status) || 0) + duration);
         heldByOwner.set(owner, held);
-        if (running) creativeByOwner.set(owner, (creativeByOwner.get(owner) || 0) + duration);
       }
     }
     if (measured) flowTasks += 1;
@@ -540,19 +613,19 @@ export function buildDashboardMetrics({
         strategyTotals.set(owner, totals);
       }
     }
-    if (creativeStarted) creativeTasks += 1;
+    if (creativeActive) creativeTasks += 1;
     // Só entra na média o ciclo que fechou: chegou a Aprovado/Finalizado e
     // não voltou para a criação nem para a aprovação.
-    if (creativeDelivered && !CREATIVE_OPEN.has(task.status)) {
+    if (creativeDelivered && !CREATIVE_OPEN.has(task.status) && inWindow(creativeClosedAt)) {
       allCreativeCycles.push(creativeTotal);
       allCreativeClientCycles.push(creativeClient);
       // A espera da entrega inteira vai para quem produziu, mesmo que a tarefa
       // tenha trocado de mão enquanto o cliente decidia.
       for (const [owner, share] of creativeByOwner) creativeCycles.set(owner, [...(creativeCycles.get(owner) || []), { teamMs: share, clientMs: creativeClient }]);
     }
-    if (task.createdBy && memberMetrics.has(task.createdBy)) memberMetrics.get(task.createdBy)!.created += 1;
+    if (task.createdBy && memberMetrics.has(task.createdBy) && inWindow(timestamp(task.createdAt))) memberMetrics.get(task.createdBy)!.created += 1;
     for (const comment of task.comments) {
-      if (!comment.authorMemberId || !memberMetrics.has(comment.authorMemberId)) continue;
+      if (!comment.authorMemberId || !memberMetrics.has(comment.authorMemberId) || !inWindow(timestamp(comment.createdAt))) continue;
       if (isUserComment(comment)) memberMetrics.get(comment.authorMemberId)!.comments += 1;
       else if (comment.fieldKey !== "created") memberMetrics.get(comment.authorMemberId)!.changes += 1;
     }
@@ -599,6 +672,8 @@ export function buildDashboardMetrics({
     const projectId = projectByTask.get(event.taskId);
     // Aprovação por prazo não é resposta do cliente: fica fora da adesão.
     if (!projectId || !projectNames.has(projectId) || event.action === "reopened" || event.reviewerName === AUTO_APPROVAL_REVIEWER) continue;
+    const answeredAt = timestamp(event.createdAt);
+    if (!inWindow(answeredAt) || (answeredAt !== undefined && answeredAt > nowMs)) continue;
     const name = event.reviewerName?.trim();
     const key = name ? `${projectId}:${name.toLowerCase()}` : undefined;
     const adoption = adoptionOf(projectId);
@@ -641,16 +716,22 @@ export function buildDashboardMetrics({
       id: task.id,
       name: task.name,
       projectName: projectNames.get(task.projectId) || "Projeto removido",
-      count: task.comments.filter(isUserComment).length,
+      count: task.comments.filter((comment) => isUserComment(comment) && inWindow(timestamp(comment.createdAt))).length,
     }))
     .filter((task) => task.count > 0)
     .sort((a, b) => b.count - a.count)
     .slice(0, 6);
 
+  // Passagens de status recortadas no início do período: a que já tinha
+  // terminado sai, a que estava em curso passa a contar dali.
+  const historyInWindow = (task: Task) => fromMs === -Infinity ? task.statusHistory : task.statusHistory.flatMap((entry) => {
+    if ((timestamp(entry.exitedAt) ?? nowMs) <= fromMs) return [];
+    return [(timestamp(entry.enteredAt) ?? fromMs) < fromMs ? { ...entry, enteredAt: new Date(fromMs).toISOString() } : entry];
+  });
   const reworkByTask = new Map<string, { visits: number; totalMs: number }>();
   const reworkTasks = tasks
     .map((task) => {
-      const adjustment = summarizeStatusDurations(task.statusHistory, nowMs).find((item) => item.status === "ajuste");
+      const adjustment = summarizeStatusDurations(historyInWindow(task), nowMs).find((item) => item.status === "ajuste");
       if (adjustment) reworkByTask.set(task.id, { visits: adjustment.visits, totalMs: adjustment.totalMs });
       return {
         id: task.id,
@@ -675,7 +756,8 @@ export function buildDashboardMetrics({
 
   const reschedules = tasks.flatMap((task): DashboardReschedule[] => {
     const changes = dueDateChanges(task);
-    if (!changes.length) return [];
+    const recent = changes.filter((change) => inWindow(timestamp(change.createdAt)));
+    if (!recent.length) return [];
     const original = originalDueDate(task);
     const currentDate = task.dueDate || (typeof changes.at(-1)?.newValue === "string" ? String(changes.at(-1)?.newValue).slice(0, 10) : undefined);
     const closure = completedAt(task);
@@ -687,7 +769,7 @@ export function buildDashboardMetrics({
       originalDate: original,
       currentDate,
       completedDate: closure === undefined ? undefined : isoDateInSaoPaulo(closure),
-      changes: changes.length,
+      changes: recent.length,
       movedDays: calendarDays(original, currentDate),
     }];
   }).sort((a, b) => Math.abs(b.movedDays) - Math.abs(a.movedDays) || b.changes - a.changes);
@@ -700,12 +782,10 @@ export function buildDashboardMetrics({
     { label: "8+ dias", count: lateness.filter((days) => days >= 8).length, color: "#b73535" },
   ];
 
-  const thisWeek = weekStart(nowMs);
-  const throughput = Array.from({ length: 8 }, (_, index) => {
-    const startMs = thisWeek - (7 - index) * 7 * DAY;
-    const endMs = startMs + 7 * DAY;
+  const chart = chartBuckets(fromMs, nowMs);
+  const throughput = chart.buckets.map(({ startMs, endMs, label }) => {
     return {
-      label: shortDate(startMs),
+      label,
       start: isoDateInSaoPaulo(startMs),
       created: tasks.filter((task) => {
         const value = timestamp(task.createdAt);
@@ -718,12 +798,12 @@ export function buildDashboardMetrics({
     };
   });
 
-  // Fluxo cumulativo: uma fotografia do fim de cada semana mostrando quanta
+  // Fluxo cumulativo: uma fotografia do fim de cada coluna mostrando quanta
   // demanda estava parada, em produção e entregue. É onde a fila que engrossa
   // aparece antes de virar atraso. Descartada (Problema) não é entrega e fica
   // de fora.
-  const cumulativeFlow: DashboardFlowPoint[] = Array.from({ length: 8 }, (_, index) => {
-    const snapshotMs = Math.min(nowMs, thisWeek - (7 - index) * 7 * DAY + 7 * DAY - 1);
+  const cumulativeFlow: DashboardFlowPoint[] = chart.buckets.map((bucket) => {
+    const snapshotMs = Math.min(nowMs, bucket.endMs - 1);
     const counts: Record<StatusGroup, number> = { nao_iniciada: 0, em_andamento: 0, feita: 0 };
     for (const task of tasks) {
       const status = timelines.get(task.id)!.findLast((interval) => interval.start <= snapshotMs)?.status;
@@ -731,7 +811,7 @@ export function buildDashboardMetrics({
       counts[GROUP_BY_STATUS.get(status) || "nao_iniciada"] += 1;
     }
     return {
-      label: shortDate(snapshotMs),
+      label: chart.unit === "mes" ? bucket.label : shortDate(snapshotMs),
       start: isoDateInSaoPaulo(snapshotMs),
       ...counts,
       total: counts.nao_iniciada + counts.em_andamento + counts.feita,
@@ -741,13 +821,12 @@ export function buildDashboardMetrics({
   // Lead time: da criação até o fechamento. A média sozinha esconde a cauda —
   // por isso guardamos também a mediana e o P85, que é o prazo que dá pra
   // prometer sem mentir.
-  const leadTimes = tasks
-    .map((task) => {
-      const start = startedAt(task);
-      const finished = completedAt(task);
-      return start !== undefined && finished !== undefined && finished > start ? finished - start : undefined;
-    })
-    .filter((value): value is number => value !== undefined);
+  const leadOf = (task: Task) => {
+    const start = startedAt(task);
+    const finished = completedAt(task);
+    return start !== undefined && finished !== undefined && finished > start && inWindow(finished) ? finished - start : undefined;
+  };
+  const leadTimes = tasks.map(leadOf).filter((value): value is number => value !== undefined);
   const histogramEdges = [1, 3, 7, 14, 30];
   const leadTimeDays = leadTimes.map((value) => value / DAY);
   const leadTime: DashboardLeadTime = {
@@ -770,7 +849,7 @@ export function buildDashboardMetrics({
   // duas é exatamente o tanto que o planejamento foi empurrado.
   const deliveries = tasks.flatMap((task) => {
     const finished = completedAt(task);
-    if (finished === undefined) return [];
+    if (finished === undefined || !inWindow(finished)) return [];
     const current = task.dueDate;
     const original = originalDueDate(task);
     if (!current && !original) return [];
@@ -792,13 +871,7 @@ export function buildDashboardMetrics({
     .map((project) => {
       const projectTasks = tasks.filter((task) => task.projectId === project.id);
       const done = projectTasks.filter((task) => task.status === "finalizado").length;
-      const projectLeads = projectTasks
-        .map((task) => {
-          const start = startedAt(task);
-          const finished = completedAt(task);
-          return start !== undefined && finished !== undefined && finished > start ? finished - start : undefined;
-        })
-        .filter((value): value is number => value !== undefined);
+      const projectLeads = projectTasks.map(leadOf).filter((value): value is number => value !== undefined);
       return {
         id: project.id,
         name: project.name,
@@ -850,8 +923,91 @@ export function buildDashboardMetrics({
     alerts,
     reschedules,
     delayBuckets,
+    periodTotals: {
+      created: tasks.filter((task) => inWindow(timestamp(task.createdAt))).length,
+      completed: tasks.filter((task) => { const finished = completedAt(task); return finished !== undefined && inWindow(finished); }).length,
+    },
+    bucketUnit: chart.unit,
     throughput,
     cumulativeFlow,
     projectHealth,
+  };
+}
+
+/** A tarefa como ela estava em um instante passado: status, responsável, prazo
+ * e comentários daquele momento. Tarefa que ainda não existia some. É o que
+ * permite olhar um período que já acabou sem contaminar a conta com o que
+ * aconteceu depois. Formato, canal e material não têm histórico e ficam como
+ * estão hoje. */
+function rewindTask(task: Task, atMs: number): Task | undefined {
+  const history = task.statusHistory
+    .filter((entry) => (timestamp(entry.enteredAt) ?? Infinity) <= atMs)
+    .map((entry) => (timestamp(entry.exitedAt) ?? Infinity) > atMs ? { ...entry, exitedAt: null } : entry);
+  const created = timestamp(task.createdAt);
+  if (!history.length && created !== undefined && created > atMs) return undefined;
+  const byEntry = (a: { enteredAt: string }, b: { enteredAt: string }) => (timestamp(a.enteredAt) ?? 0) - (timestamp(b.enteredAt) ?? 0);
+  const status = [...history].sort(byEntry).at(-1)?.status ?? [...task.statusHistory].sort(byEntry)[0]?.status ?? task.status;
+  let dueDate = task.dueDate;
+  for (const change of dueDateChanges(task).toReversed()) {
+    if ((timestamp(change.createdAt) ?? 0) <= atMs) break;
+    dueDate = typeof change.oldValue === "string" && change.oldValue ? change.oldValue.slice(0, 10) : undefined;
+  }
+  return {
+    ...task,
+    status,
+    statusHistory: history,
+    assigneeId: assigneeAt(task, atMs),
+    dueDate,
+    comments: task.comments.filter((comment) => (timestamp(comment.createdAt) ?? 0) <= atMs),
+  };
+}
+
+export type DashboardWindow = { fromIso: string; toIso: string };
+
+/** Os indicadores do período anterior, para medir a variação. Fica `undefined`
+ * o que não teve base para ser calculado. */
+export type DashboardComparison = {
+  averageCreativeMs?: number;
+  flowRatio?: number;
+  punctualityRate?: number;
+  p85Ms?: number;
+  reworkRate?: number;
+  overdueTasks: number;
+  completed: number;
+  created: number;
+};
+
+/** Monta o dashboard de um período e, se pedido, os indicadores do período
+ * anterior. Os dois saem da mesma conta, cada um com a sua janela. */
+export function buildDashboardReport({
+  window,
+  previous,
+  ...input
+}: Omit<Parameters<typeof buildDashboardMetrics>[0], "fromIso"> & { window?: DashboardWindow; previous?: DashboardWindow }): { metrics: DashboardMetrics; comparison?: DashboardComparison } {
+  const nowMs = new Date(input.nowIso).getTime();
+  const build = (range: DashboardWindow) => {
+    const endMs = Math.min(nowMs, timestamp(range.toIso) ?? nowMs);
+    return buildDashboardMetrics({
+      ...input,
+      tasks: endMs < nowMs ? input.tasks.flatMap((task) => rewindTask(task, endMs) ?? []) : input.tasks,
+      nowIso: new Date(endMs).toISOString(),
+      fromIso: range.fromIso,
+    });
+  };
+  const metrics = window ? build(window) : buildDashboardMetrics(input);
+  if (!previous) return { metrics };
+  const before = build(previous);
+  return {
+    metrics,
+    comparison: {
+      averageCreativeMs: before.averageCreativeMs,
+      flowRatio: before.flowEfficiency.workingMs + before.flowEfficiency.waitingMs ? before.flowEfficiency.ratio : undefined,
+      punctualityRate: before.punctuality.delivered ? before.punctuality.originalRate : undefined,
+      p85Ms: before.leadTime.p85Ms,
+      reworkRate: before.creativeTasks ? before.reworkRate : undefined,
+      overdueTasks: before.overdueTasks,
+      completed: before.periodTotals.completed,
+      created: before.periodTotals.created,
+    },
   };
 }

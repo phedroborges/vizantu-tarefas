@@ -6,17 +6,27 @@ import {
   UserRoundCheck, UserRoundX, UsersRound,
 } from "lucide-react";
 import Link from "next/link";
-import { createContext, useContext, useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { createContext, useContext, useEffect, useState, useTransition } from "react";
 import {
   TIMED_STATUSES,
-  type DashboardMetrics,
+  type DashboardBucketUnit, type DashboardComparison, type DashboardMetrics,
   type DashboardClientAdoption, type DashboardClientStage, type DashboardClientWait, type DashboardFlowPoint, type DashboardLeadTime, type DashboardReviewer,
   type DashboardMemberMetric, type DashboardPhase, type DashboardProjectHealth, type DashboardPunctuality,
 } from "@/lib/dashboard-metrics";
+import { DASHBOARD_PERIOD_PRESETS, type DashboardDayRange, type DashboardPeriod } from "@/lib/dashboard-period";
 import { formatDuration, formatDueDate } from "@/lib/dates";
 import { type StatusGroup, type TaskStatus } from "@/lib/types";
 
-type DashboardViewProps = { metrics: DashboardMetrics };
+/** Sem `period` a tela mostra o histórico inteiro, sem filtro nem comparação. */
+type DashboardViewProps = { metrics: DashboardMetrics; comparison?: DashboardComparison; period?: DashboardPeriod };
+
+// Como chamar cada coluna dos gráficos de fluxo, conforme o grão do período.
+const UNIT_TEXT: Record<DashboardBucketUnit, { each: string; by: string; tip: string; end: string }> = {
+  dia: { each: "dia a dia", by: "por dia", tip: "Dia", end: "Fim do dia" },
+  semana: { each: "semana a semana", by: "por semana", tip: "Semana de", end: "Fim da semana" },
+  mes: { each: "mês a mês", by: "por mês", tip: "Mês de", end: "Fim do mês" },
+};
 
 const STATUS_SHORT: Record<TaskStatus, string> = {
   rascunho: "Rasc.", aguardando_informacao: "Info.", aprovacao_copy: "Copy", aguardando_captacao: "Capt.",
@@ -46,17 +56,18 @@ const FLOW_SERIES: { key: StatusGroup; label: string; color: string }[] = [
 // O que cada métrica quer dizer e a conta por trás dela. Aparece no ícone de
 // informação de cada indicador e de cada gráfico.
 const INFO = {
+  periodo: { what: "O período vale para a tela inteira e cada indicador é comparado com a mesma quantidade de dias imediatamente antes.", how: "Tempo em cada etapa: conta só a parte que caiu dentro do período. Entregas, ciclos fechados, prazos, comentários e respostas de clientes: entram os que aconteceram no período. Carga aberta, atrasos e bloqueios: a situação no fim do período. Comparação: se o filtro tem 7 dias, o período anterior são os 7 dias antes dele." },
   kpiCiclo: { what: "Quanto tempo, em média, o time leva para criar uma demanda, sem contar a espera pela aprovação do cliente.", how: "O relógio liga quando a tarefa entra em “Pronto para criação” e corre enquanto ela está com o time. Em “Para aprovação” ele pausa, porque quem demora ali é o cliente. Se ela volta para “Ajuste”, liga de novo e soma. Se volta para uma etapa anterior (texto, captação), pausa. O ciclo fecha em “Aprovado” ou “Finalizado”. Média = soma dos ciclos fechados ÷ número de tarefas com ciclo fechado." },
   kpiEficiencia: { what: "De todo o tempo em que as demandas ficaram abertas, quanto alguém estava de fato produzindo.", how: "Tempo produzindo (Em criação + Revisão + Ajuste) ÷ (tempo produzindo + tempo esperando). Esperando = Rascunho, Aguardando informação, Aguardando captação e Pronto para criação. A espera pelo cliente (Aprovação de texto e Para aprovação) fica fora da conta, assim como Aprovado, Finalizado e Problema." },
   kpiPontualidade: { what: "Quantas entregas fecharam até a primeira data combinada, antes de qualquer remarcação.", how: "Tarefas finalizadas até a data original ÷ tarefas finalizadas que tinham prazo. A data original é a que existia antes da primeira mudança de prazo registrada." },
   kpiP85: { what: "O prazo que dá para prometer com segurança: 85% das tarefas já finalizadas fecharam dentro dele.", how: "Para cada tarefa finalizada: momento em que entrou em “Finalizado” − momento da criação. Ordena do menor para o maior e pega o valor na posição dos 85%." },
   kpiRetrabalho: { what: "De cada 100 demandas que entraram na criação, quantas precisaram voltar para ajuste.", how: "Tarefas que passaram por “Ajuste” pelo menos uma vez ÷ tarefas que chegaram a entrar em criação (Pronto para criação em diante)." },
-  kpiAtrasos: { what: "Quantas demandas abertas já passaram do prazo hoje.", how: "Conta as tarefas com prazo anterior a hoje que ainda não foram enviadas para aprovação. Para aprovação, Aprovado, Finalizado e Problema não contam como atraso." },
+  kpiAtrasos: { what: "Quantas demandas abertas já passaram do prazo hoje.", how: "Conta as tarefas com prazo anterior a hoje que ainda não foram enviadas para aprovação. Para aprovação, Aprovado, Finalizado e Problema não contam como atraso. Em um período que já terminou, vale a situação do último dia dele." },
   kpiBloqueios: { what: "Tarefas abertas sem uma informação obrigatória para avançar.", how: "Conta os avisos críticos (por exemplo, aprovação sem link do material). O total de inconsistências inclui também falta de responsável, prazo, formato e canal." },
-  kpiSemana: { what: "O que entrou e o que saiu nesta semana (segunda a domingo).", how: "Entregas = tarefas que entraram em “Finalizado” nesta semana. Criadas = tarefas com data de criação nesta semana." },
-  fluxo: { what: "Onde as demandas estavam no fim de cada semana: na fila, em produção ou entregues.", how: "Para cada uma das últimas 8 semanas, olha o status que cada tarefa tinha no domingo à noite e conta por grupo. Na fila = antes de Pronto para criação. Em produção = Pronto, Criação, Revisão e Ajuste. Entregue = Para aprovação, Aprovado e Finalizado. Tarefas em Problema ficam de fora." },
+  kpiPeriodo: { what: "O que entrou e o que saiu no período escolhido.", how: "Entregas = tarefas que entraram em “Finalizado” dentro do período. Criadas = tarefas com data de criação dentro do período." },
+  fluxo: { what: "Onde as demandas estavam no fim de cada coluna do gráfico: na fila, em produção ou entregues.", how: "Cada coluna é um dia, uma semana ou um mês, conforme o tamanho do período. Para cada uma, olha o status que cada tarefa tinha no fim dela e conta por grupo. Na fila = antes de Pronto para criação. Em produção = Pronto, Criação, Revisão e Ajuste. Entregue = Para aprovação, Aprovado e Finalizado. Tarefas em Problema ficam de fora." },
   eficiencia: { what: "Quanto do tempo das demandas é trabalho de verdade e quanto é fila ou espera.", how: "Produzindo = Em criação + Revisão + Ajuste. Esperando = as etapas de fila e de aguardo que dependem do time. Percentual = produzindo ÷ (produzindo + esperando). Aguardando o cliente = Aprovação de texto + Para aprovação; aparece ao lado e não entra no percentual. Os tempos são a média por tarefa." },
-  entrada: { what: "Se o time está fechando no mesmo ritmo em que recebe demanda.", how: "Por semana: Criadas = tarefas criadas naquela semana. Finalizadas = tarefas que entraram em “Finalizado” naquela semana. Linha roxa acima da verde por várias semanas = fila crescendo." },
+  entrada: { what: "Se o time está fechando no mesmo ritmo em que recebe demanda.", how: "Cada ponto é um dia, uma semana ou um mês, conforme o tamanho do período. Criadas = tarefas criadas ali. Finalizadas = tarefas que entraram em “Finalizado” ali. Linha roxa acima da verde por vários pontos seguidos = fila crescendo." },
   atraso: { what: "Há quantos dias as tarefas atrasadas estão vencidas.", how: "Para cada tarefa aberta e vencida: hoje − prazo, em dias de calendário. Depois agrupa em faixas de 1, 2–3, 4–7 e 8 ou mais dias." },
   gargalos: { what: "Em qual etapa as demandas de cada pessoa costumam ficar paradas. A cor mais forte é o gargalo.", how: "Cada célula é a média por tarefa: tempo que as tarefas ficaram naquele status enquanto estavam com a pessoa ÷ número de tarefas. Se a tarefa troca de responsável, o tempo é dividido no momento da troca. Voltas ao mesmo status somam. Finalizado e Problema não contam tempo. As colunas marcadas como cliente (Aprovação de texto e Para aprovação) mostram a espera, mas não entram na “Média/tarefa” da pessoa. As pessoas estão agrupadas pela fase em que trabalham: estratégia (dono, gestor e social media) e criação (diretores criativos)." },
   velocidade: { what: "Quanto tempo, em média, cada pessoa leva para criar uma entrega, e quanto essa entrega ainda esperou pelo cliente.", how: "Aparecem aqui só os diretores criativos. Faixa roxa: o relógio corre de “Pronto para criação” até o envio para aprovação, religa se a tarefa volta para “Ajuste” e pausa se ela volta para texto ou captação. Só conta o período em que a tarefa estava atribuída à pessoa. Faixa verde: tempo em “Para aprovação”, que é do cliente e não entra na média. Média = soma ÷ número de entregas com ciclo fechado." },
@@ -126,15 +137,63 @@ function EmptyMetric({ children }: { children: string }) {
   return <div className="dash-empty"><CircleGauge size={26} /><span>{children}</span></div>;
 }
 
-function KpiCard({ icon, tone, label, value, detail, info }: { icon: React.ReactNode; tone: string; label: string; value: string | number; detail: string; info: { what: string; how: string } }) {
-  return <article className={`dash-kpi dash-kpi--${tone}`}><span className="dash-kpi__icon">{icon}</span><div><span>{label}</span><strong>{value}</strong><small>{detail}</small></div><InfoButton label={label} info={info} /></article>;
+function KpiCard({ icon, tone, label, value, detail, info, delta }: { icon: React.ReactNode; tone: string; label: string; value: string | number; detail: string; info: { what: string; how: string }; delta?: React.ReactNode }) {
+  return <article className={`dash-kpi dash-kpi--${tone}`}><span className="dash-kpi__icon">{icon}</span><div><span>{label}</span><strong>{value}</strong><small>{detail}</small>{delta}</div><InfoButton label={label} info={info} /></article>;
+}
+
+/** Variação do indicador contra o período anterior. Tempo e contagem variam
+ * em percentual; o que já é percentual varia em pontos. */
+function KpiDelta({ current, previous, mode, format, lowerIsBetter = false }: { current?: number; previous?: number; mode: "percent" | "points" | "count"; format: (value: number) => string; lowerIsBetter?: boolean }) {
+  if (current === undefined) return null;
+  if (previous === undefined) return <em className="dash-kpi__delta">sem base no período anterior</em>;
+  const before = `Período anterior: ${format(previous)}`;
+  const diff = current - previous;
+  if (diff === 0) return <em className="dash-kpi__delta" title={before}>igual ao período anterior</em>;
+  const size = Math.abs(diff);
+  const percent = Math.round((size / previous) * 100);
+  const text = mode === "points" ? `${size} p.p.` : mode === "count" ? String(size) : previous === 0 ? format(size) : percent ? `${percent}%` : "menos de 1%";
+  return <em className={`dash-kpi__delta ${(diff < 0) === lowerIsBetter ? "is-good" : "is-bad"}`} title={before}>{diff > 0 ? "↑" : "↓"} {text} <span>vs. período anterior</span></em>;
+}
+
+function rangeLabel(range: DashboardDayRange) {
+  return range.from === range.to ? formatDueDate(range.from) : `${formatDueDate(range.from)} a ${formatDueDate(range.to)}`;
+}
+
+function PeriodBar({ period }: { period: DashboardPeriod }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const [pending, startTransition] = useTransition();
+  const [from, setFrom] = useState(period.range?.from ?? "");
+  const [to, setTo] = useState(period.range?.to ?? "");
+  const go = (query: Record<string, string>) => startTransition(() => router.push(`${pathname}?${new URLSearchParams(query)}`, { scroll: false }));
+  return <section className={`dash-period${pending ? " is-pending" : ""}`} aria-label="Período das métricas" aria-busy={pending}>
+    <div className="dash-period__presets">{DASHBOARD_PERIOD_PRESETS.map((preset) => <button type="button" key={preset.value} className={preset.value === period.preset ? "is-active" : ""} aria-pressed={preset.value === period.preset} onClick={() => go({ periodo: preset.value })}>{preset.label}</button>)}</div>
+    <form className={`dash-period__custom${period.preset === "personalizado" ? " is-active" : ""}`} onSubmit={(event) => { event.preventDefault(); go({ ...(from ? { de: from } : {}), ...(to ? { ate: to } : {}) }); }}>
+      <label><span>De</span><input type="date" value={from} max={to || undefined} onChange={(event) => setFrom(event.target.value)} /></label>
+      <label><span>Até</span><input type="date" value={to} min={from || undefined} onChange={(event) => setTo(event.target.value)} /></label>
+      <button type="submit" className="secondary-button" disabled={!from && !to}>Aplicar</button>
+    </form>
+    <p className="dash-period__summary">
+      <strong>{period.label}</strong>
+      {period.range && period.previous
+        ? <> · {rangeLabel(period.range)} ({plural(period.days ?? 1, "dia", "dias")}). Comparando com {rangeLabel(period.previous)}.{period.endsInPast ? " Carga aberta, atrasos e bloqueios mostram a situação no fim do período." : ""}</>
+        : <> · histórico inteiro, sem comparação com período anterior.</>}
+      <InfoButton label="Período das métricas" info={INFO.periodo} />
+    </p>
+  </section>;
+}
+
+/** Rótulos do eixo: com muitas colunas, mostra um a cada tantas. */
+function ChartAxis({ labels }: { labels: string[] }) {
+  const step = Math.ceil(labels.length / 8);
+  return <div className="dash-chart-axis" style={{ gridTemplateColumns: `repeat(${labels.length}, 1fr)` }}>{labels.map((label, index) => <span key={index}>{index % step === 0 ? label : ""}</span>)}</div>;
 }
 
 function PanelHead({ eyebrow, title, detail, info, action }: { eyebrow: string; title: string; detail: string; info: { what: string; how: string }; action?: React.ReactNode }) {
   return <header className="dash-panel-head"><div><span className="eyebrow">{eyebrow}</span><h2>{title}<InfoButton label={title} info={info} /></h2><p>{detail}</p></div>{action}</header>;
 }
 
-function ThroughputChart({ rows }: { rows: { label: string; created: number; completed: number }[] }) {
+function ThroughputChart({ rows, unit }: { rows: { label: string; created: number; completed: number }[]; unit: DashboardBucketUnit }) {
   const tip = useTip();
   const width = 720, height = 210, padX = 24, padY = 22;
   const maximum = Math.max(1, ...rows.flatMap((row) => [row.created, row.completed]));
@@ -143,16 +202,16 @@ function ThroughputChart({ rows }: { rows: { label: string; created: number; com
   const line = (key: "created" | "completed") => rows.map((row, index) => { const { x, y } = point(row[key], index); return `${x},${y}`; }).join(" ");
   return <div className="dash-line-chart">
     <div className="dash-chart-legend"><span><i className="created" />Criadas</span><span><i className="completed" />Finalizadas</span></div>
-    <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Tarefas criadas e finalizadas nas últimas oito semanas">
+    <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Tarefas criadas e finalizadas ${UNIT_TEXT[unit].by}`}>
       {[0, .25, .5, .75, 1].map((portion) => <line key={portion} x1={padX} x2={width - padX} y1={padY + portion * (height - padY * 2)} y2={padY + portion * (height - padY * 2)} className="dash-chart-grid" />)}
       <polyline points={line("created")} className="dash-chart-line dash-chart-line--created" /><polyline points={line("completed")} className="dash-chart-line dash-chart-line--completed" />
       {rows.flatMap((row, index) => (["created", "completed"] as const).map((key) => { const { x, y } = point(row[key], index); return <circle key={`${key}:${index}`} cx={x} cy={y} r="4" className={`dash-chart-dot dash-chart-dot--${key}`} />; }))}
-      {rows.map((row, index) => <rect key={index} x={padX + index * step - step / 2} y={0} width={step} height={height} className="dash-chart-band" {...tip(<TipBody title={`Semana de ${row.label}`} rows={[["Criadas", row.created], ["Finalizadas", row.completed], ["Saldo da fila", `${row.created - row.completed > 0 ? "+" : ""}${row.created - row.completed}`]]} />)} />)}
-    </svg><div className="dash-chart-axis">{rows.map((row) => <span key={row.label}>{row.label}</span>)}</div>
+      {rows.map((row, index) => <rect key={index} x={padX + index * step - step / 2} y={0} width={step} height={height} className="dash-chart-band" {...tip(<TipBody title={`${UNIT_TEXT[unit].tip} ${row.label}`} rows={[["Criadas", row.created], ["Finalizadas", row.completed], ["Saldo da fila", `${row.created - row.completed > 0 ? "+" : ""}${row.created - row.completed}`]]} />)} />)}
+    </svg><ChartAxis labels={rows.map((row) => row.label)} />
   </div>;
 }
 
-function CumulativeFlowChart({ rows }: { rows: DashboardFlowPoint[] }) {
+function CumulativeFlowChart({ rows, unit }: { rows: DashboardFlowPoint[]; unit: DashboardBucketUnit }) {
   const tip = useTip();
   const width = 720, height = 224, padX = 26, padY = 18;
   const maximum = Math.max(1, ...rows.map((row) => row.total));
@@ -168,11 +227,11 @@ function CumulativeFlowChart({ rows }: { rows: DashboardFlowPoint[] }) {
   const last = rows.at(-1);
   return <div className="dash-line-chart">
     <div className="dash-chart-legend">{FLOW_SERIES.map((series) => <span key={series.key}><i style={{ background: series.color }} />{series.label}{last ? ` · ${last[series.key]}` : ""}</span>)}</div>
-    <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Distribuição semanal das tarefas entre fila, produção e entrega">
+    <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Distribuição das tarefas entre fila, produção e entrega, ${UNIT_TEXT[unit].each}`}>
       {[0, .25, .5, .75, 1].map((portion) => <line key={portion} x1={padX} x2={width - padX} y1={padY + portion * (height - padY * 2)} y2={padY + portion * (height - padY * 2)} className="dash-chart-grid" />)}
       {FLOW_SERIES.map((series, index) => <path key={series.key} d={area(index)} fill={series.color} fillOpacity=".82" stroke={series.color} strokeWidth="1" />)}
-      {rows.map((row, index) => <rect key={row.start} x={x(index) - step / 2} y={0} width={step} height={height} className="dash-chart-band" {...tip(<TipBody title={`Fim da semana · ${row.label}`} rows={[...FLOW_SERIES.toReversed().map((series): [string, number] => [series.label, row[series.key]]), ["Total", row.total]]} />)} />)}
-    </svg><div className="dash-chart-axis">{rows.map((row) => <span key={row.start}>{row.label}</span>)}</div>
+      {rows.map((row, index) => <rect key={row.start} x={x(index) - step / 2} y={0} width={step} height={height} className="dash-chart-band" {...tip(<TipBody title={`${UNIT_TEXT[unit].end} · ${row.label}`} rows={[...FLOW_SERIES.toReversed().map((series): [string, number] => [series.label, row[series.key]]), ["Total", row.total]]} />)} />)}
+    </svg><ChartAxis labels={rows.map((row) => row.label)} />
   </div>;
 }
 
@@ -367,7 +426,7 @@ function reviewerRows(reviewers: DashboardReviewer[]): RankRow[] {
 }
 
 const SECTIONS = [
-  { id: "visao", label: "Visão geral", detail: "Os números que resumem a operação hoje." },
+  { id: "visao", label: "Visão geral", detail: "Os números que resumem a operação no período escolhido." },
   { id: "fluxo", label: "Fluxo e prazos", detail: "Quanto entra, quanto sai e se as datas combinadas se sustentam." },
   { id: "producao", label: "Estratégia e criação", detail: "O tempo de cada fase e de cada pessoa, medido pela fase em que ela trabalha." },
   { id: "clientes", label: "Clientes", detail: "Quem demora para aprovar, quem usa o link de aprovação e a situação de cada carteira." },
@@ -392,7 +451,7 @@ function ActivityChart({ members }: { members: DashboardMemberMetric[] }) {
   return <div className="dash-activity"><div className="dash-chart-legend"><span><i className="activity-created" />Criações</span><span><i className="activity-change" />Alterações</span><span><i className="activity-comment" />Comentários</span></div>{rows.map((member) => <div className={`dash-activity__row${member.totalActivity ? "" : " is-idle"}`} key={member.memberId} {...tip(<TipBody title={member.name} rows={[["Criações", member.created], ["Alterações", member.changes], ["Comentários", member.comments], ["Total de ações", member.totalActivity]]} />)}><div><Avatar member={member} small /><span>{member.name}</span></div><div className="dash-activity__track"><i className="activity-created" style={{ width: `${(member.created / maximum) * 100}%` }} /><i className="activity-change" style={{ width: `${(member.changes / maximum) * 100}%` }} /><i className="activity-comment" style={{ width: `${(member.comments / maximum) * 100}%` }} /></div><strong>{member.totalActivity}</strong></div>)}</div>;
 }
 
-export function DashboardView({ metrics }: DashboardViewProps) {
+export function DashboardView({ metrics, comparison, period }: DashboardViewProps) {
   const [tip, setTip] = useState<Tip | null>(null);
   useEffect(() => {
     // No toque não existe "sair" do elemento: o balão fecha quando a pessoa
@@ -405,23 +464,26 @@ export function DashboardView({ metrics }: DashboardViewProps) {
   }, []);
   const activeMembers = metrics.members;
   const maxComments = Math.max(1, ...metrics.topCommented.map((task) => task.count));
-  const lastWeek = metrics.throughput.at(-1);
   const flow = metrics.flowEfficiency;
+  const unit = UNIT_TEXT[metrics.bucketUnit];
+  const percent = (value: number) => `${value}%`;
   return <TipContext.Provider value={setTip}><main className="admin-page dashboard dashboard-intelligence">
     <div className="dashboard-head dashboard-head--intelligence"><div><span className="eyebrow">Inteligência operacional</span><h1>Pulso da operação</h1><p>Gargalos, capacidade, retrabalho e qualidade do planejamento calculados a partir do histórico real das tarefas.</p></div><span className="dash-live"><i /> Dados atualizados ao abrir</span></div>
+
+    {period ? <PeriodBar key={`${period.preset}:${period.range?.from}:${period.range?.to}`} period={period} /> : null}
 
     <nav className="dash-sections-nav" aria-label="Seções do dashboard">{SECTIONS.map((section) => <a href={`#dash-${section.id}`} key={section.id}>{section.label}</a>)}</nav>
 
     <SectionTitle id="visao" />
     <section className="dash-kpi-grid" aria-label="Indicadores principais">
-      <KpiCard icon={<Clock3 size={19} />} tone="violet" label="Ciclo criativo médio" value={metrics.averageCreativeMs === undefined ? "Sem base" : formatDuration(metrics.averageCreativeMs)} detail={metrics.averageCreativeClientMs === undefined ? `${metrics.creativeDeliveries} entregas com ciclo completo` : `${metrics.creativeDeliveries} entregas · mais ${formatDuration(metrics.averageCreativeClientMs)} aguardando o cliente`} info={INFO.kpiCiclo} />
-      <KpiCard icon={<Gauge size={19} />} tone="blue" label="Eficiência de fluxo" value={`${flow.ratio}%`} detail={`${formatDuration(flow.tasks ? flow.waitingMs / flow.tasks : 0)} de espera do time por tarefa, em média`} info={INFO.kpiEficiencia} />
-      <KpiCard icon={<Target size={19} />} tone="green" label="Entrega na data prometida" value={`${metrics.punctuality.originalRate}%`} detail={`${metrics.punctuality.keptOriginal} de ${metrics.punctuality.delivered} entregas fecharam no prazo original`} info={INFO.kpiPontualidade} />
-      <KpiCard icon={<Hourglass size={19} />} tone="violet" label="Prazo confiável (P85)" value={metrics.leadTime.p85Ms === undefined ? "Sem base" : formatDuration(metrics.leadTime.p85Ms)} detail={`85% das ${metrics.leadTime.samples} tarefas medidas fecham até aí`} info={INFO.kpiP85} />
-      <KpiCard icon={<RefreshCcw size={19} />} tone="amber" label="Taxa de retrabalho" value={`${metrics.reworkRate}%`} detail={`${metrics.reworkedTasks} de ${metrics.creativeTasks} tarefas que entraram em criação passaram por ajuste`} info={INFO.kpiRetrabalho} />
-      <KpiCard icon={<CalendarClock size={19} />} tone="red" label="Atrasos ativos" value={metrics.overdueTasks} detail={`de ${metrics.activeTasks} responsabilidades abertas`} info={INFO.kpiAtrasos} />
+      <KpiCard icon={<Clock3 size={19} />} tone="violet" label="Ciclo criativo médio" value={metrics.averageCreativeMs === undefined ? "Sem base" : formatDuration(metrics.averageCreativeMs)} detail={metrics.averageCreativeClientMs === undefined ? `${metrics.creativeDeliveries} entregas com ciclo completo` : `${metrics.creativeDeliveries} entregas · mais ${formatDuration(metrics.averageCreativeClientMs)} aguardando o cliente`} info={INFO.kpiCiclo} delta={comparison ? <KpiDelta current={metrics.averageCreativeMs} previous={comparison.averageCreativeMs} mode="percent" format={formatDuration} lowerIsBetter /> : undefined} />
+      <KpiCard icon={<Gauge size={19} />} tone="blue" label="Eficiência de fluxo" value={`${flow.ratio}%`} detail={`${formatDuration(flow.tasks ? flow.waitingMs / flow.tasks : 0)} de espera do time por tarefa, em média`} info={INFO.kpiEficiencia} delta={comparison ? <KpiDelta current={flow.workingMs + flow.waitingMs ? flow.ratio : undefined} previous={comparison.flowRatio} mode="points" format={percent} /> : undefined} />
+      <KpiCard icon={<Target size={19} />} tone="green" label="Entrega na data prometida" value={`${metrics.punctuality.originalRate}%`} detail={`${metrics.punctuality.keptOriginal} de ${metrics.punctuality.delivered} entregas fecharam no prazo original`} info={INFO.kpiPontualidade} delta={comparison ? <KpiDelta current={metrics.punctuality.delivered ? metrics.punctuality.originalRate : undefined} previous={comparison.punctualityRate} mode="points" format={percent} /> : undefined} />
+      <KpiCard icon={<Hourglass size={19} />} tone="violet" label="Prazo confiável (P85)" value={metrics.leadTime.p85Ms === undefined ? "Sem base" : formatDuration(metrics.leadTime.p85Ms)} detail={`85% das ${metrics.leadTime.samples} tarefas medidas fecham até aí`} info={INFO.kpiP85} delta={comparison ? <KpiDelta current={metrics.leadTime.p85Ms} previous={comparison.p85Ms} mode="percent" format={formatDuration} lowerIsBetter /> : undefined} />
+      <KpiCard icon={<RefreshCcw size={19} />} tone="amber" label="Taxa de retrabalho" value={`${metrics.reworkRate}%`} detail={`${metrics.reworkedTasks} de ${metrics.creativeTasks} tarefas que estiveram em criação passaram por ajuste`} info={INFO.kpiRetrabalho} delta={comparison ? <KpiDelta current={metrics.creativeTasks ? metrics.reworkRate : undefined} previous={comparison.reworkRate} mode="points" format={percent} lowerIsBetter /> : undefined} />
+      <KpiCard icon={<CalendarClock size={19} />} tone="red" label="Atrasos ativos" value={metrics.overdueTasks} detail={`de ${metrics.activeTasks} responsabilidades abertas`} info={INFO.kpiAtrasos} delta={comparison ? <KpiDelta current={metrics.overdueTasks} previous={comparison.overdueTasks} mode="count" format={String} lowerIsBetter /> : undefined} />
       <KpiCard icon={<FileWarning size={19} />} tone="blue" label="Bloqueios de informação" value={metrics.criticalAlerts} detail={`${metrics.alerts.length} inconsistências no total`} info={INFO.kpiBloqueios} />
-      <KpiCard icon={<TrendingUp size={19} />} tone="green" label="Entregas na semana" value={lastWeek?.completed ?? 0} detail={`${lastWeek?.created ?? 0} tarefas criadas no mesmo período`} info={INFO.kpiSemana} />
+      <KpiCard icon={<TrendingUp size={19} />} tone="green" label="Entregas no período" value={metrics.periodTotals.completed} detail={`${metrics.periodTotals.created} tarefas criadas no mesmo período`} info={INFO.kpiPeriodo} delta={comparison ? <KpiDelta current={metrics.periodTotals.completed} previous={comparison.completed} mode="percent" format={String} /> : undefined} />
     </section>
 
     <section className="dash-insight-strip" aria-label="Destaques da operação">
@@ -433,12 +495,12 @@ export function DashboardView({ metrics }: DashboardViewProps) {
 
     <SectionTitle id="fluxo" />
     <div className="dash-grid dash-grid--wide-left">
-      <section className="panel dash-panel"><PanelHead eyebrow="Fluxo" title="Fila, produção e entrega semana a semana" detail="Faixa que engrossa é fila que se acumula. Quando a de produção incha sem a verde subir, o time está começando mais do que termina." info={INFO.fluxo} /><CumulativeFlowChart rows={metrics.cumulativeFlow} /></section>
+      <section className="panel dash-panel"><PanelHead eyebrow="Fluxo" title={`Fila, produção e entrega ${unit.each}`} detail="Faixa que engrossa é fila que se acumula. Quando a de produção incha sem a verde subir, o time está começando mais do que termina." info={INFO.fluxo} /><CumulativeFlowChart rows={metrics.cumulativeFlow} unit={metrics.bucketUnit} /></section>
       <section className="panel dash-panel"><PanelHead eyebrow="Eficiência" title="Trabalhando × esperando" detail="Quanto do tempo das demandas com o time alguém estava de fato produzindo. A espera pelo cliente não entra." info={INFO.eficiencia} /><FlowEfficiencyGauge flow={flow} leadTime={metrics.leadTime} /></section>
     </div>
 
     <div className="dash-grid dash-grid--wide-left">
-      <section className="panel dash-panel"><PanelHead eyebrow="Fluxo" title="Entrada × entrega" detail="Tarefas criadas e efetivamente finalizadas por semana, nas últimas 8 semanas." info={INFO.entrada} /><ThroughputChart rows={metrics.throughput} /></section>
+      <section className="panel dash-panel"><PanelHead eyebrow="Fluxo" title="Entrada × entrega" detail={`Tarefas criadas e efetivamente finalizadas ${unit.by}.`} info={INFO.entrada} /><ThroughputChart rows={metrics.throughput} unit={metrics.bucketUnit} /></section>
       <section className="panel dash-panel"><PanelHead eyebrow="Atrasos" title="Gravidade do atraso" detail="Distribuição das tarefas abertas que já passaram do prazo." info={INFO.atraso} /><DelayChart buckets={metrics.delayBuckets} /></section>
     </div>
 
