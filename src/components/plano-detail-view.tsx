@@ -2,7 +2,7 @@
 
 import { approvalStage, settleApproval } from "@/lib/approval-workflow";
 import { APPROVAL_DISPLAY_LABELS, approvalDisplay } from "@/lib/approval-history";
-import { CalendarDays, Camera, ChevronRight, ClipboardList, Filter, LayoutGrid, Link as LinkIcon, List, MessageSquareText, Package, Palette, Plus, Search, Send, Trash2, X } from "lucide-react";
+import { ArrowLeft, CalendarDays, Camera, ChevronRight, ClipboardList, FolderInput, LayoutGrid, Link as LinkIcon, List, MessageSquareText, Package, Palette, Plus, Search, Send, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { PlanCalendar } from "@/components/plan-calendar";
@@ -14,15 +14,15 @@ import { ClientLinkPanel } from "@/components/client-link-panel";
 import { DatePicker } from "@/components/vz/date-picker";
 import { AvatarStack, Button, Card, Count, Progress, Segmented, Tag, Tabs } from "@/components/vz";
 import { useConfirm } from "@/components/confirm-dialog";
-import { formatDueDate } from "@/lib/dates";
+import { formatDueDate, todayIso } from "@/lib/dates";
 import { networkError, responseError } from "@/lib/request-error";
-import { summarizeApprovalRound } from "@/lib/approval-workflow";
+import { planStageLabel, summarizeApprovalRound } from "@/lib/approval-workflow";
 import { inheritsCaptureEditor } from "@/lib/assignee-inheritance";
-import { TASK_STATUSES } from "@/lib/types";
-import type { Member, Plan, PlanApprovalResponse, PlanCaptacao, PlanEvent, PlanItemApproval, Project, StatusColor, StatusGroup, Tag as TagModel, Task } from "@/lib/types";
+import { NO_FORMAT_KEY, comparePriority } from "@/lib/plan-queue";
+import { CLOSED_TASK_STATUSES, TASK_STATUSES } from "@/lib/types";
+import type { Member, Plan, PlanApprovalResponse, PlanCaptacao, PlanEvent, PlanItemApproval, PlanStage, Project, StatusColor, StatusGroup, Tag as TagModel, Task } from "@/lib/types";
 
 const NO_MEMBER = "none";
-const NO_FORMAT_KEY = "__sem_formato__";
 
 
 // ---------- A visão de aprovação ----------
@@ -220,11 +220,19 @@ export function PlanoDetailView({
   categoryTags,
   statusColors,
   currentUserId,
+  stage = "rascunho",
+  looseTasks = [],
+  today = todayIso(),
   canEdit = true,
   canEditTasks = canEdit,
 }: {
   plan: Plan;
   project: Project;
+  /** Etapa do plano, calculada pelas rodadas de aprovação do cliente. */
+  stage?: PlanStage;
+  /** Tarefas abertas do cliente que ainda não estão em nenhum plano. */
+  looseTasks?: Task[];
+  today?: string;
   initialCaptacoes: PlanCaptacao[];
   initialTasks: Task[];
   initialApprovals: PlanItemApproval[];
@@ -261,6 +269,14 @@ export function PlanoDetailView({
   const [workflowError, setWorkflowError] = useState("");
   const [contentView, setContentView] = useState<"lista" | "grade">("lista");
   const [query, setQuery] = useState("");
+  const [taskScope, setTaskScope] = useState<"todas" | "abertas">("todas");
+  const [onlyMine, setOnlyMine] = useState(false);
+  // Tarefa criada fora do plano entra por aqui, sem ter que recriar.
+  const [loose, setLoose] = useState(looseTasks);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [pickerQuery, setPickerQuery] = useState("");
+  const [adding, setAdding] = useState(false);
   const { confirm, ConfirmDialog } = useConfirm();
 
   const isContent = plan.kind === "content";
@@ -422,6 +438,35 @@ export function PlanoDetailView({
     setNewItemName("");
   }
 
+  async function addExisting(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!picked.length || adding) return;
+    setAdding(true);
+    const moved: Task[] = [];
+    let failure = "";
+    // Uma por vez: se alguma falhar, as anteriores já estão no plano e a tela
+    // mostra exatamente o que entrou.
+    for (const id of picked) {
+      try {
+        const response = await fetch(`/api/tasks/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planId: plan.id }) });
+        if (!response.ok) { failure = await responseError(response, "adicionar a tarefa ao plano"); break; }
+        moved.push((await response.json()).task);
+      } catch {
+        failure = networkError("adicionar a tarefa ao plano");
+        break;
+      }
+    }
+    const movedIds = new Set(moved.map((task) => task.id));
+    setTasks((current) => [...current, ...moved.filter((task) => !current.some((item) => item.id === task.id))]);
+    setLoose((current) => current.filter((task) => !movedIds.has(task.id)));
+    setPicked((current) => current.filter((id) => !movedIds.has(id)));
+    setAdding(false);
+    if (failure) return showToast(failure);
+    setPickerOpen(false);
+    setPickerQuery("");
+    showToast(moved.length === 1 ? "1 tarefa adicionada ao plano." : `${moved.length} tarefas adicionadas ao plano.`);
+  }
+
   async function openApprovalRound(stage: "copy" | "creative") {
     setWorkflowError("");
     const response = await fetch(`/api/plans/${plan.id}/approval-round`, {
@@ -554,7 +599,7 @@ export function PlanoDetailView({
   }
 
   function renderTaskRow(task: Task) {
-    if (query.trim() && !visibleTasks.includes(task)) return null;
+    if (!visibleIds.has(task.id)) return null;
     const categories = task.categoryTagIds.map((id) => categoryTagById.get(id)?.label).filter(Boolean);
     const assignee = task.assigneeId ? memberById.get(task.assigneeId)?.name : undefined;
     const approval = approvalByTask.get(task.id);
@@ -595,7 +640,8 @@ export function PlanoDetailView({
   }
 
   function renderFormatGroup(formatId: string, label: string) {
-    const groupTasks = itemsByFormat.get(formatId) || [];
+    // Dentro de cada formato, a ordem é a de entrega: atrasadas, depois prazo.
+    const groupTasks = (itemsByFormat.get(formatId) || []).filter((task) => visibleIds.has(task.id)).sort((a, b) => comparePriority(a, b, today));
     if (!groupTasks.length) return null;
     return (
       <div key={formatId}>
@@ -620,9 +666,13 @@ export function PlanoDetailView({
     ] : []),
     { value: "aprovacao" as const, label: "Aprovação", count: aguardandoCliente || undefined },
   ];
-  const visibleTasks = query.trim()
-    ? tasks.filter((task) => task.name.toLocaleLowerCase("pt-BR").includes(query.trim().toLocaleLowerCase("pt-BR")))
-    : tasks;
+  const normalizedQuery = query.trim().toLocaleLowerCase("pt-BR");
+  const visibleTasks = tasks.filter((task) =>
+    (!normalizedQuery || task.name.toLocaleLowerCase("pt-BR").includes(normalizedQuery))
+    && (!onlyMine || task.assigneeId === currentUserId)
+    && (taskScope === "todas" || !CLOSED_TASK_STATUSES.includes(task.status)));
+  const visibleIds = new Set(visibleTasks.map((task) => task.id));
+  const pickerMatches = loose.filter((task) => !pickerQuery.trim() || task.name.toLocaleLowerCase("pt-BR").includes(pickerQuery.trim().toLocaleLowerCase("pt-BR")));
   const planPeople = members
     .filter((member) => member.active && tasks.some((task) => task.assigneeId === member.id))
     .map((member) => ({ name: member.name, src: member.avatarUrl }));
@@ -633,10 +683,10 @@ export function PlanoDetailView({
         {/* Cabeçalho: o estado do plano cabe na primeira tela, sem rolar. */}
         <div className="vz-pagehead">
           <div className="vz-pagehead__text">
-            <span className="vz-eyebrow">{project.name} · {plan.kind === "content" ? "Plano mensal" : "Plano"}</span>
+            <Link href={`/planos?cliente=${project.id}`} className="vz-eyebrow pq-back"><ArrowLeft size={12} /> {project.name} · {plan.kind === "content" ? "Plano mensal" : "Plano"}</Link>
             <h1 className="vz-h1">{plan.title}</h1>
             <div className="vz-plan-tags">
-              <Tag tone="amber">Em produção</Tag>
+              <Tag tone={stage === "aprovado" ? "green" : stage === "ativo" ? "amber" : "slate"}>{planStageLabel(stage)}</Tag>
               <Tag outline>{tasks.length} {tasks.length === 1 ? "conteúdo" : "conteúdos"}</Tag>
               <Tag outline>{activeSummary.approved} aprovados</Tag>
               {planPeople.length ? <AvatarStack people={planPeople} max={3} size="sm" /> : null}
@@ -788,7 +838,9 @@ export function PlanoDetailView({
           </div>
           {aba === "conteudos" ? <div className="vz-tablebar__controls">
             <div className="vz-toolbar__search vz-plan-search"><Search size={14} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar no plano…" /></div>
-            <Button variant="secondary" size="sm"><Filter size={14} />Filtros</Button>
+            <Segmented size="sm" value={taskScope} onChange={setTaskScope} options={[{ value: "todas", label: "Todas" }, { value: "abertas", label: "Abertas" }]} />
+            <label className="pq-mine"><input type="checkbox" checked={onlyMine} onChange={(event) => setOnlyMine(event.target.checked)} /> Só as minhas</label>
+            {canEdit && loose.length ? <Button type="button" variant="secondary" size="sm" onClick={() => setPickerOpen(true)}><FolderInput size={14} />Adicionar existente</Button> : null}
             <div className="vz-toolbar__spacer" />
             <Segmented size="sm" value={contentView} onChange={setContentView} options={[{ value: "lista", label: "Lista", icon: <List size={13} /> }, { value: "grade", label: "Grade", icon: <LayoutGrid size={13} /> }]} />
             {canEdit && aba === "conteudos" ? (
@@ -817,16 +869,13 @@ export function PlanoDetailView({
             <>
               {isContent ? (
                 <>
-                  {formatTags.map((t) => {
-                    const original = itemsByFormat.get(t.id) || [];
-                    if (query && !original.some((task) => visibleTasks.includes(task))) return null;
-                    return renderFormatGroup(t.id, t.label);
-                  })}
+                  {formatTags.map((t) => renderFormatGroup(t.id, t.label))}
                   {renderFormatGroup(NO_FORMAT_KEY, "Sem formato")}
                 </>
               ) : (
                 <ul className="plan-item-list">{processItems.map(renderTaskRow)}</ul>
               )}
+              {tasks.length && !visibleTasks.length ? <div className="pq-filter-empty">Nenhum item neste filtro.</div> : null}
               {!tasks.length ? (
                 <div className="empty-state">
                   <ClipboardList size={35} />
@@ -897,6 +946,33 @@ export function PlanoDetailView({
               <label className="vz-field"><span className="vz-label">Tipo do pacote</span><select className="vz-select" value={newPackageType} onChange={(event) => setNewPackageType(event.target.value as typeof newPackageType)} autoFocus><option value="captacao">Captação</option><option value="carrossel">Carrossel</option><option value="sazonal">Sazonal</option><option value="estatico">Estático</option></select><span className="vz-hint">O número é criado automaticamente conforme os pacotes existentes.</span></label>
             </div>
             <div className="vz-modal__foot"><Button type="button" variant="secondary" onClick={() => setPackageCreatorOpen(false)}>Cancelar</Button><Button type="submit" variant="primary"><Plus size={14} />Criar pacote</Button></div>
+          </form>
+        </div>
+      ) : null}
+      {pickerOpen ? (
+        <div className="modal-layer" role="presentation">
+          <button className="modal-backdrop" type="button" aria-label="Fechar seleção de tarefas" onClick={() => setPickerOpen(false)} />
+          <form className="vz-modal" onSubmit={addExisting} role="dialog" aria-modal="true" aria-labelledby="add-existing-title">
+            <div className="vz-modal__head">
+              <div><span className="vz-eyebrow">{project.name} · tarefas fora de plano</span><h2 className="vz-h2" id="add-existing-title">Adicionar tarefa existente</h2></div>
+              <button type="button" className="vz-icon-btn vz-icon-btn--sm" onClick={() => setPickerOpen(false)} aria-label="Fechar"><X size={15} /></button>
+            </div>
+            <div className="vz-modal__body pq-form">
+              <div className="vz-plan-search"><Search size={14} /><input value={pickerQuery} onChange={(event) => setPickerQuery(event.target.value)} placeholder="Buscar tarefa…" aria-label="Buscar tarefa" autoFocus /></div>
+              <ul className="pq-picker">
+                {pickerMatches.map((task) => (
+                  <li key={task.id}>
+                    <label>
+                      <input type="checkbox" checked={picked.includes(task.id)} onChange={(event) => setPicked((current) => event.target.checked ? [...current, task.id] : current.filter((id) => id !== task.id))} />
+                      <span><strong>{task.name}</strong><small>{task.assigneeId ? memberById.get(task.assigneeId)?.name || "Sem responsável" : "Sem responsável"} · {formatDueDate(task.dueDate)}</small></span>
+                      <StatusTag status={task.status} colorByStatus={coresPorEtapa} />
+                    </label>
+                  </li>
+                ))}
+                {!pickerMatches.length ? <li className="pq-picker__empty">Nenhuma tarefa encontrada.</li> : null}
+              </ul>
+            </div>
+            <div className="vz-modal__foot"><Button type="button" variant="secondary" onClick={() => setPickerOpen(false)}>Cancelar</Button><Button type="submit" variant="primary" disabled={!picked.length || adding}><Plus size={14} />{adding ? "Adicionando…" : picked.length > 1 ? `Adicionar ${picked.length} tarefas` : "Adicionar ao plano"}</Button></div>
           </form>
         </div>
       ) : null}
