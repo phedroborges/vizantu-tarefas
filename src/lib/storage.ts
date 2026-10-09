@@ -494,7 +494,7 @@ export async function listTaskSummaries(scope: TaskQueryScope = {}): Promise<Tas
 }
 
 const TASK_LIST_COLUMNS = "id,project_id,name,kind,due_date,assignee_id,assignee_source,drive_link,format_tag_ids,channel_tag_ids,category_tag_ids,lists,status,plan_id,captacao_id,sequence_order,seasonal,created_at,updated_at";
-const TASK_PRODUCTION_COLUMNS = "id,project_id,name,kind,assignee_id,format_tag_ids,status,status_history,comments,captacao_id,created_at,updated_at";
+const TASK_PRODUCTION_COLUMNS = "id,project_id,name,kind,due_date,assignee_id,format_tag_ids,status,status_history,comments,captacao_id,created_at,updated_at";
 
 export async function listTasks(options: TaskQueryScope & { all?: boolean; projection?: "list" | "production" } = {}): Promise<Task[]> {
   if (Array.isArray(options.projectIds) && !options.projectIds.length) return [];

@@ -6,15 +6,15 @@ import {
   UserRoundCheck, UserRoundX, UsersRound,
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { createContext, useContext, useEffect, useState, useTransition } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import {
   TIMED_STATUSES,
   type DashboardBucketUnit, type DashboardComparison, type DashboardMetrics,
   type DashboardClientAdoption, type DashboardClientStage, type DashboardClientWait, type DashboardFlowPoint, type DashboardLeadTime, type DashboardReviewer,
   type DashboardMemberMetric, type DashboardPhase, type DashboardProjectHealth, type DashboardPunctuality,
 } from "@/lib/dashboard-metrics";
-import { DASHBOARD_PERIOD_PRESETS, type DashboardDayRange, type DashboardPeriod } from "@/lib/dashboard-period";
+import { PeriodBar, PeriodDelta } from "@/components/period-bar";
+import { type DashboardPeriod } from "@/lib/dashboard-period";
 import { formatDuration, formatDueDate } from "@/lib/dates";
 import { type StatusGroup, type TaskStatus } from "@/lib/types";
 
@@ -139,48 +139,6 @@ function EmptyMetric({ children }: { children: string }) {
 
 function KpiCard({ icon, tone, label, value, detail, info, delta }: { icon: React.ReactNode; tone: string; label: string; value: string | number; detail: string; info: { what: string; how: string }; delta?: React.ReactNode }) {
   return <article className={`dash-kpi dash-kpi--${tone}`}><span className="dash-kpi__icon">{icon}</span><div><span>{label}</span><strong>{value}</strong><small>{detail}</small>{delta}</div><InfoButton label={label} info={info} /></article>;
-}
-
-/** Variação do indicador contra o período anterior. Tempo e contagem variam
- * em percentual; o que já é percentual varia em pontos. */
-function KpiDelta({ current, previous, mode, format, lowerIsBetter = false }: { current?: number; previous?: number; mode: "percent" | "points" | "count"; format: (value: number) => string; lowerIsBetter?: boolean }) {
-  if (current === undefined) return null;
-  if (previous === undefined) return <em className="dash-kpi__delta">sem base no período anterior</em>;
-  const before = `Período anterior: ${format(previous)}`;
-  const diff = current - previous;
-  if (diff === 0) return <em className="dash-kpi__delta" title={before}>igual ao período anterior</em>;
-  const size = Math.abs(diff);
-  const percent = Math.round((size / previous) * 100);
-  const text = mode === "points" ? `${size} p.p.` : mode === "count" ? String(size) : previous === 0 ? format(size) : percent ? `${percent}%` : "menos de 1%";
-  return <em className={`dash-kpi__delta ${(diff < 0) === lowerIsBetter ? "is-good" : "is-bad"}`} title={before}>{diff > 0 ? "↑" : "↓"} {text} <span>vs. período anterior</span></em>;
-}
-
-function rangeLabel(range: DashboardDayRange) {
-  return range.from === range.to ? formatDueDate(range.from) : `${formatDueDate(range.from)} a ${formatDueDate(range.to)}`;
-}
-
-function PeriodBar({ period }: { period: DashboardPeriod }) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const [pending, startTransition] = useTransition();
-  const [from, setFrom] = useState(period.range?.from ?? "");
-  const [to, setTo] = useState(period.range?.to ?? "");
-  const go = (query: Record<string, string>) => startTransition(() => router.push(`${pathname}?${new URLSearchParams(query)}`, { scroll: false }));
-  return <section className={`dash-period${pending ? " is-pending" : ""}`} aria-label="Período das métricas" aria-busy={pending}>
-    <div className="dash-period__presets">{DASHBOARD_PERIOD_PRESETS.map((preset) => <button type="button" key={preset.value} className={preset.value === period.preset ? "is-active" : ""} aria-pressed={preset.value === period.preset} onClick={() => go({ periodo: preset.value })}>{preset.label}</button>)}</div>
-    <form className={`dash-period__custom${period.preset === "personalizado" ? " is-active" : ""}`} onSubmit={(event) => { event.preventDefault(); go({ ...(from ? { de: from } : {}), ...(to ? { ate: to } : {}) }); }}>
-      <label><span>De</span><input type="date" value={from} max={to || undefined} onChange={(event) => setFrom(event.target.value)} /></label>
-      <label><span>Até</span><input type="date" value={to} min={from || undefined} onChange={(event) => setTo(event.target.value)} /></label>
-      <button type="submit" className="secondary-button" disabled={!from && !to}>Aplicar</button>
-    </form>
-    <p className="dash-period__summary">
-      <strong>{period.label}</strong>
-      {period.range && period.previous
-        ? <> · {rangeLabel(period.range)} ({plural(period.days ?? 1, "dia", "dias")}). Comparando com {rangeLabel(period.previous)}.{period.endsInPast ? " Carga aberta, atrasos e bloqueios mostram a situação no fim do período." : ""}</>
-        : <> · histórico inteiro, sem comparação com período anterior.</>}
-      <InfoButton label="Período das métricas" info={INFO.periodo} />
-    </p>
-  </section>;
 }
 
 /** Rótulos do eixo: com muitas colunas, mostra um a cada tantas. */
@@ -470,20 +428,20 @@ export function DashboardView({ metrics, comparison, period }: DashboardViewProp
   return <TipContext.Provider value={setTip}><main className="admin-page dashboard dashboard-intelligence">
     <div className="dashboard-head dashboard-head--intelligence"><div><span className="eyebrow">Inteligência operacional</span><h1>Pulso da operação</h1><p>Gargalos, capacidade, retrabalho e qualidade do planejamento calculados a partir do histórico real das tarefas.</p></div><span className="dash-live"><i /> Dados atualizados ao abrir</span></div>
 
-    {period ? <PeriodBar key={`${period.preset}:${period.range?.from}:${period.range?.to}`} period={period} /> : null}
+    {period ? <PeriodBar key={`${period.preset}:${period.range?.from}:${period.range?.to}`} period={period} pastNote="Carga aberta, atrasos e bloqueios mostram a situação no fim do período."><InfoButton label="Período das métricas" info={INFO.periodo} /></PeriodBar> : null}
 
     <nav className="dash-sections-nav" aria-label="Seções do dashboard">{SECTIONS.map((section) => <a href={`#dash-${section.id}`} key={section.id}>{section.label}</a>)}</nav>
 
     <SectionTitle id="visao" />
     <section className="dash-kpi-grid" aria-label="Indicadores principais">
-      <KpiCard icon={<Clock3 size={19} />} tone="violet" label="Ciclo criativo médio" value={metrics.averageCreativeMs === undefined ? "Sem base" : formatDuration(metrics.averageCreativeMs)} detail={metrics.averageCreativeClientMs === undefined ? `${metrics.creativeDeliveries} entregas com ciclo completo` : `${metrics.creativeDeliveries} entregas · mais ${formatDuration(metrics.averageCreativeClientMs)} aguardando o cliente`} info={INFO.kpiCiclo} delta={comparison ? <KpiDelta current={metrics.averageCreativeMs} previous={comparison.averageCreativeMs} mode="percent" format={formatDuration} lowerIsBetter /> : undefined} />
-      <KpiCard icon={<Gauge size={19} />} tone="blue" label="Eficiência de fluxo" value={`${flow.ratio}%`} detail={`${formatDuration(flow.tasks ? flow.waitingMs / flow.tasks : 0)} de espera do time por tarefa, em média`} info={INFO.kpiEficiencia} delta={comparison ? <KpiDelta current={flow.workingMs + flow.waitingMs ? flow.ratio : undefined} previous={comparison.flowRatio} mode="points" format={percent} /> : undefined} />
-      <KpiCard icon={<Target size={19} />} tone="green" label="Entrega na data prometida" value={`${metrics.punctuality.originalRate}%`} detail={`${metrics.punctuality.keptOriginal} de ${metrics.punctuality.delivered} entregas fecharam no prazo original`} info={INFO.kpiPontualidade} delta={comparison ? <KpiDelta current={metrics.punctuality.delivered ? metrics.punctuality.originalRate : undefined} previous={comparison.punctualityRate} mode="points" format={percent} /> : undefined} />
-      <KpiCard icon={<Hourglass size={19} />} tone="violet" label="Prazo confiável (P85)" value={metrics.leadTime.p85Ms === undefined ? "Sem base" : formatDuration(metrics.leadTime.p85Ms)} detail={`85% das ${metrics.leadTime.samples} tarefas medidas fecham até aí`} info={INFO.kpiP85} delta={comparison ? <KpiDelta current={metrics.leadTime.p85Ms} previous={comparison.p85Ms} mode="percent" format={formatDuration} lowerIsBetter /> : undefined} />
-      <KpiCard icon={<RefreshCcw size={19} />} tone="amber" label="Taxa de retrabalho" value={`${metrics.reworkRate}%`} detail={`${metrics.reworkedTasks} de ${metrics.creativeTasks} tarefas que estiveram em criação passaram por ajuste`} info={INFO.kpiRetrabalho} delta={comparison ? <KpiDelta current={metrics.creativeTasks ? metrics.reworkRate : undefined} previous={comparison.reworkRate} mode="points" format={percent} lowerIsBetter /> : undefined} />
-      <KpiCard icon={<CalendarClock size={19} />} tone="red" label="Atrasos ativos" value={metrics.overdueTasks} detail={`de ${metrics.activeTasks} responsabilidades abertas`} info={INFO.kpiAtrasos} delta={comparison ? <KpiDelta current={metrics.overdueTasks} previous={comparison.overdueTasks} mode="count" format={String} lowerIsBetter /> : undefined} />
+      <KpiCard icon={<Clock3 size={19} />} tone="violet" label="Ciclo criativo médio" value={metrics.averageCreativeMs === undefined ? "Sem base" : formatDuration(metrics.averageCreativeMs)} detail={metrics.averageCreativeClientMs === undefined ? `${metrics.creativeDeliveries} entregas com ciclo completo` : `${metrics.creativeDeliveries} entregas · mais ${formatDuration(metrics.averageCreativeClientMs)} aguardando o cliente`} info={INFO.kpiCiclo} delta={comparison ? <PeriodDelta current={metrics.averageCreativeMs} previous={comparison.averageCreativeMs} mode="percent" format={formatDuration} lowerIsBetter /> : undefined} />
+      <KpiCard icon={<Gauge size={19} />} tone="blue" label="Eficiência de fluxo" value={`${flow.ratio}%`} detail={`${formatDuration(flow.tasks ? flow.waitingMs / flow.tasks : 0)} de espera do time por tarefa, em média`} info={INFO.kpiEficiencia} delta={comparison ? <PeriodDelta current={flow.workingMs + flow.waitingMs ? flow.ratio : undefined} previous={comparison.flowRatio} mode="points" format={percent} /> : undefined} />
+      <KpiCard icon={<Target size={19} />} tone="green" label="Entrega na data prometida" value={`${metrics.punctuality.originalRate}%`} detail={`${metrics.punctuality.keptOriginal} de ${metrics.punctuality.delivered} entregas fecharam no prazo original`} info={INFO.kpiPontualidade} delta={comparison ? <PeriodDelta current={metrics.punctuality.delivered ? metrics.punctuality.originalRate : undefined} previous={comparison.punctualityRate} mode="points" format={percent} /> : undefined} />
+      <KpiCard icon={<Hourglass size={19} />} tone="violet" label="Prazo confiável (P85)" value={metrics.leadTime.p85Ms === undefined ? "Sem base" : formatDuration(metrics.leadTime.p85Ms)} detail={`85% das ${metrics.leadTime.samples} tarefas medidas fecham até aí`} info={INFO.kpiP85} delta={comparison ? <PeriodDelta current={metrics.leadTime.p85Ms} previous={comparison.p85Ms} mode="percent" format={formatDuration} lowerIsBetter /> : undefined} />
+      <KpiCard icon={<RefreshCcw size={19} />} tone="amber" label="Taxa de retrabalho" value={`${metrics.reworkRate}%`} detail={`${metrics.reworkedTasks} de ${metrics.creativeTasks} tarefas que estiveram em criação passaram por ajuste`} info={INFO.kpiRetrabalho} delta={comparison ? <PeriodDelta current={metrics.creativeTasks ? metrics.reworkRate : undefined} previous={comparison.reworkRate} mode="points" format={percent} lowerIsBetter /> : undefined} />
+      <KpiCard icon={<CalendarClock size={19} />} tone="red" label="Atrasos ativos" value={metrics.overdueTasks} detail={`de ${metrics.activeTasks} responsabilidades abertas`} info={INFO.kpiAtrasos} delta={comparison ? <PeriodDelta current={metrics.overdueTasks} previous={comparison.overdueTasks} mode="count" format={String} lowerIsBetter /> : undefined} />
       <KpiCard icon={<FileWarning size={19} />} tone="blue" label="Bloqueios de informação" value={metrics.criticalAlerts} detail={`${metrics.alerts.length} inconsistências no total`} info={INFO.kpiBloqueios} />
-      <KpiCard icon={<TrendingUp size={19} />} tone="green" label="Entregas no período" value={metrics.periodTotals.completed} detail={`${metrics.periodTotals.created} tarefas criadas no mesmo período`} info={INFO.kpiPeriodo} delta={comparison ? <KpiDelta current={metrics.periodTotals.completed} previous={comparison.completed} mode="percent" format={String} /> : undefined} />
+      <KpiCard icon={<TrendingUp size={19} />} tone="green" label="Entregas no período" value={metrics.periodTotals.completed} detail={`${metrics.periodTotals.created} tarefas criadas no mesmo período`} info={INFO.kpiPeriodo} delta={comparison ? <PeriodDelta current={metrics.periodTotals.completed} previous={comparison.completed} mode="percent" format={String} /> : undefined} />
     </section>
 
     <section className="dash-insight-strip" aria-label="Destaques da operação">

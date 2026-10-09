@@ -19,7 +19,7 @@ import { createClient } from "@/lib/supabase/browser-client";
 import { podeGerenciarEquipe, podeVer, type AppArea } from "@/lib/permissions";
 import { USER_ROLES, type UserRole } from "@/lib/types";
 
-export type AdminShellActive = "financeiro" | "dashboard" | "projetos" | "tarefas" | "planos" | "pesquisas" | "marcas" | "contratos" | "membros" | "conhecimento" | "assistente" | "notificacoes" | "comunicados";
+export type AdminShellActive = "financeiro" | "meu_financeiro" | "dashboard" | "projetos" | "tarefas" | "planos" | "pesquisas" | "marcas" | "contratos" | "membros" | "conhecimento" | "assistente" | "notificacoes" | "comunicados";
 
 
 // A ordem aqui é a ordem do menu. A área de cada item é o que decide quem o
@@ -34,6 +34,7 @@ const ITENS_DO_MENU: { area: AppArea; href: string; label: string; Icone: typeof
   { area: "comunicados", href: "/comunicados", label: "Comunicação", Icone: Megaphone },
   { area: "marcas", href: "/marcas", label: "Marcas", Icone: Palette },
   { area: "financeiro", href: "/financeiro", label: "Financeiro", Icone: Wallet },
+  { area: "meu_financeiro", href: "/meu-financeiro", label: "Meu financeiro", Icone: Wallet },
   { area: "contratos", href: "/contratos", label: "Contratos", Icone: FileText },
   { area: "membros", href: "/membros", label: "Membros", Icone: Users },
   { area: "conhecimento", href: "/conhecimento", label: "Base de conhecimento", Icone: BookOpen },
@@ -44,6 +45,7 @@ const CARGO: Record<UserRole, string> = Object.fromEntries(USER_ROLES.map((papel
 
 const PAGE_LABELS: Record<AdminShellActive, string> = {
   financeiro: "Página atual: Financeiro exclusivo do dono.",
+  meu_financeiro: "Página atual: Meu financeiro (ganhos, demandas computadas e pontos de atenção da própria pessoa).",
   dashboard: "Página atual: Dashboard (visão geral de métricas, prazos e ranking do time).",
   projetos: "Página atual: Projetos.",
   tarefas: "Página atual: Tarefas.",

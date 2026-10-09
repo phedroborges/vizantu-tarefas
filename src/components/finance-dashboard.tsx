@@ -328,7 +328,7 @@ function Production({ data, month, busy, onBook, onClose, onCompensation }: { da
         return <article className="fin-creative-card" key={person.memberId}>
           <header><Avatar name={person.name} imageUrl={profile?.avatarUrl} size={38} /><div><h3>{person.name}</h3><span>{profile?.role === "social_media" ? "Social media" : "Diretor criativo"} · {person.paymentMode === "salary" ? "Salário fixo" : person.paymentMode === "demand" ? "Por demanda" : "Sem remuneração configurada"}</span></div><strong>{brl(person.total)}</strong></header>
           <dl><div><dt>Computadas</dt><dd>{person.delivered}</dd></div><div><dt>Em andamento</dt><dd>{person.inProgress}</dd></div><div><dt>Sem valor</dt><dd>{person.unpriced}</dd></div><div><dt>Falta lançar</dt><dd>{brl(person.pending)}</dd></div></dl>
-          <footer><span>{person.lastDelivery ? `Última aprovação: ${dateLabel(person.lastDelivery)}` : `Sem demanda em ${monthLabel(month)}`}</span><Button size="sm" variant="secondary" onClick={() => viewMember(person.memberId)}>Ver demandas</Button></footer>
+          <footer><span>{person.lastDelivery ? `Última aprovação: ${dateLabel(person.lastDelivery)}` : `Sem demanda em ${monthLabel(month)}`}</span><span className="fin-creative-actions"><a className="fin-profile-link" href={`/meu-financeiro?membro=${person.memberId}`}>Ver perfil</a><Button size="sm" variant="secondary" onClick={() => viewMember(person.memberId)}>Ver demandas</Button></span></footer>
         </article>;
       })}</div>
       {!roster.length ? <Empty text="Nenhum diretor criativo ou social media cadastrado." /> : null}

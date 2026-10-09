@@ -80,3 +80,19 @@
 .fin-compensation-row > header { display: grid; gap: 4px; margin-bottom: 12px; }
 .fin-compensation-row small { color: var(--vz-text-muted); }
 .fin-compensation-row > details { margin-top: 12px; font-size: 12px; }
+
+/* Meu financeiro: o extrato de cada pessoa da equipe. */
+.fin-creative-actions { display: flex; align-items: center; gap: 10px; flex: none; }
+.fin-profile-link { color: var(--vz-brand-strong); font-size: 11px; font-weight: 650; text-decoration: none; white-space: nowrap; }.fin-profile-link:hover { text-decoration: underline; }
+.fin-member-head { display: flex; align-items: center; gap: 14px; }.fin-member-head h1 { margin: 4px 0 4px; }
+.fin-member-picker { display: grid; gap: 5px; color: var(--vz-text-muted); font-size: 11px; font-weight: 600; }.fin-member-picker select { border: 1px solid var(--vz-line); background: var(--vz-panel); color: var(--vz-text); border-radius: 8px; padding: 8px 10px; font: inherit; font-size: 13px; }
+.fin-metric .period-delta { margin-top: 0; }.fin-metric.is-accent .period-delta, .fin-metric.is-accent .period-delta span { color: #fff; }
+.fin-attention { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.fin-attention > li { display: grid; gap: 8px; padding: 13px 15px; border: 1px solid var(--vz-line); border-left: 3px solid var(--fin-tone, var(--vz-line)); border-radius: 10px; background: var(--vz-panel); }
+.fin-attention > li.is-red { --fin-tone: #c8413a; }.fin-attention > li.is-amber { --fin-tone: #e3a539; }.fin-attention > li.is-blue { --fin-tone: #6481a5; }
+.fin-attention h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; }.fin-attention h3 b { padding: 1px 7px; border-radius: 999px; background: var(--vz-bg-sunken); color: var(--vz-text-muted); font-size: 11px; }
+.fin-attention p { margin: 0; color: var(--vz-text-muted); font-size: 11px; line-height: 1.5; }
+.fin-attention ul { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.fin-attention ul a { display: inline-flex; align-items: baseline; gap: 6px; max-width: 100%; padding: 5px 9px; border: 1px solid var(--vz-line); border-radius: 7px; color: var(--vz-text); font-size: 11px; text-decoration: none; }.fin-attention ul a:hover { border-color: var(--vz-brand); }.fin-attention ul a small { color: var(--vz-text-muted); font-size: 10px; }
+.fin-all-clear { display: flex; align-items: center; gap: 10px; margin: 0; color: var(--vz-text-muted); font-size: 12px; }.fin-all-clear svg { color: #36734b; flex: none; }
+.fin-table a.fin-task-link { text-decoration: none; }

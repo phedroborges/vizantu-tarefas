@@ -7,7 +7,7 @@ import type { UserRole } from "./types";
 
 export type AppArea =
   | "dashboard" | "projetos" | "tarefas" | "notificacoes" | "planos"
-  | "financeiro" | "pesquisas" | "marcas" | "contratos" | "membros" | "conhecimento" | "assistente" | "comunicados";
+  | "financeiro" | "meu_financeiro" | "pesquisas" | "marcas" | "contratos" | "membros" | "conhecimento" | "assistente" | "comunicados";
 
 type RoleProfile = {
   areas: AppArea[];
@@ -48,7 +48,7 @@ export const ROLE_PROFILES: Record<UserRole, RoleProfile> = {
     gerenciaCredenciais: false, veTodosOsProjetos: true, inicio: "/",
   },
   social_media: {
-    areas: ["projetos", "tarefas", "notificacoes", "planos", "pesquisas", "assistente"],
+    areas: ["projetos", "tarefas", "notificacoes", "planos", "pesquisas", "assistente", "meu_financeiro"],
     // Quem publica precisa da senha do Instagram do cliente, e é quem recebe
     // esses acessos dele: cadastra, altera e apaga, só nos clientes em que
     // trabalha.
@@ -56,7 +56,7 @@ export const ROLE_PROFILES: Record<UserRole, RoleProfile> = {
     gerenciaCredenciais: true, veTodosOsProjetos: false, inicio: "/planos",
   },
   diretor_criativo: {
-    areas: ["projetos", "tarefas", "notificacoes", "planos", "marcas", "assistente"],
+    areas: ["projetos", "tarefas", "notificacoes", "planos", "marcas", "assistente", "meu_financeiro"],
     planeja: false, gerenciaEquipe: false, gerenciaMembros: false, veCredenciais: false,
     gerenciaCredenciais: false, veTodosOsProjetos: false, inicio: "/tarefas",
   },
@@ -88,6 +88,13 @@ function perfilDe(role: UserRole) {
 
 export function podeVer(role: UserRole, area: AppArea): boolean {
   return perfilDe(role).areas.includes(area);
+}
+
+/** "Meu financeiro" é o extrato de quem produz: cada um vê só o seu. O dono não
+ * tem o item no menu — ele já tem o Financeiro inteiro —, mas abre o de
+ * qualquer pessoa a partir de lá, para ver exatamente o que ela vê. */
+export function podeVerFinanceiroDe(role: UserRole, viewerId: string, memberId: string): boolean {
+  return role === "dono" || (podeVer(role, "meu_financeiro") && viewerId === memberId);
 }
 
 export function rolesQueVeem(area: AppArea): UserRole[] {

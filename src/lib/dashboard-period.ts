@@ -77,6 +77,8 @@ function presetRange(preset: DashboardPeriodPreset, today: string): DashboardDay
 export function resolveDashboardPeriod(
   params: { periodo?: string | string[]; de?: string | string[]; ate?: string | string[] },
   today: string,
+  /** O atalho usado quando a URL não pede nenhum. */
+  fallback: DashboardPeriodPreset = DEFAULT_DASHBOARD_PERIOD,
 ): DashboardPeriod {
   const de = validDay(first(params.de));
   const ate = validDay(first(params.ate));
@@ -94,7 +96,7 @@ export function resolveDashboardPeriod(
     range = { from, to };
   } else {
     const requested = first(params.periodo);
-    preset = DASHBOARD_PERIOD_PRESETS.find((item) => item.value === requested)?.value ?? DEFAULT_DASHBOARD_PERIOD;
+    preset = DASHBOARD_PERIOD_PRESETS.find((item) => item.value === requested)?.value ?? fallback;
     range = presetRange(preset, today);
   }
   const label = preset === "personalizado" ? "Personalizado" : DASHBOARD_PERIOD_PRESETS.find((item) => item.value === preset)!.label;
