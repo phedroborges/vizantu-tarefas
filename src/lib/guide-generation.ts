@@ -22,7 +22,8 @@
 
 import OpenAI from "openai";
 import { CLIENT_GUIDE_BLOCKS, isGuideFieldKey, type GuideBlock } from "./client-guide";
-import type { ProjectProfile, ProjectSource } from "./types";
+import type { GuideSource } from "./guide-system-sources";
+import type { ProjectProfile } from "./types";
 
 const MODEL = "gpt-4o";
 
@@ -43,7 +44,7 @@ function recortar(texto: string, limite: number): string {
   return `${texto.slice(0, metade)}\n\n[...trecho do meio omitido por tamanho...]\n\n${texto.slice(-metade)}`;
 }
 
-function montarDossie(sources: ProjectSource[]): string {
+function montarDossie(sources: GuideSource[]): string {
   const partes: string[] = [];
   let usado = 0;
 
@@ -196,7 +197,9 @@ export async function generateClientGuide(input: {
   apiKey: string;
   projectName: string;
   clientName?: string;
-  sources: ProjectSource[];
+  // Reuniões e anotações do projeto mais os registros do sistema (ver
+  // guide-system-sources.ts).
+  sources: GuideSource[];
   // Campos que a pessoa corrigiu à mão. A IA recebe o conteúdo deles como
   // verdade e não pode contradizer, mesmo que as fontes digam outra coisa.
   camposManuais: Partial<ProjectProfile>;
@@ -214,7 +217,7 @@ export async function generateClientGuide(input: {
   const contexto = `Cliente: ${input.clientName || input.projectName}
 Projeto: ${input.projectName}
 
-${manuais ? `Estes campos já foram corrigidos à mão pelo dono da agência. Trate como verdade e NÃO contradiga:\n\n${manuais}\n\n` : ""}Fontes, da mais recente para a mais antiga:
+${manuais ? `Estes campos já foram corrigidos à mão pelo dono da agência. Trate como verdade e NÃO contradiga:\n\n${manuais}\n\n` : ""}Fontes, da mais recente para a mais antiga. As marcadas como "registro do sistema" são o que a agência já tem cadastrado sobre o cliente (contrato, planos, tarefas produzidas, pesquisas). Elas mostram o que foi combinado e feito, não a opinião do cliente: use para os campos que elas sustentam e deixe vazio o que elas não dizem.
 
 ${dossie}`;
 

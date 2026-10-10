@@ -9,10 +9,15 @@
 //    resposta abre ela pra edição, e sai salvando.
 // 2. Todo campo é pergunta. "No que ele é enjoado?" é respondível; "Pontos de
 //    precisão" não é.
-// 3. O vazio é visível. Barra de progresso por bloco e no topo, porque ficha
-//    vazia que não aparece continua vazia.
+// 3. O vazio é visível, mas não ocupa a tela. A primeira versão mostrava as
+//    dezoito perguntas sempre, e num cliente sem guia a aba virava um
+//    questionário em branco: quem ia estudar o cliente não achava o que ler.
+//    Agora a leitura mostra só o que foi respondido, o topo diz quanto falta e
+//    "Completar guia" abre as perguntas vazias e as reuniões.
+// 4. A IA não depende de reunião colada. Ela lê também o que o sistema já tem
+//    (contrato, planos, tarefas, pesquisas), então o botão funciona de cara.
 
-import { BookOpen, Check, ChevronDown, FileText, Loader2, Mic, Plus, Sparkles, Trash2, TriangleAlert } from "lucide-react";
+import { BookOpen, Check, ChevronDown, FileText, Loader2, Mic, PencilLine, Plus, Sparkles, Trash2, TriangleAlert } from "lucide-react";
 import { useRef, useState } from "react";
 import { useConfirm } from "@/components/confirm-dialog";
 import { CLIENT_GUIDE_BLOCKS, guideCompletion, type GuideField } from "@/lib/client-guide";
@@ -33,6 +38,7 @@ export function ClientGuideView({
   canEdit,
   aiEnabled,
   cadastro,
+  resumo,
 }: {
   projectId: string;
   initialProfile: Partial<ProjectProfile>;
@@ -42,6 +48,9 @@ export function ClientGuideView({
   // O cadastro (CNPJ, endereço, quem decide) continua existindo, mas recolhido:
   // é consulta esporádica e estava competindo com o que a equipe lê todo dia.
   cadastro: React.ReactNode;
+  // O resumo do cliente, que abre a aba. Recebe o guia como está agora (uma
+  // resposta recém-editada ou gerada já aparece nele) e como abrir as perguntas.
+  resumo?: (guia: Partial<ProjectProfile>, completar?: () => void) => React.ReactNode;
 }) {
   const [profile, setProfile] = useState<Partial<ProjectProfile>>(initialProfile);
   const [sources, setSources] = useState<ProjectSource[]>(initialSources);
@@ -50,11 +59,14 @@ export function ClientGuideView({
   const [gerando, setGerando] = useState(false);
   const [aviso, setAviso] = useState("");
   const [abrindoFonte, setAbrindoFonte] = useState(false);
+  const [completando, setCompletando] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { confirm, ConfirmDialog } = useConfirm();
 
   const progresso = guideCompletion(profile);
   const manuais = new Set(profile.guideManualFields ?? []);
+  const faltam = progresso.total - progresso.preenchidos;
+  const podeMontar = canEdit && aiEnabled;
 
   // Só o campo alterado vai no PATCH. Mandar o objeto inteiro marcaria os
   // dezoito campos como corrigidos à mão e a IA nunca mais encostaria neles.
@@ -98,9 +110,9 @@ export function ClientGuideView({
       const n = data.camposPreenchidos?.length ?? 0;
       const falhou: string[] = data.blocosComErro ?? [];
       setAviso(
-        `A IA leu ${data.fontesLidas} fonte${data.fontesLidas === 1 ? "" : "s"} e preencheu ${n} campo${n === 1 ? "" : "s"}. Revise antes de tratar como verdade.`
+        `A IA leu ${data.fontesLidas} fonte${data.fontesLidas === 1 ? "" : "s"}, entre reuniões e registros do sistema, e preencheu ${n} campo${n === 1 ? "" : "s"}. Revise antes de tratar como verdade.`
         + (falhou.length ? ` Não consegui gerar ${falhou.length === 1 ? "o bloco" : "os blocos"} ${falhou.join(" e ")}, tente montar de novo.` : "")
-        + (n < 10 ? " Se ficou raso, o problema costuma ser falta de material: adicione mais reuniões e monte outra vez." : ""),
+        + (n < 10 ? " O que ficou em branco é o que contrato, planos e tarefas não contam: adicione a anotação de uma reunião em Completar guia e monte outra vez." : ""),
       );
     } catch {
       setErro(networkError("montar o guia"));
@@ -130,6 +142,8 @@ export function ClientGuideView({
     <div className="guia">
       {ConfirmDialog}
 
+      {resumo?.(profile, canEdit ? () => setCompletando(true) : undefined)}
+
       <Card className="guia-topo">
         <div className="guia-topo__texto">
           <span className="vz-eyebrow">Conhecimento compartilhado</span>
@@ -137,6 +151,25 @@ export function ClientGuideView({
           <p className="vz-caption">
             O que a equipe precisa saber antes de produzir qualquer coisa para esse cliente.
           </p>
+          {canEdit ? (
+            <div className="guia-topo__acoes">
+              <Button
+                variant="primary"
+                onClick={montarGuia}
+                disabled={gerando || !podeMontar}
+                title={!aiEnabled ? "IA não habilitada para o seu usuário" : "Lê contrato, planos, tarefas, pesquisas e as reuniões registradas"}
+              >
+                {gerando ? <Loader2 size={14} className="vz-spin" /> : <Sparkles size={14} />}
+                {gerando ? "Montando..." : progresso.preenchidos ? "Atualizar com a IA" : "Montar guia com a IA"}
+              </Button>
+              {faltam || completando ? (
+                <Button variant="ghost" onClick={() => setCompletando(!completando)}>
+                  {completando ? <Check size={14} /> : <PencilLine size={14} />}
+                  {completando ? "Voltar para a leitura" : `Completar guia (${faltam === 1 ? "falta 1 resposta" : `faltam ${faltam} respostas`})`}
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
         <div className="guia-topo__progresso">
           <strong>{progresso.preenchidos} de {progresso.total}</strong>
@@ -152,22 +185,38 @@ export function ClientGuideView({
       {erro ? <Callout tone="danger" icon={<TriangleAlert size={16} />}>{erro}</Callout> : null}
       {aviso ? <Callout tone="brand" icon={<Sparkles size={16} />}>{aviso}</Callout> : null}
 
-      <FontesDoGuia
-        projectId={projectId}
-        sources={sources}
-        setSources={setSources}
-        canEdit={canEdit}
-        aiEnabled={aiEnabled}
-        gerando={gerando}
-        onMontar={montarGuia}
-        onRemover={removerFonte}
-        aberto={abrindoFonte}
-        setAberto={setAbrindoFonte}
-        setErro={setErro}
-      />
+      {completando ? (
+        <FontesDoGuia
+          projectId={projectId}
+          sources={sources}
+          setSources={setSources}
+          canEdit={canEdit}
+          onRemover={removerFonte}
+          aberto={abrindoFonte}
+          setAberto={setAbrindoFonte}
+          setErro={setErro}
+        />
+      ) : null}
+
+      {!completando && !progresso.preenchidos ? (
+        <Card className="guia-bloco">
+          <EmptyState
+            icon={<BookOpen size={22} />}
+            title="O guia deste cliente ainda não foi escrito"
+            description={canEdit
+              ? "A IA monta a primeira versão com o que já está no sistema: contrato, planos, tarefas e pesquisas. Depois é só corrigir o que precisar."
+              : "Quando alguém responder, é aqui que você lê quem é o cliente, o que ele quer e como lidar com ele."}
+          />
+        </Card>
+      ) : null}
 
       {CLIENT_GUIDE_BLOCKS.map((bloco) => {
         const doBloco = progresso.porBloco.find((item) => item.key === bloco.key);
+        // Na leitura, pergunta sem resposta não aparece e bloco sem nenhuma
+        // resposta some inteiro. O campo aberto para edição fica, senão ele
+        // sumiria no instante em que a pessoa apagasse o texto.
+        const campos = completando ? bloco.campos : bloco.campos.filter((campo) => Boolean(profile[campo.key]?.trim()) || editando === campo.key);
+        if (!campos.length) return null;
         return (
           <Card className="guia-bloco" key={bloco.key}>
             <header className="guia-bloco__head">
@@ -181,7 +230,7 @@ export function ClientGuideView({
             </header>
 
             <div className="guia-campos">
-              {bloco.campos.map((campo) => (
+              {campos.map((campo) => (
                 <CampoDoGuia
                   key={campo.key}
                   campo={campo}
@@ -264,15 +313,12 @@ function CampoDoGuia({
 }
 
 function FontesDoGuia({
-  projectId, sources, setSources, canEdit, aiEnabled, gerando, onMontar, onRemover, aberto, setAberto, setErro,
+  projectId, sources, setSources, canEdit, onRemover, aberto, setAberto, setErro,
 }: {
   projectId: string;
   sources: ProjectSource[];
   setSources: React.Dispatch<React.SetStateAction<ProjectSource[]>>;
   canEdit: boolean;
-  aiEnabled: boolean;
-  gerando: boolean;
-  onMontar: () => void;
   onRemover: (source: ProjectSource) => void;
   aberto: boolean;
   setAberto: (aberto: boolean) => void;
@@ -349,24 +395,15 @@ function FontesDoGuia({
     <Card className="guia-fontes">
       <header className="guia-bloco__head">
         <div>
-          <h3><BookOpen size={15} /> De onde o guia sai</h3>
+          <h3><BookOpen size={15} /> Reuniões e anotações</h3>
           <p className="vz-caption">
-            As reuniões e anotações desse cliente. A IA lê todas de uma vez e remonta o guia inteiro, então
-            pode ir somando reunião por reunião.
+            Opcional. A IA já lê contrato, planos, tarefas e pesquisas do sistema. O que você registrar aqui
+            entra junto e conta o que só a conversa com o cliente revela.
           </p>
         </div>
         {canEdit ? (
           <div className="guia-fontes__acoes">
             <Button variant="ghost" onClick={() => setAberto(!aberto)}><Plus size={14} /> Adicionar</Button>
-            <Button
-              variant="primary"
-              onClick={onMontar}
-              disabled={gerando || !sources.length || !aiEnabled}
-              title={!aiEnabled ? "IA não habilitada para o seu usuário" : !sources.length ? "Adicione uma reunião primeiro" : undefined}
-            >
-              {gerando ? <Loader2 size={14} className="vz-spin" /> : <Sparkles size={14} />}
-              {gerando ? "Montando..." : "Montar guia com a IA"}
-            </Button>
           </div>
         ) : null}
       </header>
@@ -423,12 +460,8 @@ function FontesDoGuia({
             </li>
           ))}
         </ul>
-      ) : (
-        <EmptyState
-          icon={<BookOpen size={22} />}
-          title="Nenhuma reunião registrada"
-          description="Cole aqui a anotação ou a transcrição das reuniões com esse cliente. Depois é só pedir para a IA montar o guia."
-        />
+      ) : aberto ? null : (
+        <p className="vz-caption guia-fontes__vazio">Nenhuma reunião registrada ainda.</p>
       )}
     </Card>
   );

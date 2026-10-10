@@ -16,6 +16,7 @@ import { ProjectTaskHub } from "@/components/project-task-hub";
 import { ProjectSurveyResults } from "@/components/project-survey-results";
 import { ProjectDocuments } from "@/components/project-documents";
 import { ClientGuideView } from "@/components/client-guide-view";
+import { ProjectSummary } from "@/components/project-summary";
 import { Button, Card, EmptyState, Field, Input, Progress, Tag } from "@/components/vz";
 
 const AUTOSAVE_MS = 700;
@@ -169,19 +170,21 @@ export function ProjectProfileView({
         </nav>
 
         {tab === "informacoes" ? <>
-        <div className="project-metrics">
-          <Card><div className="vz-metric"><div className="vz-metric__top"><span className="vz-metric__icon"><BarChart3 size={18} /></span><div><strong className="vz-metric__value">{initialTasks.length}</strong><span className="vz-metric__label">Tarefas totais</span></div></div></div></Card>
-          <Card><div className="vz-metric"><div className="vz-metric__top"><span className="vz-metric__icon vz-metric__icon--green"><CheckCircle2 size={18} /></span><div><strong className="vz-metric__value">{completion}%</strong><span className="vz-metric__label">Conclusão</span></div></div><Progress value={completion} thin tone="green" /></div></Card>
-          <Card><div className="vz-metric"><div className="vz-metric__top"><span className="vz-metric__icon vz-metric__icon--red"><Clock3 size={18} /></span><div><strong className="vz-metric__value">{overdue}</strong><span className="vz-metric__label">Tarefas atrasadas</span></div></div></div></Card>
-          <Card><div className="vz-metric"><div className="vz-metric__top"><span className="vz-metric__icon vz-metric__icon--blue"><Target size={18} /></span><div><strong className="vz-metric__value">{nps === null ? "—" : nps > 0 ? `+${nps}` : nps}</strong><span className="vz-metric__label">NPS · {satisfactionScores.length} resposta{satisfactionScores.length === 1 ? "" : "s"}</span></div></div></div></Card>
-        </div>
-
         <ClientGuideView
           projectId={project.id}
           initialProfile={profile}
           initialSources={initialSources}
           canEdit={canEditProfile}
           aiEnabled={aiEnabled}
+          resumo={(guia, completar) => <>
+            <ProjectSummary guia={guia} tasks={initialTasks} plans={initialPlans} contracts={initialContracts} team={members.filter((member) => equipe.includes(member.id))} abas={abas} onAbrirAba={setTab} onCompletar={completar} />
+        <div className="project-metrics">
+          <Card><div className="vz-metric"><div className="vz-metric__top"><span className="vz-metric__icon"><BarChart3 size={18} /></span><div><strong className="vz-metric__value">{initialTasks.length}</strong><span className="vz-metric__label">Tarefas totais</span></div></div></div></Card>
+          <Card><div className="vz-metric"><div className="vz-metric__top"><span className="vz-metric__icon vz-metric__icon--green"><CheckCircle2 size={18} /></span><div><strong className="vz-metric__value">{completion}%</strong><span className="vz-metric__label">Conclusão</span></div></div><Progress value={completion} thin tone="green" /></div></Card>
+          <Card><div className="vz-metric"><div className="vz-metric__top"><span className="vz-metric__icon vz-metric__icon--red"><Clock3 size={18} /></span><div><strong className="vz-metric__value">{overdue}</strong><span className="vz-metric__label">Tarefas atrasadas</span></div></div></div></Card>
+          <Card><div className="vz-metric"><div className="vz-metric__top"><span className="vz-metric__icon vz-metric__icon--blue"><Target size={18} /></span><div><strong className="vz-metric__value">{nps === null ? "—" : nps > 0 ? `+${nps}` : nps}</strong><span className="vz-metric__label">NPS · {satisfactionScores.length} resposta{satisfactionScores.length === 1 ? "" : "s"}</span></div></div></div></Card>
+        </div>
+          </>}
           cadastro={
             <div className="project-fields-grid">
               {CAMPOS.map((campo) => (

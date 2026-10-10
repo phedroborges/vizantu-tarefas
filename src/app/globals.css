@@ -2560,6 +2560,32 @@ audio.comment-attachment, .comment-attachment.is-audio audio { width: 100%; min-
 .guia-topo__progresso { display: grid; gap: 6px; min-width: 240px; justify-items: end; }
 .guia-topo__progresso strong { font-size: var(--vz-t-lg, 18px); }
 .guia-topo__progresso .vz-progress { width: 100%; }
+.guia-topo__acoes { display: flex; flex-wrap: wrap; gap: var(--vz-s-2); margin-top: var(--vz-s-4); }
+.guia-fontes__vazio { margin: 0; }
+.guia .project-metrics { margin-bottom: 0; }
+
+/* Resumo do cliente (components/project-summary.tsx): o que é o projeto em uma
+   tela. A primeira linha é texto do guia; a segunda, os fatos do sistema, e
+   se ajusta sozinha porque contrato e equipe dependem do cargo de quem vê. */
+.project-summary { display: grid; gap: 1px; overflow: hidden; background: var(--vz-line); }
+.project-summary__linha { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 1px; }
+.project-summary__linha--textos { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+.project-summary__item { display: grid; align-content: start; gap: 8px; min-width: 0; padding: var(--vz-s-5); background: var(--vz-panel); }
+.project-summary .vz-eyebrow { display: inline-flex; align-items: center; gap: 6px; }
+.project-summary__texto { margin: 0; color: var(--vz-text); font-size: var(--vz-t-sm, 14px); line-height: 1.55; white-space: pre-wrap; display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
+.project-summary__vazio { margin: 0; color: var(--vz-text-faint); font-size: var(--vz-t-xs); line-height: 1.5; }
+.project-summary__vazio button { padding: 0; border: 0; background: none; color: var(--vz-brand-strong); font: inherit; font-weight: 600; cursor: pointer; }
+.project-summary__link { display: grid; gap: 3px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; text-decoration: none; cursor: pointer; }
+.project-summary__link strong { font-size: var(--vz-t-sm, 14px); overflow-wrap: anywhere; }
+.project-summary__link span { color: var(--vz-text-muted); font-size: var(--vz-t-xs); }
+.project-summary__link:hover strong { color: var(--vz-brand-strong); }
+.project-summary__time { display: flex; flex-wrap: wrap; gap: 4px; }
+.project-summary__entregas { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.project-summary__entregas a { display: grid; gap: 1px; color: inherit; font-size: var(--vz-t-sm, 14px); text-decoration: none; overflow-wrap: anywhere; }
+.project-summary__entregas a span { color: var(--vz-text-muted); font-size: var(--vz-t-xs); }
+.project-summary__entregas a span.is-danger { color: var(--vz-danger, #b42318); font-weight: 600; }
+.project-summary__entregas a:hover { color: var(--vz-brand-strong); }
+@media (max-width: 640px) { .project-summary__linha--textos { grid-template-columns: 1fr; } }
 
 .guia-bloco { padding: var(--vz-s-5); }
 .guia-bloco__head { display: flex; gap: var(--vz-s-4); align-items: flex-start; justify-content: space-between; margin-bottom: var(--vz-s-5); }

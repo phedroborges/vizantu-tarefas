@@ -2,10 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { apiFailure } from "@/lib/api-error";
 import { isResponse, requireUser } from "@/lib/authz";
 import { generateClientGuide } from "@/lib/guide-generation";
-import { ROLES_QUE_PLANEJAM } from "@/lib/permissions";
-import { getProject, getProjectProfile, listProjectSources, saveGeneratedGuide } from "@/lib/storage";
+import { systemSourcesForGuide, temMaterialDoSistema } from "@/lib/guide-system-sources";
+import { podeGerenciarEquipe, podeVer, ROLES_QUE_PLANEJAM } from "@/lib/permissions";
+import { getProject, getProjectProfile, listContracts, listMembers, listPlans, listProjectSources, listProjectTeam, listSurveys, listTags, listTasks, saveGeneratedGuide } from "@/lib/storage";
 
-// Remonta o guia a partir de TODAS as fontes do projeto. É re-executável de
+// Remonta o guia a partir de TODAS as fontes do projeto: as reuniões e
+// anotações coladas e o que o sistema já guarda (contrato, planos, tarefas,
+// pesquisas). Por isso funciona mesmo sem nenhuma reunião. É re-executável de
 // propósito: entrou a quarta reunião, roda de novo e o guia inteiro é
 // reescrito com o acumulado. Campo corrigido à mão fica intacto (o filtro
 // está em saveGeneratedGuide).
@@ -25,16 +28,35 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
   }
 
   const { id } = await params;
+  if (auth.accessibleProjectIds !== "all" && !auth.accessibleProjectIds.includes(id)) {
+    return NextResponse.json({ error: "Projeto não encontrado." }, { status: 404 });
+  }
   try {
-    const [project, sources, profile] = await Promise.all([
+    // O guia é lido por todo o time, então só entra nele o que quem está
+    // montando pode ver: sem acesso a contratos, o contrato fica de fora.
+    const [project, reunioes, profile, contracts, plans, tasks, surveys, tags, members, teamIds] = await Promise.all([
       getProject(id),
       listProjectSources(id),
       getProjectProfile(id),
+      podeVer(auth.role, "contratos") ? listContracts(id) : Promise.resolve([]),
+      listPlans(id),
+      listTasks({ projectIds: [id], listKinds: auth.accessibleListKinds }),
+      podeVer(auth.role, "pesquisas") ? listSurveys(id) : Promise.resolve([]),
+      listTags(),
+      listMembers(),
+      podeGerenciarEquipe(auth.role) ? listProjectTeam(id) : Promise.resolve([]),
     ]);
     if (!project) return NextResponse.json({ error: "Projeto não encontrado." }, { status: 404 });
-    if (!sources.length) {
-      return NextResponse.json({ error: "Adicione pelo menos uma reunião ou anotação antes de montar o guia." }, { status: 400 });
+
+    const doSistema = systemSourcesForGuide({
+      project, profile, contracts, plans, surveys, tags,
+      tasks: tasks.filter((task) => task.projectId === id),
+      team: members.filter((member) => teamIds.includes(member.id)),
+    });
+    if (!reunioes.length && !temMaterialDoSistema(doSistema)) {
+      return NextResponse.json({ error: "Ainda não há contrato, plano, tarefa, pesquisa nem reunião deste cliente para a IA ler. Adicione uma reunião ou anotação e monte de novo." }, { status: 400 });
     }
+    const sources = [...reunioes, ...doSistema];
 
     // Só os campos que a pessoa corrigiu à mão viram contexto obrigatório.
     const camposManuais: Record<string, string> = {};

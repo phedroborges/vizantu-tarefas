@@ -10,7 +10,9 @@ import { KnowledgeView } from "@/components/knowledge-view";
 import { MembrosView } from "@/components/membros-view";
 import { PacoteDetailView } from "@/components/pacote-detail-view";
 import { PlanoDetailView } from "@/components/plano-detail-view";
+import { ProjectProfileView } from "@/components/project-profile-view";
 import { ProjetosView } from "@/components/projetos-view";
+import { abasDoProjeto, podePlanejar } from "@/lib/permissions";
 import { PublicSurvey } from "@/components/public-survey";
 import { TarefasView } from "@/components/tarefas-view";
 import { defaultPreferences } from "@/lib/preferences";
@@ -32,11 +34,11 @@ import {
 // tela escondida, é uma tela que não atende.
 export const dynamic = "force-dynamic";
 
-const TELAS = ["dashboard", "tarefas", "plano", "pacote", "cliente", "projetos", "marcas", "membros", "contratos", "conhecimento", "formulario"] as const;
+const TELAS = ["dashboard", "tarefas", "plano", "pacote", "cliente", "projetos", "perfil", "perfil-vazio", "marcas", "membros", "contratos", "conhecimento", "formulario"] as const;
 type Tela = (typeof TELAS)[number];
 
 const ATIVO: Record<Tela, AdminShellActive> = {
-  dashboard: "dashboard", tarefas: "tarefas", plano: "planos", pacote: "planos", projetos: "projetos",
+  dashboard: "dashboard", tarefas: "tarefas", plano: "planos", pacote: "planos", projetos: "projetos", perfil: "projetos", "perfil-vazio": "projetos",
   cliente: "planos", marcas: "marcas", membros: "membros", contratos: "contratos", conhecimento: "conhecimento",
   formulario: "pesquisas",
 };
@@ -151,6 +153,38 @@ export default async function PreviaPage({ searchParams }: { searchParams: Promi
       ) : null}
 
       {tela === "projetos" ? <ProjetosView initialProjects={PROJETOS} initialTasks={TAREFAS} canEdit /> : null}
+      {/* O perfil do cliente com o guia respondido e, em "perfil-vazio", do jeito
+          que um cliente novo abre: sem nenhuma resposta. */}
+      {tela === "perfil" || tela === "perfil-vazio" ? (
+        <ProjectProfileView
+          project={PROJETO}
+          initialProfile={tela === "perfil" ? {
+            projectId: PROJETO.id, updatedAt: AGORA, segmento: "Cafeteria",
+            oQueFaz: "Cafeteria de bairro que torra o próprio café e vende o grão para levar para casa.",
+            desejo: "Quer ser lembrada como a cafeteria da cidade e encher a casa nas manhãs de semana, que hoje são fracas.",
+            pontosDePrecisao: "Repara em foto escura e não aceita o logo sobre fundo colorido.",
+            formatosSugeridos: "Reels curtos do preparo\nCarrossel de grãos\nStory do dia",
+          } : null}
+          initialCredentials={[]}
+          canViewCredentials={false}
+          canManageCredentials={false}
+          secretsConfigured={false}
+          initialTasks={TAREFAS.filter((task) => task.projectId === PROJETO.id)}
+          satisfactionScores={[]}
+          canEditProfile={podePlanejar(cargo)}
+          canEditTasks
+          abas={abasDoProjeto(cargo)}
+          initialTeam={MEMBROS.slice(0, 3).map((member) => member.id)}
+          formatTags={FORMATOS}
+          channelTags={CANAIS}
+          members={MEMBROS}
+          initialPlans={[PLANO]}
+          initialSurveys={[]}
+          initialContracts={CONTRATOS.filter((contract) => contract.projectId === PROJETO.id)}
+          initialSources={[]}
+          aiEnabled
+        />
+      ) : null}
       {tela === "marcas" ? <BrandsView initialBrands={MARCAS} initialProjects={PROJETOS} taskCounts={CONTAGEM_MARCAS} canEdit /> : null}
       {tela === "membros" ? (
         <MembrosView
