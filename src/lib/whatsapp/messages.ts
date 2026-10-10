@@ -75,6 +75,35 @@ export const DEFAULT_TEMPLATES: Record<MessageKind, string[]> = {
   ],
 };
 
+/** Os avisos internos, para o grupo do time (ver team-notices.ts). */
+export type TeamNoticeSettings = {
+  /** Interruptor dos avisos da equipe. Nasce desligado, como os de cliente. */
+  enabled: boolean;
+  /** O grupo de WhatsApp do time. Sem ele, nada sai. */
+  groupId?: string;
+  groupName?: string;
+  /** Resumo diário das demandas atrasadas, com o responsável de cada uma. */
+  overdue: boolean;
+  /** Cobrança diária do que está travado por falta de informação, por pessoa. */
+  missingInfo: boolean;
+  /** Aviso de quem passou a ser o mais rápido na criação. */
+  fastest: boolean;
+};
+
+export const DEFAULT_TEAM_NOTICES: TeamNoticeSettings = { enabled: false, overdue: true, missingInfo: true, fastest: true };
+
+export function normalizeTeamNotices(stored: Partial<TeamNoticeSettings> | null | undefined): TeamNoticeSettings {
+  const groupId = typeof stored?.groupId === "string" ? stored.groupId.trim() : "";
+  return {
+    enabled: stored?.enabled === true,
+    groupId: groupId || undefined,
+    groupName: groupId && typeof stored?.groupName === "string" ? stored.groupName.trim() || undefined : undefined,
+    overdue: stored?.overdue !== false,
+    missingInfo: stored?.missingInfo !== false,
+    fastest: stored?.fastest !== false,
+  };
+}
+
 export type AutomationSettings = {
   /** Parada de emergência: enquanto estiver ligada, NADA sai pelo WhatsApp —
    * nem aviso automático, nem comunicado, nem mensagem de teste. */
@@ -92,9 +121,10 @@ export type AutomationSettings = {
   /** Lembrete e último dia só de segunda a sexta. */
   weekdaysOnly: boolean;
   templates: Record<MessageKind, string[]>;
+  team: TeamNoticeSettings;
 };
 
-export const DEFAULT_AUTOMATION: AutomationSettings = { paused: false, enabled: false, sendHour: 9, sendUntilHour: 18, minGapMinutes: 4, reminderEveryDays: 2, weekdaysOnly: true, templates: DEFAULT_TEMPLATES };
+export const DEFAULT_AUTOMATION: AutomationSettings = { paused: false, enabled: false, sendHour: 9, sendUntilHour: 18, minGapMinutes: 4, reminderEveryDays: 2, weekdaysOnly: true, templates: DEFAULT_TEMPLATES, team: DEFAULT_TEAM_NOTICES };
 
 /** Junta o que veio do banco com os padrões: tipo sem modelo válido volta ao
  * texto padrão, para nunca sair mensagem vazia. */
@@ -119,6 +149,7 @@ export function normalizeAutomation(stored: Partial<AutomationSettings> | null |
     reminderEveryDays: Number.isFinite(every) ? Math.min(7, Math.max(1, every)) : DEFAULT_AUTOMATION.reminderEveryDays,
     weekdaysOnly: stored?.weekdaysOnly !== false,
     templates,
+    team: normalizeTeamNotices(stored?.team),
   };
 }
 

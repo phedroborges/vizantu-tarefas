@@ -14,6 +14,7 @@ import { useConfirm } from "@/components/confirm-dialog";
 import { formatDateTime } from "@/lib/dates";
 import { responseError } from "@/lib/request-error";
 import { CommunicationOverviewPanel } from "@/components/communication-overview";
+import { TeamNoticesPanel } from "@/components/team-notices-panel";
 import { WhatsappAutomationPanel } from "@/components/whatsapp-automation-panel";
 import type { AutomationSettings } from "@/lib/whatsapp/messages";
 import type { CommunicationOverview } from "@/lib/whatsapp/overview";
@@ -34,7 +35,7 @@ export function BroadcastsView({ clients, configured, initialBroadcasts, initial
   const [paused, setPaused] = useState(initialAutomation.paused);
   const [pending, setPending] = useState(initialPending);
   const [stopping, setStopping] = useState(false);
-  const [tab, setTab] = useState<"geral" | "automaticas" | "comunicados">("geral");
+  const [tab, setTab] = useState<"geral" | "automaticas" | "equipe" | "comunicados">("geral");
   const reachable = useMemo(() => clients.filter((client) => client.groupName), [clients]);
   const [broadcasts, setBroadcasts] = useState(initialBroadcasts);
   const [title, setTitle] = useState("");
@@ -113,7 +114,7 @@ export function BroadcastsView({ clients, configured, initialBroadcasts, initial
 
   return <>
     <main className="admin-page dashboard broadcasts">
-      <div className="dashboard-head"><div><span className="eyebrow">Clientes</span><h1>Comunicação</h1><p>O que os clientes recebem no grupo de WhatsApp: os avisos automáticos de aprovação e os comunicados enviados por vocês.</p></div></div>
+      <div className="dashboard-head"><div><span className="eyebrow">Clientes</span><h1>Comunicação</h1><p>O que sai pelo WhatsApp: os avisos automáticos de aprovação e os comunicados para os clientes, e os avisos internos para o grupo da equipe.</p></div></div>
 
       <div className={`broadcasts__stop${paused ? " is-paused" : ""}`} role="status">
         <div>
@@ -126,11 +127,13 @@ export function BroadcastsView({ clients, configured, initialBroadcasts, initial
       <div className="broadcasts__tabs" role="tablist">
         <button type="button" role="tab" aria-selected={tab === "geral"} className={tab === "geral" ? "active" : ""} onClick={() => setTab("geral")}>Visão geral</button>
         <button type="button" role="tab" aria-selected={tab === "automaticas"} className={tab === "automaticas" ? "active" : ""} onClick={() => setTab("automaticas")}>Mensagens automáticas</button>
+        <button type="button" role="tab" aria-selected={tab === "equipe"} className={tab === "equipe" ? "active" : ""} onClick={() => setTab("equipe")}>Avisos da equipe</button>
         <button type="button" role="tab" aria-selected={tab === "comunicados"} className={tab === "comunicados" ? "active" : ""} onClick={() => setTab("comunicados")}>Comunicados</button>
       </div>
 
       {tab === "geral" ? <CommunicationOverviewPanel overview={overview} automationEnabled={initialAutomation.enabled} paused={paused} /> : null}
       {tab === "automaticas" ? <WhatsappAutomationPanel initialSettings={initialAutomation} configured={configured} /> : null}
+      {tab === "equipe" ? <TeamNoticesPanel initialTeam={initialAutomation.team} configured={configured} paused={paused} sendHour={initialAutomation.sendHour} sendUntilHour={initialAutomation.sendUntilHour} /> : null}
       {tab === "comunicados" ? <>
 
       {!configured ? <p className="form-message">O WhatsApp ainda não está conectado no servidor. Assim que as credenciais forem configuradas, os comunicados passam a ser enviados por aqui.</p> : null}

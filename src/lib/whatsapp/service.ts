@@ -185,7 +185,7 @@ export async function processOutbox(): Promise<number> {
   if (automation.paused) return 0;
   const db = getSupabase();
   const now = Date.now();
-  unwrap(await db.from("whatsapp_messages").update({ status: "skipped", error: "Ficou tempo demais na fila." }).eq("status", "pending").in("kind", ["reminder", "last_day", "auto_approved"]).lt("scheduled_at", new Date(now - STALE_MS).toISOString()));
+  unwrap(await db.from("whatsapp_messages").update({ status: "skipped", error: "Ficou tempo demais na fila." }).eq("status", "pending").in("kind", ["reminder", "last_day", "auto_approved", "team"]).lt("scheduled_at", new Date(now - STALE_MS).toISOString()));
 
   if (now < nextSendAt) return 0;
   // Depois de reiniciar o servidor a memória do último envio se perde: o
@@ -378,6 +378,7 @@ export async function cancelBroadcast(id: string): Promise<number> {
 
 let running: Promise<void> | undefined;
 let lastDailyRun = "";
+let lastTeamRun = "";
 
 async function tick(): Promise<void> {
   if (!whatsappConfigured()) return;
@@ -390,6 +391,15 @@ async function tick(): Promise<void> {
     if (automation?.enabled && !automation.paused && (!automation.weekdaysOnly || isBusinessDay(now)) && horaEmSaoPaulo(now) >= automation.sendHour) {
       lastDailyRun = today;
       await runDailyApprovalRoutine(now).catch((error) => console.error("[whatsapp] rotina diária falhou:", error));
+    }
+  }
+  // Os avisos da equipe têm o próprio interruptor e saem só em dia útil, na
+  // mesma hora dos de cliente. (Import dinâmico: o módulo lê o storage inteiro.)
+  if (lastTeamRun !== today) {
+    const automation = await getAutomationSettings().catch(() => undefined);
+    if (automation?.team.enabled && !automation.paused && isBusinessDay(now) && horaEmSaoPaulo(now) >= automation.sendHour) {
+      lastTeamRun = today;
+      await import("./team").then((team) => team.runDailyTeamRoutine(now)).catch((error) => console.error("[whatsapp] avisos da equipe falharam:", error));
     }
   }
   // Rede de segurança do aviso imediato, caso o disparo direto não tenha rodado.

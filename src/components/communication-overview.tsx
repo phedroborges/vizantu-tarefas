@@ -21,7 +21,7 @@ const STATE: Record<ClientState, { label: string; tone: string; help: string }> 
   em_dia: { label: "Nada pendente", tone: "", help: "Não há conteúdo esperando resposta deste cliente." },
 };
 
-const KIND: Record<string, string> = { approval: "Conteúdo para aprovar", reminder: "Lembrete", last_day: "Último dia", auto_approved: "Aprovado por prazo", broadcast: "Comunicado" };
+const KIND: Record<string, string> = { team: "Aviso da equipe", approval: "Conteúdo para aprovar", reminder: "Lembrete", last_day: "Último dia", auto_approved: "Aprovado por prazo", broadcast: "Comunicado" };
 const STATUS: Record<string, { label: string; tone: string }> = {
   sent: { label: "Enviada", tone: "is-green" },
   pending: { label: "Na fila", tone: "is-blue" },

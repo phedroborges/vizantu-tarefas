@@ -24,8 +24,10 @@ export async function PUT(request: NextRequest) {
   try {
     // A parada de emergência tem a própria rota (PATCH): salvar os textos não
     // pode religar nem pausar os envios por tabela.
-    const { paused } = await getAutomationSettings();
-    return NextResponse.json({ settings: await saveAutomationSettings({ ...(await request.json()), paused }) });
+    // Os avisos da equipe também (PUT em /api/whatsapp/team): esta tela guarda
+    // uma cópia antiga deles e não pode gravar por cima.
+    const { paused, team } = await getAutomationSettings();
+    return NextResponse.json({ settings: await saveAutomationSettings({ ...(await request.json()), paused, team }) });
   } catch (error) {
     return apiFailure(error, "salvar as mensagens automáticas");
   }
