@@ -71,6 +71,27 @@ export const TIMED_STATUSES = TASK_STATUSES.filter(({ value }) => !TERMINAL_STAT
 const WORKING_STATUSES = new Set<TaskStatus>(["em_criacao", "revisao", "ajuste"]);
 const WAITING_STATUSES = new Set<TaskStatus>(["rascunho", "aguardando_informacao", "aguardando_captacao", "pronto_para_criacao"]);
 
+// Ranking do time. Refação é a demanda que volta: entra em Ajuste ou Problema.
+// De quem é a volta depende de onde ela veio. Peça que já estava pronta
+// (revisão, aprovação do cliente ou depois) é da criação. Texto devolvido pelo
+// cliente, ou briefing devolvido por quem ia criar, é da estratégia. Demanda
+// cancelada no meio do planejamento não é refação de ninguém.
+const REWORK_STATUSES = new Set<TaskStatus>(["ajuste", "problema"]);
+const CREATIVE_RETURNS = new Set<TaskStatus>(["revisao", "para_aprovacao", "aprovado", "finalizado"]);
+const STRATEGY_RETURNS = new Set<TaskStatus>(["aprovacao_copy", "pronto_para_criacao"]);
+// A entrega da estratégia é a demanda sair do planejamento: a primeira vez que
+// ela chega na criação (ou fecha direto). O relógio corre enquanto o texto está
+// sendo escrito ou ajustado; aprovação do cliente e espera pela gravação pausam.
+const STRATEGY_CLOCK = new Set<TaskStatus>(["rascunho", "aguardando_informacao", "ajuste"]);
+const PAST_STRATEGY = new Set<TaskStatus>(["pronto_para_criacao", "em_criacao", "revisao", "para_aprovacao", "aprovado", "finalizado"]);
+// Com uma ou duas entregas qualquer média é sorte: só disputa quem entregou
+// pelo menos isso no período.
+export const RANKING_MIN_DELIVERIES = 3;
+// Rapidez e qualidade pesam metade cada. A rapidez junta o tempo médio por
+// entrega com o volume entregue, para ser rápido em poucas não ganhar de quem
+// carrega a operação.
+const RANKING_WEIGHTS = { speed: 0.3, volume: 0.2, quality: 0.5 };
+
 const GROUP_BY_STATUS = new Map<TaskStatus, StatusGroup>(TASK_STATUSES.map(({ value, group }) => [value, group]));
 
 function timestamp(value?: string | null): number | undefined {
@@ -247,6 +268,67 @@ export type DashboardMemberMetric = {
   strategyTasks: number;
 };
 
+export type DashboardRankingEntry = {
+  memberId: string;
+  name: string;
+  avatarUrl?: string | null;
+  position: number;
+  /** De 0 a 100: metade rapidez (tempo e volume), metade qualidade. */
+  score: number;
+  deliveries: number;
+  /** Tempo médio com a pessoa por entrega, sem a espera pelo cliente. */
+  averageMs: number;
+  /** Entregas que não voltaram nenhuma vez. */
+  cleanDeliveries: number;
+  /** Quantas vezes as entregas voltaram para ajuste ou viraram problema. */
+  reworkRounds: number;
+  speedScore: number;
+  volumeScore: number;
+  qualityScore: number;
+};
+
+export type DashboardRanking = {
+  entries: DashboardRankingEntry[];
+  /** Quem já entregou no período, mas ainda não tem o mínimo para disputar. */
+  warmingUp: Pick<DashboardRankingEntry, "memberId" | "name" | "avatarUrl" | "deliveries">[];
+};
+
+export type DashboardTeamRanking = { minDeliveries: number } & Record<DashboardArea, DashboardRanking>;
+
+type RankingDelivery = { ms: number; rework: number };
+
+function rankMembers(members: DashboardMemberMetric[], deliveries: Map<string, RankingDelivery[]>): DashboardRanking {
+  const rows = members.flatMap((member) => {
+    const own = deliveries.get(member.memberId) || [];
+    if (!own.length) return [];
+    return [{
+      member,
+      deliveries: own.length,
+      averageMs: own.reduce((sum, delivery) => sum + delivery.ms, 0) / own.length,
+      cleanDeliveries: own.filter((delivery) => !delivery.rework).length,
+      reworkRounds: own.reduce((sum, delivery) => sum + delivery.rework, 0),
+    }];
+  });
+  const qualified = rows.filter((row) => row.deliveries >= RANKING_MIN_DELIVERIES);
+  const fastest = Math.min(...qualified.map((row) => row.averageMs));
+  const busiest = Math.max(...qualified.map((row) => row.deliveries));
+  const entries = qualified
+    .map(({ member, ...row }) => {
+      const speedScore = row.averageMs > 0 ? Math.round((fastest / row.averageMs) * 100) : 100;
+      const volumeScore = Math.round((row.deliveries / busiest) * 100);
+      const qualityScore = Math.round((row.cleanDeliveries / row.deliveries) * 100);
+      const score = Math.round(speedScore * RANKING_WEIGHTS.speed + volumeScore * RANKING_WEIGHTS.volume + qualityScore * RANKING_WEIGHTS.quality);
+      return { memberId: member.memberId, name: member.name, avatarUrl: member.avatarUrl, position: 0, score, ...row, speedScore, volumeScore, qualityScore };
+    })
+    .sort((a, b) => b.score - a.score || b.deliveries - a.deliveries || a.averageMs - b.averageMs || a.name.localeCompare(b.name))
+    .map((entry, index) => ({ ...entry, position: index + 1 }));
+  const warmingUp = rows
+    .filter((row) => row.deliveries < RANKING_MIN_DELIVERIES)
+    .sort((a, b) => b.deliveries - a.deliveries || a.member.name.localeCompare(b.member.name))
+    .map(({ member, deliveries: count }) => ({ memberId: member.memberId, name: member.name, avatarUrl: member.avatarUrl, deliveries: count }));
+  return { entries, warmingUp };
+}
+
 /** Espera pelo cliente em uma das duas aprovações. */
 export type DashboardClientStage = {
   /** Tarefas que passaram pela aprovação, incluindo as que estão nela agora. */
@@ -395,6 +477,8 @@ export type DashboardMetrics = {
   leadTime: DashboardLeadTime;
   punctuality: DashboardPunctuality;
   members: DashboardMemberMetric[];
+  /** Pódio da criação e da estratégia: rapidez e refação das entregas do período. */
+  ranking: DashboardTeamRanking;
   slowestCreative?: DashboardMemberMetric;
   mostLoaded?: DashboardMemberMetric;
   mostActive?: DashboardMemberMetric;
@@ -484,6 +568,21 @@ export function buildDashboardMetrics({
   );
 
   const creativeCycles = new Map<string, { teamMs: number; clientMs: number }[]>();
+  const rankingDeliveries: Record<DashboardArea, Map<string, RankingDelivery[]>> = { criacao: new Map(), estrategia: new Map() };
+  const addRankingDelivery = (area: DashboardArea, owner: string, delivery: RankingDelivery) =>
+    rankingDeliveries[area].set(owner, [...(rankingDeliveries[area].get(owner) || []), delivery]);
+  /** Quem entregou o planejamento: a última pessoa da estratégia que moveu a
+   * tarefa até ela chegar na criação. Quando é o cliente que aprova pelo link, a
+   * passagem não tem autor, e vale quem mandou o texto para ele. Sem registro
+   * de quem moveu, vale quem estava com a tarefa, e por fim quem a criou. */
+  const strategyOwnerAt = (task: Task, handoffMs: number) => {
+    const isStrategist = (id?: string | null): id is string => Boolean(id) && memberMetrics.get(id!)?.area === "estrategia";
+    const mover = task.comments
+      .filter((comment) => comment.kind === "activity" && comment.fieldKey === "status" && isStrategist(comment.authorMemberId) && (timestamp(comment.createdAt) ?? Infinity) <= handoffMs + 60_000)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .at(-1)?.authorMemberId;
+    return [mover, assigneeAt(task, handoffMs - 1), task.createdBy].find(isStrategist);
+  };
   const allCreativeCycles: number[] = [];
   const allCreativeClientCycles: number[] = [];
   let creativeTasks = 0;
@@ -502,6 +601,9 @@ export function buildDashboardMetrics({
     // relógio criativo correu na mão de cada uma.
     const heldByOwner = new Map<string, Map<TaskStatus, number>>();
     const creativeByOwner = new Map<string, number>();
+    // O mesmo relógio, mas só depois que a demanda chegou de fato na criação:
+    // ajuste de texto antes disso não é tempo de quem cria.
+    const rankingCreativeByOwner = new Map<string, number>();
     const phasesSeen = new Set<DashboardPhaseKey>();
     const approvals = { text: { ms: 0, rounds: 0 }, creative: { ms: 0, rounds: 0 } };
     let creativeTotal = 0;
@@ -514,7 +616,22 @@ export function buildDashboardMetrics({
     let creativeClosedAt: number | undefined;
     let previousStop = false;
     let measured = false;
+    let previousStatus: TaskStatus | undefined;
+    let creativeRework = 0;
+    let strategyRework = 0;
+    let strategyMs = 0;
+    let handoffAt: number | undefined;
     for (const interval of intervals) {
+      const cameFrom = previousStatus;
+      previousStatus = interval.status;
+      if (REWORK_STATUSES.has(interval.status) && cameFrom) {
+        if (CREATIVE_RETURNS.has(cameFrom)) creativeRework += 1;
+        else if (STRATEGY_RETURNS.has(cameFrom)) strategyRework += 1;
+      }
+      if (handoffAt === undefined) {
+        if (PAST_STRATEGY.has(interval.status)) handoffAt = interval.start;
+        else if (STRATEGY_CLOCK.has(interval.status)) strategyMs += interval.end - interval.start;
+      }
       if (CREATIVE_START.has(interval.status)) {
         creativeStarted = true;
         if (interval.end > fromMs) creativeActive = true;
@@ -554,6 +671,7 @@ export function buildDashboardMetrics({
         const owner = assigneeAt(task, points[index]);
         if (!owner || !memberMetrics.has(owner)) continue;
         if (running) creativeByOwner.set(owner, (creativeByOwner.get(owner) || 0) + points[index + 1] - points[index]);
+        if (running && handoffAt !== undefined) rankingCreativeByOwner.set(owner, (rankingCreativeByOwner.get(owner) || 0) + points[index + 1] - points[index]);
         const duration = points[index + 1] - Math.max(points[index], fromMs);
         if (duration <= 0) continue;
         const held = heldByOwner.get(owner) ?? new Map<TaskStatus, number>();
@@ -622,6 +740,14 @@ export function buildDashboardMetrics({
       // A espera da entrega inteira vai para quem produziu, mesmo que a tarefa
       // tenha trocado de mão enquanto o cliente decidia.
       for (const [owner, share] of creativeByOwner) creativeCycles.set(owner, [...(creativeCycles.get(owner) || []), { teamMs: share, clientMs: creativeClient }]);
+      for (const [owner, share] of rankingCreativeByOwner) {
+        if (memberMetrics.get(owner)!.area === "criacao") addRankingDelivery("criacao", owner, { ms: share, rework: creativeRework });
+      }
+    }
+    // Tarefa que já nasce pronta para criar não teve planejamento para medir.
+    if (handoffAt !== undefined && strategyMs > 0 && inWindow(handoffAt)) {
+      const owner = strategyOwnerAt(task, handoffAt);
+      if (owner) addRankingDelivery("estrategia", owner, { ms: strategyMs, rework: strategyRework });
     }
     if (task.createdBy && memberMetrics.has(task.createdBy) && inWindow(timestamp(task.createdAt))) memberMetrics.get(task.createdBy)!.created += 1;
     for (const comment of task.comments) {
@@ -914,6 +1040,11 @@ export function buildDashboardMetrics({
     leadTime,
     punctuality,
     members: memberRows,
+    ranking: {
+      minDeliveries: RANKING_MIN_DELIVERIES,
+      criacao: rankMembers(memberRows, rankingDeliveries.criacao),
+      estrategia: rankMembers(memberRows, rankingDeliveries.estrategia),
+    },
     slowestCreative: withCreativeCycles.sort((a, b) => (b.creativeAverageMs || 0) - (a.creativeAverageMs || 0))[0],
     mostLoaded: [...memberRows].sort((a, b) => b.openTasks - a.openTasks)[0],
     mostActive: [...memberRows].sort((a, b) => b.totalActivity - a.totalActivity)[0],

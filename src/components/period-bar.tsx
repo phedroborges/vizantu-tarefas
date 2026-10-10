@@ -16,7 +16,7 @@ function rangeLabel(range: DashboardDayRange) {
  * Trocar o período só muda a query, então o loading.tsx da rota não aparece:
  * enquanto o servidor recalcula, a própria barra avisa que está carregando e o
  * CSS esmaece o resto da tela, que ainda mostra os números do período antigo. */
-export function PeriodBar({ period, pastNote, children }: { period: DashboardPeriod; pastNote?: string; children?: React.ReactNode }) {
+export function PeriodBar({ period, pastNote, compares = true, children }: { period: DashboardPeriod; pastNote?: string; /** A tela mostra a variação contra o período anterior. */ compares?: boolean; children?: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -43,8 +43,8 @@ export function PeriodBar({ period, pastNote, children }: { period: DashboardPer
     {pending ? <p className="dash-period__summary"><VzLoading size="inline" label={`Carregando os dados de ${(loading ?? "período").toLowerCase()}…`} /></p> : <p className="dash-period__summary">
       <strong>{period.label}</strong>
       {period.range && period.previous
-        ? <> · {rangeLabel(period.range)} ({period.days === 1 ? "1 dia" : `${period.days} dias`}). Comparando com {rangeLabel(period.previous)}.{period.endsInPast && pastNote ? ` ${pastNote}` : ""}</>
-        : <> · histórico inteiro, sem comparação com período anterior.</>}
+        ? <> · {rangeLabel(period.range)} ({period.days === 1 ? "1 dia" : `${period.days} dias`}).{compares ? ` Comparando com ${rangeLabel(period.previous)}.` : ""}{period.endsInPast && pastNote ? ` ${pastNote}` : ""}</>
+        : <> · histórico inteiro{compares ? ", sem comparação com período anterior" : ""}.</>}
       {children}
     </p>}
   </section>;

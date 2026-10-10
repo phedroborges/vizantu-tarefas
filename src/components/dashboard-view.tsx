@@ -14,6 +14,7 @@ import {
   type DashboardMemberMetric, type DashboardPhase, type DashboardProjectHealth, type DashboardPunctuality,
 } from "@/lib/dashboard-metrics";
 import { PeriodBar, PeriodDelta } from "@/components/period-bar";
+import { TeamRanking } from "@/components/team-ranking";
 import { type DashboardPeriod } from "@/lib/dashboard-period";
 import { formatDuration, formatDueDate } from "@/lib/dates";
 import { type StatusGroup, type TaskStatus } from "@/lib/types";
@@ -429,6 +430,8 @@ export function DashboardView({ metrics, comparison, period }: DashboardViewProp
     <div className="dashboard-head dashboard-head--intelligence"><div><span className="eyebrow">Inteligência operacional</span><h1>Pulso da operação</h1><p>Gargalos, capacidade, retrabalho e qualidade do planejamento calculados a partir do histórico real das tarefas.</p></div><span className="dash-live"><i /> Dados atualizados ao abrir</span></div>
 
     {period ? <PeriodBar key={`${period.preset}:${period.range?.from}:${period.range?.to}`} period={period} pastNote="Carga aberta, atrasos e bloqueios mostram a situação no fim do período."><InfoButton label="Período das métricas" info={INFO.periodo} /></PeriodBar> : null}
+
+    <TeamRanking ranking={metrics.ranking} periodLabel={period?.label.toLowerCase()} />
 
     <nav className="dash-sections-nav" aria-label="Seções do dashboard">{SECTIONS.map((section) => <a href={`#dash-${section.id}`} key={section.id}>{section.label}</a>)}</nav>
 

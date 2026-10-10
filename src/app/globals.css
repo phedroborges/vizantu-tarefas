@@ -301,6 +301,52 @@ a.upcoming-item { color: inherit; text-decoration: none; }
 .dashboard-head--intelligence h1 { margin: 3px 0 7px; font-size: clamp(28px, 3vw, 40px); letter-spacing: -.045em; }
 .dash-live { display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; border: 1px solid var(--vz-line); border-radius: var(--vz-r-pill); background: var(--vz-panel); color: var(--vz-text-muted); font-size: var(--vz-t-tiny); white-space: nowrap; box-shadow: var(--vz-shadow-xs); }
 .dash-live i { width: 7px; height: 7px; border-radius: 50%; background: var(--vz-green-solid); box-shadow: 0 0 0 4px var(--vz-green-bg); }
+/* Ranking do time: pódio da criação e da estratégia. Ouro, prata e bronze são
+   cores fixas, iguais no claro e no escuro, porque são o próprio significado. */
+.team-ranking { margin-bottom: 16px; padding: 18px 20px 14px; border: 1px solid var(--vz-brand-line); border-radius: var(--vz-r-lg); background: linear-gradient(160deg, var(--vz-brand-soft), var(--vz-panel) 55%); box-shadow: var(--vz-shadow-xs); }
+.team-ranking__head h2 { margin: 0 0 4px; font-size: var(--vz-t-md); letter-spacing: -.02em; }
+.team-ranking__head h2 small { color: var(--vz-text-muted); font-size: var(--vz-t-sm); font-weight: 500; letter-spacing: 0; }
+.team-ranking__head p { margin: 0; color: var(--vz-text-muted); font-size: var(--vz-t-xs); }
+.team-ranking__head .eyebrow { margin-bottom: 4px; }
+.team-ranking__boards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 14px; }
+.rank-board { display: flex; flex-direction: column; min-width: 0; padding: 14px 16px; border: 1px solid var(--vz-line); border-radius: var(--vz-r-md); background: var(--vz-panel); }
+.rank-board__head h3 { margin: 0; font-size: var(--vz-t-sm); }
+.rank-board__head p, .rank-board__warming, .rank-board__empty { margin: 2px 0 0; color: var(--vz-text-muted); font-size: var(--vz-t-tiny); }
+.rank-board__empty { padding: 28px 0; text-align: center; font-size: var(--vz-t-xs); }
+.rank-board__warming { margin-top: 10px; }
+.rank-podium { display: flex; align-items: flex-end; justify-content: center; gap: 10px; margin: 16px 0 12px; padding: 0; list-style: none; }
+.rank-step { --rank-color: #c98a4b; --rank-height: 34px; --rank-delay: 0s; display: flex; flex: 1 1 0; flex-direction: column; align-items: center; min-width: 0; max-width: 150px; text-align: center; }
+.rank-step--prata { --rank-color: #9aa5b4; --rank-height: 50px; --rank-delay: .15s; }
+.rank-step--ouro { --rank-color: #e2a81c; --rank-height: 72px; --rank-delay: .3s; }
+.rank-step > * { animation: rank-arrive .5s var(--vz-ease) calc(var(--rank-delay) + .25s) both; }
+.rank-step__trophy { display: grid; place-items: center; margin-bottom: 6px; color: var(--rank-color); }
+.rank-step--ouro .rank-step__trophy { position: relative; width: 44px; height: 44px; border-radius: 50%; background: color-mix(in srgb, var(--rank-color) 18%, transparent); }
+.rank-step--ouro .rank-step__trophy svg { animation: rank-trophy 2.6s ease-in-out 1.2s infinite; }
+.rank-step--ouro .rank-step__trophy::after { content: ""; position: absolute; inset: 0; border-radius: 50%; animation: rank-glow 2.6s ease-out 1.2s infinite; }
+.rank-step .avatar { box-shadow: 0 0 0 2px var(--vz-panel), 0 0 0 4px var(--rank-color); }
+.rank-step strong { width: 100%; margin-top: 9px; overflow: hidden; font-size: var(--vz-t-xs); text-overflow: ellipsis; white-space: nowrap; }
+.rank-step__score { color: var(--vz-text-muted); font-size: var(--vz-t-tiny); font-weight: 650; }
+.rank-step > .rank-step__base { display: grid; place-items: center; width: 100%; height: var(--rank-height); margin-top: 8px; border-radius: var(--vz-r-sm) var(--vz-r-sm) 0 0; background: linear-gradient(180deg, var(--rank-color), color-mix(in srgb, var(--rank-color) 55%, var(--vz-panel))); color: #fff; font-size: var(--vz-t-sm); transform-origin: bottom; animation: rank-rise .55s var(--vz-ease) var(--rank-delay) both; }
+.rank-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--vz-line); }
+.rank-list li { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--vz-line); font-size: var(--vz-t-xs); }
+.rank-list li:last-child { border-bottom: 0; }
+.rank-list li > b { color: var(--vz-text-muted); }
+.rank-list li.is-ouro > b { color: #c48d0c; }
+.rank-list li.is-prata > b { color: #7f8b9b; }
+.rank-list li.is-bronze > b { color: #b0723a; }
+.rank-list li div { display: grid; min-width: 0; }
+.rank-list li small { overflow: hidden; color: var(--vz-text-muted); font-size: var(--vz-t-tiny); text-overflow: ellipsis; white-space: nowrap; }
+.rank-list li > span { font-weight: 700; white-space: nowrap; }
+.team-ranking__rules { margin-top: 12px; color: var(--vz-text-muted); font-size: var(--vz-t-tiny); }
+.team-ranking__rules summary { width: fit-content; cursor: pointer; font-weight: 650; }
+.team-ranking__rules p { max-width: 90ch; margin: 8px 0 0; line-height: 1.5; }
+.team-ranking__rules strong { color: var(--vz-text); }
+@keyframes rank-rise { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@keyframes rank-arrive { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: none; } }
+@keyframes rank-trophy { 0%, 100% { transform: translateY(0) rotate(0); } 25% { transform: translateY(-3px) rotate(-8deg); } 50% { transform: translateY(0) rotate(0); } 75% { transform: translateY(-3px) rotate(8deg); } }
+@keyframes rank-glow { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--rank-color) 50%, transparent); } 70%, 100% { box-shadow: 0 0 0 12px transparent; } }
+@media (prefers-reduced-motion: reduce) { .rank-step > *, .rank-step > .rank-step__base, .rank-step--ouro .rank-step__trophy svg, .rank-step--ouro .rank-step__trophy::after { animation: none; } }
+@media (max-width: 900px) { .team-ranking__boards { grid-template-columns: 1fr; } }
 .dash-kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
 .dash-kpi { position: relative; display: flex; align-items: flex-start; gap: 13px; min-height: 126px; padding: 18px; overflow: hidden; border: 1px solid var(--vz-line); border-radius: var(--vz-r-lg); background: var(--vz-panel); box-shadow: var(--vz-shadow-sm); }
 .dash-kpi::after { content: ""; position: absolute; right: -22px; bottom: -30px; width: 100px; height: 100px; border-radius: 50%; background: var(--dash-soft); opacity: .65; }

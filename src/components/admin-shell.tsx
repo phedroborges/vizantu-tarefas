@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, Bell, BookOpen, CheckSquare, ClipboardList, FileQuestion, FileText, Folders, LogOut, Megaphone, Menu, Palette, Sparkles, Users, Wallet, X } from "lucide-react";
+import { BarChart3, Bell, BookOpen, CheckSquare, ClipboardList, FileQuestion, FileText, Folders, LogOut, Megaphone, Menu, Palette, Sparkles, Trophy, Users, Wallet, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -19,13 +19,14 @@ import { createClient } from "@/lib/supabase/browser-client";
 import { podeGerenciarEquipe, podeVer, type AppArea } from "@/lib/permissions";
 import { USER_ROLES, type UserRole } from "@/lib/types";
 
-export type AdminShellActive = "financeiro" | "meu_financeiro" | "dashboard" | "projetos" | "tarefas" | "planos" | "pesquisas" | "marcas" | "contratos" | "membros" | "conhecimento" | "assistente" | "notificacoes" | "comunicados";
+export type AdminShellActive = "financeiro" | "meu_financeiro" | "dashboard" | "ranking" | "projetos" | "tarefas" | "planos" | "pesquisas" | "marcas" | "contratos" | "membros" | "conhecimento" | "assistente" | "notificacoes" | "comunicados";
 
 
 // A ordem aqui é a ordem do menu. A área de cada item é o que decide quem o
 // enxerga — nenhum `if` de cargo espalhado pelo JSX.
 const ITENS_DO_MENU: { area: AppArea; href: string; label: string; Icone: typeof BarChart3 }[] = [
   { area: "dashboard", href: "/", label: "Dashboard", Icone: BarChart3 },
+  { area: "ranking", href: "/ranking", label: "Ranking", Icone: Trophy },
   { area: "projetos", href: "/projetos", label: "Projetos", Icone: Folders },
   { area: "tarefas", href: "/tarefas", label: "Tarefas", Icone: CheckSquare },
   { area: "notificacoes", href: "/notificacoes", label: "Notificações", Icone: Bell },
@@ -47,6 +48,7 @@ const PAGE_LABELS: Record<AdminShellActive, string> = {
   financeiro: "Página atual: Financeiro exclusivo do dono.",
   meu_financeiro: "Página atual: Meu financeiro (ganhos, demandas computadas e pontos de atenção da própria pessoa).",
   dashboard: "Página atual: Dashboard (visão geral de métricas, prazos e ranking do time).",
+  ranking: "Página atual: Ranking do time (pódio da criação e da estratégia, por rapidez e refação).",
   projetos: "Página atual: Projetos.",
   tarefas: "Página atual: Tarefas.",
   planos: "Página atual: Planos (conteúdos e processos organizados por cliente).",

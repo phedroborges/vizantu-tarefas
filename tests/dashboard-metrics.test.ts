@@ -427,3 +427,89 @@ describe("período do dashboard", () => {
     expect(metrics.members.find((member) => member.memberId === "m2")!.comments).toBe(0);
   });
 });
+
+describe("ranking do time", () => {
+  const day = (n: number, hour = 12) => `2026-09-${String(n).padStart(2, "0")}T${String(hour).padStart(2, "0")}:00:00.000Z`;
+  const moved = (id: string, authorMemberId: string, newValue: string, createdAt: string) =>
+    ({ id, author: "Sistema", authorMemberId, text: "", kind: "activity" as const, fieldKey: "status", newValue, createdAt });
+  /** Peça criada em `hours` horas e aprovada; com `back`, ela volta do cliente uma vez. */
+  const piece = (id: string, assigneeId: string, hours: number, back = false) => task({
+    id, name: id, status: "aprovado", assigneeId, createdAt: day(1),
+    statusHistory: [
+      { status: "em_criacao", enteredAt: day(1, 0), exitedAt: day(1, hours) },
+      { status: "para_aprovacao", enteredAt: day(1, hours), exitedAt: day(2) },
+      ...(back ? [
+        { status: "ajuste" as const, enteredAt: day(2), exitedAt: day(2, 13) },
+        { status: "para_aprovacao" as const, enteredAt: day(2, 13), exitedAt: day(3) },
+      ] : []),
+      { status: "aprovado", enteredAt: day(3), exitedAt: null },
+    ],
+  });
+  const build = (list: Task[]) => buildDashboardMetrics({ tasks: list, projects, members, tags, nowIso: NOW }).ranking;
+
+  it("o mais rápido perde quando as peças voltam", () => {
+    const ranking = build([
+      piece("b1", "m2", 4), piece("b2", "m2", 4, true), piece("b3", "m2", 4, true),
+      piece("c1", "m3", 5), piece("c2", "m3", 5), piece("c3", "m3", 5),
+    ]);
+    expect(ranking.criacao.entries.map((entry) => entry.name)).toEqual(["Clara", "Beto"]);
+    const [clara, beto] = ranking.criacao.entries;
+    expect(clara).toMatchObject({ position: 1, deliveries: 3, cleanDeliveries: 3, reworkRounds: 0, qualityScore: 100, speedScore: 93, volumeScore: 100 });
+    // 93 × 0,3 + 100 × 0,2 + 100 × 0,5
+    expect(clara.score).toBe(98);
+    // O Beto é o mais rápido (a hora de ajuste soma no tempo dele), mas duas das três peças voltaram.
+    expect(beto).toMatchObject({ position: 2, cleanDeliveries: 1, reworkRounds: 2, qualityScore: 33, speedScore: 100, score: 67 });
+    expect(beto.averageMs).toBe((4 + 5 + 5) / 3 * 3_600_000);
+  });
+
+  it("só disputa quem tem o mínimo de entregas", () => {
+    const ranking = build([piece("b1", "m2", 1), piece("b2", "m2", 1), piece("c1", "m3", 5), piece("c2", "m3", 5), piece("c3", "m3", 5)]);
+    expect(ranking.minDeliveries).toBe(3);
+    expect(ranking.criacao.entries.map((entry) => entry.name)).toEqual(["Clara"]);
+    expect(ranking.criacao.warmingUp).toEqual([{ memberId: "m2", name: "Beto", avatarUrl: undefined, deliveries: 2 }]);
+    expect(ranking.estrategia).toEqual({ entries: [], warmingUp: [] });
+  });
+
+  it("credita o planejamento a quem mandou o texto, sem contar a espera do cliente", () => {
+    // A tarefa está com o Beto, mas quem planejou foi a Ana: o cliente aprovou
+    // pelo link e a passagem para a criação não tem autor.
+    const plan = (id: string, back = false) => task({
+      id, name: id, status: "pronto_para_criacao", assigneeId: "m2", createdAt: day(1),
+      statusHistory: [
+        { status: "rascunho", enteredAt: day(1, 0), exitedAt: day(1, 6) },
+        { status: "aprovacao_copy", enteredAt: day(1, 6), exitedAt: day(4) },
+        ...(back ? [
+          { status: "ajuste" as const, enteredAt: day(4), exitedAt: day(4, 14) },
+          { status: "aprovacao_copy" as const, enteredAt: day(4, 14), exitedAt: day(5) },
+        ] : []),
+        { status: "aguardando_captacao", enteredAt: day(5), exitedAt: day(7) },
+        { status: "pronto_para_criacao", enteredAt: day(7), exitedAt: null },
+      ],
+      comments: [moved(`${id}-a`, "m1", "aprovacao_copy", day(1, 6))],
+    });
+    const ranking = build([plan("p1"), plan("p2"), plan("p3", true)]);
+    expect(ranking.criacao.entries).toEqual([]);
+    expect(ranking.estrategia.entries).toHaveLength(1);
+    expect(ranking.estrategia.entries[0]).toMatchObject({ name: "Ana", deliveries: 3, cleanDeliveries: 2, reworkRounds: 1, qualityScore: 67 });
+    // 6h de rascunho em cada uma, mais 2h de ajuste na que voltou.
+    expect(ranking.estrategia.entries[0].averageMs).toBe((6 + 6 + 8) / 3 * 3_600_000);
+  });
+
+  it("cancelar no planejamento não é refação, e tarefa que nasce pronta não é entrega da estratégia", () => {
+    const ranking = build([
+      task({ id: "x1", name: "x1", status: "problema", assigneeId: "m1", createdBy: "m1", statusHistory: [
+        { status: "rascunho", enteredAt: day(1), exitedAt: day(2) }, { status: "problema", enteredAt: day(2), exitedAt: null },
+      ] }),
+      task({ id: "x2", name: "x2", status: "pronto_para_criacao", assigneeId: "m1", createdBy: "m1", statusHistory: [{ status: "pronto_para_criacao", enteredAt: day(1), exitedAt: null }] }),
+    ]);
+    expect(ranking.estrategia).toEqual({ entries: [], warmingUp: [] });
+  });
+
+  it("só conta a entrega que fechou dentro do período", () => {
+    const list = [piece("c1", "m3", 5), piece("c2", "m3", 5), piece("c3", "m3", 5)];
+    const inside = buildDashboardReport({ tasks: list, projects, members, tags, nowIso: NOW, window: { fromIso: day(2), toIso: NOW } });
+    const after = buildDashboardReport({ tasks: list, projects, members, tags, nowIso: NOW, window: { fromIso: day(4), toIso: NOW } });
+    expect(inside.metrics.ranking.criacao.entries).toHaveLength(1);
+    expect(after.metrics.ranking.criacao.entries).toEqual([]);
+  });
+});

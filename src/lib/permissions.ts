@@ -6,7 +6,7 @@ import type { UserRole } from "./types";
 // Aqui a área é declarada uma vez e as três leem daqui.
 
 export type AppArea =
-  | "dashboard" | "projetos" | "tarefas" | "notificacoes" | "planos"
+  | "dashboard" | "ranking" | "projetos" | "tarefas" | "notificacoes" | "planos"
   | "financeiro" | "meu_financeiro" | "pesquisas" | "marcas" | "contratos" | "membros" | "conhecimento" | "assistente" | "comunicados";
 
 type RoleProfile = {
@@ -29,7 +29,7 @@ type RoleProfile = {
 };
 
 const TODAS_AS_AREAS: AppArea[] = [
-  "dashboard", "projetos", "tarefas", "notificacoes", "planos",
+  "dashboard", "ranking", "projetos", "tarefas", "notificacoes", "planos",
   "pesquisas", "marcas", "contratos", "membros", "conhecimento", "assistente", "financeiro", "comunicados",
 ];
 
@@ -43,12 +43,12 @@ export const ROLE_PROFILES: Record<UserRole, RoleProfile> = {
     // Vê o que o social media vê, mais o painel e os contratos. Membros e base
     // de conhecimento continuam fora: ele gerencia entrega, não o time nem a
     // documentação interna.
-    areas: ["dashboard", "projetos", "tarefas", "notificacoes", "planos", "pesquisas", "contratos", "assistente", "comunicados"],
+    areas: ["dashboard", "ranking", "projetos", "tarefas", "notificacoes", "planos", "pesquisas", "contratos", "assistente", "comunicados"],
     planeja: true, gerenciaEquipe: true, gerenciaMembros: false, veCredenciais: true,
     gerenciaCredenciais: false, veTodosOsProjetos: true, inicio: "/",
   },
   social_media: {
-    areas: ["projetos", "tarefas", "notificacoes", "planos", "pesquisas", "assistente", "meu_financeiro"],
+    areas: ["ranking", "projetos", "tarefas", "notificacoes", "planos", "pesquisas", "assistente", "meu_financeiro"],
     // Quem publica precisa da senha do Instagram do cliente, e é quem recebe
     // esses acessos dele: cadastra, altera e apaga, só nos clientes em que
     // trabalha.
@@ -56,7 +56,7 @@ export const ROLE_PROFILES: Record<UserRole, RoleProfile> = {
     gerenciaCredenciais: true, veTodosOsProjetos: false, inicio: "/planos",
   },
   diretor_criativo: {
-    areas: ["projetos", "tarefas", "notificacoes", "planos", "marcas", "assistente", "meu_financeiro"],
+    areas: ["ranking", "projetos", "tarefas", "notificacoes", "planos", "marcas", "assistente", "meu_financeiro"],
     planeja: false, gerenciaEquipe: false, gerenciaMembros: false, veCredenciais: false,
     gerenciaCredenciais: false, veTodosOsProjetos: false, inicio: "/tarefas",
   },

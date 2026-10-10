@@ -65,6 +65,10 @@ describe("o que cada cargo enxerga", () => {
     expect(ROLES_DE_GESTAO).toEqual(["dono", "gestor"]);
   });
 
+  it("o ranking é aberto para o time inteiro", () => {
+    expect(rolesQueVeem("ranking")).toEqual(CARGOS);
+  });
+
   it("marca é do diretor criativo, não do social media", () => {
     expect(rolesQueVeem("marcas")).toEqual(["dono", "diretor_criativo"]);
   });
