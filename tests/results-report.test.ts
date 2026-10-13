@@ -84,6 +84,9 @@ describe("PDF do relatório de resultados", () => {
     const editable: ResultsReport = { period: "Outubro de 2026", sections: [{ title: "Etapa 1", callouts: [{ tag: "Mensagem", title: "Combinado! ✅ Nosso encontro ficou marcado.", editable: true }] }] };
     const output = buildResultsPdf({ clientName: "Cliente", title: "Tutorial", report: editable, assets }).pdf.output();
     expect(output).toContain("/FT /Tx");
+    // O campo precisa ser um dicionário simples: gravado como fluxo
+    // comprimido, o Chrome não o reconhece e o campo não fica editável.
+    expect(output).toMatch(/\/Subtype \/Widget\s+\/AP <<\/N \d+ 0 R>>\s+>>\s+endobj/);
     expect(output).toContain("Combinado! Nosso encontro ficou marcado.");
   });
 

@@ -27,7 +27,10 @@ const BOTTOM = 273;
 
 export function buildResultsPdf(input: { clientName: string; title: string; report: ResultsReport; assets: StatementAssets; images?: Record<string, ResultsImage>; emoji?: Record<string, ResultsImage> }) {
   const { clientName, title, report, assets, images = {}, emoji = {} } = input;
-  const pdf = new jsPDF({ putOnlyUsedFonts: true, compress: true });
+  // Com compressão, o jsPDF grava os campos de formulário como fluxos e o
+  // Chrome deixa de reconhecê-los: documento com campo sai sem comprimir.
+  const hasFields = report.sections.some((section) => section.callouts?.some((item) => item.editable));
+  const pdf = new jsPDF({ putOnlyUsedFonts: true, compress: !hasFields });
   pdf.addFileToVFS("VizantuPDF-Regular.ttf", assets.regular);
   pdf.addFont("VizantuPDF-Regular.ttf", "VizantuPDF", "normal");
   pdf.addFileToVFS("VizantuPDF-Semibold.ttf", assets.semibold);
