@@ -17,13 +17,16 @@ const C = { brand: "#9147ff", strong: "#6435e7", deep: "#4b23b8", soft: "#f2ecff
  * a proporção. */
 export type ResultsImage = { data: string; width: number; height: number };
 
+/** Um emoji inteiro, com seletor de variação e sequências unidas por ZWJ. */
+export const EMOJI = /\p{Extended_Pictographic}(?:️|‍\p{Extended_Pictographic}️?)*/gu;
+
 const LEFT = 16;
 const RIGHT = 194;
 const WIDTH = RIGHT - LEFT;
 const BOTTOM = 273;
 
-export function buildResultsPdf(input: { clientName: string; title: string; report: ResultsReport; assets: StatementAssets; images?: Record<string, ResultsImage> }) {
-  const { clientName, title, report, assets, images = {} } = input;
+export function buildResultsPdf(input: { clientName: string; title: string; report: ResultsReport; assets: StatementAssets; images?: Record<string, ResultsImage>; emoji?: Record<string, ResultsImage> }) {
+  const { clientName, title, report, assets, images = {}, emoji = {} } = input;
   const pdf = new jsPDF({ putOnlyUsedFonts: true, compress: true });
   pdf.addFileToVFS("VizantuPDF-Regular.ttf", assets.regular);
   pdf.addFont("VizantuPDF-Regular.ttf", "VizantuPDF", "normal");
@@ -186,13 +189,52 @@ export function buildResultsPdf(input: { clientName: string; title: string; repo
     y += 3;
   };
 
+  // A fonte do PDF não tem emoji. No título dos cartões (onde vão as mensagens
+  // prontas) cada emoji entra como imagem, na linha do texto; o que não veio
+  // desenhado some junto com o espaço que o antecede.
+  const emojiSide = (size: number) => size * 0.37;
+  const known = (value: string) => value.replace(new RegExp(`\\s*(${EMOJI.source})`, "gu"), (match, symbol: string) => emoji[symbol] ? match : "");
+  const pieces = (value: string) => {
+    const parts: { value: string; emoji: boolean }[] = [];
+    let last = 0;
+    for (const match of value.matchAll(EMOJI)) {
+      if (match.index > last) parts.push({ value: value.slice(last, match.index), emoji: false });
+      parts.push({ value: match[0], emoji: true });
+      last = match.index + match[0].length;
+    }
+    if (last < value.length) parts.push({ value: value.slice(last), emoji: false });
+    return parts;
+  };
+  const richWidth = (value: string, size: number, bold: boolean) => {
+    font(size, bold);
+    return pieces(value).reduce((sum, part) => sum + (part.emoji ? emojiSide(size) : pdf.getTextWidth(part.value)), 0);
+  };
+  const richWrap = (value: string, width: number, size: number, bold: boolean): string[] => {
+    const lines: string[] = [];
+    let line = "";
+    for (const word of known(value).split(/\s+/).filter(Boolean)) {
+      const next = line ? `${line} ${word}` : word;
+      if (line && richWidth(next, size, bold) > width) { lines.push(line); line = word; } else line = next;
+    }
+    if (line) lines.push(line);
+    return lines;
+  };
+  const richText = (value: string, x: number, lineY: number, size: number, bold: boolean) => {
+    const side = emojiSide(size);
+    for (const part of pieces(value)) {
+      if (part.emoji) { pdf.addImage(emoji[part.value].data, "PNG", x, lineY - side * 0.84, side, side, `emoji-${part.value}`, "FAST"); x += side; continue; }
+      text(part.value, x, lineY, size, bold);
+      x += pdf.getTextWidth(part.value);
+    }
+  };
+
   // Alertas saem em vermelho; os trechos de destaque (callouts), em lilás.
   const cards = (items: NonNullable<ResultsSection["alerts"]>, tone: "alert" | "callout") => {
     const fill = tone === "alert" ? C.redBg : C.soft;
     const stroke = tone === "alert" ? C.redLine : C.soft;
     const accent = tone === "alert" ? C.red : C.strong;
     for (const item of items) {
-      const titleLines = wrap(item.title, WIDTH - 16, 10, true);
+      const titleLines = richWrap(item.title, WIDTH - 16, 10, true);
       const detailLines = item.detail ? wrap(item.detail, WIDTH - 16, 8.5) : [];
       const height = 15 + titleLines.length * 4.8 + (detailLines.length ? detailLines.length * 4.2 + 2 : 0);
       ensure(height + 4);
@@ -203,7 +245,7 @@ export function buildResultsPdf(input: { clientName: string; title: string; repo
       const tagWidth = pdf.getTextWidth(tag) + 5;
       pdf.setFillColor(accent); pdf.roundedRect(LEFT + 7, y + 4.5, tagWidth, 5, 1.5, 1.5, "F");
       text(tag, LEFT + 9.5, y + 8, 6.5, true, C.white);
-      titleLines.forEach((line, row) => text(line, LEFT + 7, y + 15.5 + row * 4.8, 10, true));
+      titleLines.forEach((line, row) => richText(line, LEFT + 7, y + 15.5 + row * 4.8, 10, true));
       detailLines.forEach((line, row) => text(line, LEFT + 7, y + 16.5 + titleLines.length * 4.8 + row * 4.2, 8.5, false, C.muted));
       y += height + 4;
     }

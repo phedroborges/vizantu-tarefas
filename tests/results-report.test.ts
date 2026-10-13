@@ -73,6 +73,13 @@ describe("PDF do relatório de resultados", () => {
     expect(pdf.getNumberOfPages()).toBe(1);
   });
 
+  // Emoji desenhado entra como imagem; o que não veio some sem quebrar o PDF.
+  it("aceita emoji nas mensagens dos cartões", () => {
+    const pixel = { data: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", width: 1, height: 1 };
+    const withEmoji: ResultsReport = { period: "Outubro de 2026", sections: [{ title: "Etapa 1", callouts: [{ tag: "Mensagem", title: "Combinado! ✅ Sua demo ficou agendada. 🚀" }] }] };
+    expect(() => buildResultsPdf({ clientName: "Cliente", title: "Tutorial", report: withEmoji, assets, emoji: { "✅": pixel } })).not.toThrow();
+  });
+
   it("ignora a imagem que não foi carregada em vez de quebrar", () => {
     const withImage: ResultsReport = { period: "Outubro de 2026", sections: [{ title: "Instagram", images: [{ url: "https://exemplo.com/print.png", caption: "Melhor post" }] }] };
     expect(() => buildResultsPdf({ clientName: "Cliente", title: "Relatório de resultados", report: withImage, assets })).not.toThrow();

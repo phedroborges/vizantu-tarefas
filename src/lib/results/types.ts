@@ -34,7 +34,7 @@ export type ResultsSection = {
   table?: { columns: string[]; rows: string[][] };
   /** Trechos para ler com atenção ou copiar: a mensagem pronta de um
    * tutorial, uma regra, uma definição. Saem em cartões lilás, no mesmo
-   * formato dos alertas. */
+   * formato dos alertas. O `title` aceita emoji. */
   callouts?: { tag: string; title: string; detail?: string }[];
   /** Tópicos. O título padrão é "O que funcionou". */
   highlights?: string[];

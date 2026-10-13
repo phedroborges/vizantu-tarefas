@@ -1,4 +1,4 @@
-import type { ResultsImage } from "./report-pdf";
+import { EMOJI, type ResultsImage } from "./report-pdf";
 import type { ResultsReport } from "./types";
 
 // O PDF aceita JPEG e PNG. Qualquer imagem do relatório é redesenhada num
@@ -22,6 +22,26 @@ async function loadImage(url: string): Promise<ResultsImage> {
   context.fillRect(0, 0, canvas.width, canvas.height);
   context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   return { data: canvas.toDataURL("image/jpeg", 0.88), width: canvas.width, height: canvas.height };
+}
+
+/** Desenha os emojis das mensagens com a fonte de emoji do próprio aparelho,
+ * já que a fonte do PDF não os tem. O que não puder ser desenhado fica de
+ * fora, e o gerador tira o emoji do texto. */
+export function loadReportEmoji(report: ResultsReport): Record<string, ResultsImage> {
+  const symbols = new Set(report.sections.flatMap((section) => (section.callouts ?? []).flatMap((item) => item.title.match(EMOJI) ?? [])));
+  const drawn: Record<string, ResultsImage> = {};
+  for (const symbol of symbols) {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 96;
+    const context = canvas.getContext("2d");
+    if (!context) continue;
+    context.font = '78px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillText(symbol, 48, 53);
+    drawn[symbol] = { data: canvas.toDataURL("image/png"), width: 96, height: 96 };
+  }
+  return drawn;
 }
 
 /** Carrega as imagens do relatório. A que falhar fica de fora do PDF, e a

@@ -34,11 +34,11 @@ export function ProjectResultsPanel({ projectId, projectName }: { projectId: str
     setBusy(result.id);
     setMessage("");
     try {
-      const [{ buildResultsPdf }, { loadStatementAssets }, { loadReportImages }] = await Promise.all([
+      const [{ buildResultsPdf }, { loadStatementAssets }, { loadReportImages, loadReportEmoji }] = await Promise.all([
         import("@/lib/results/report-pdf"), import("@/lib/finance/statement-assets"), import("@/lib/results/report-assets"),
       ]);
       const [assets, { images, failed }] = await Promise.all([loadStatementAssets(), loadReportImages(result.report)]);
-      const { pdf, filename } = buildResultsPdf({ clientName: result.report.clientName || projectName, title: result.title, report: result.report, assets, images });
+      const { pdf, filename } = buildResultsPdf({ clientName: result.report.clientName || projectName, title: result.title, report: result.report, assets, images, emoji: loadReportEmoji(result.report) });
       await pdf.save(filename, { returnPromise: true });
       if (failed.length) setMessage(`O PDF foi gerado sem ${failed.length === 1 ? "1 imagem que não carregou" : `${failed.length} imagens que não carregaram`}.`);
     } catch (error) {
