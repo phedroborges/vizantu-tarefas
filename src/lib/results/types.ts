@@ -32,6 +32,10 @@ export type ResultsSection = {
    * `highlight` marca a barra do cliente quando ele é comparado com outros. */
   bars?: { title?: string; items: { label: string; value: number; display?: string; highlight?: boolean }[] };
   table?: { columns: string[]; rows: string[][] };
+  /** Trechos para ler com atenção ou copiar: a mensagem pronta de um
+   * tutorial, uma regra, uma definição. Saem em cartões lilás, no mesmo
+   * formato dos alertas. */
+  callouts?: { tag: string; title: string; detail?: string }[];
   /** Tópicos. O título padrão é "O que funcionou". */
   highlights?: string[];
   highlightsTitle?: string;
@@ -61,6 +65,10 @@ export type ResultsReport = {
   nextStepsTitle?: string;
   /** Fonte dos dados e observações de método. */
   notes?: string[];
+  /** Rótulos fixos do documento, para quando ele não é um relatório de
+   * resultados (um tutorial, um plano). Os padrões são "RESULTADOS",
+   * "PERÍODO" e "Sobre este relatório". */
+  labels?: { header?: string; period?: string; notes?: string };
 };
 
 export type ProjectResult = {

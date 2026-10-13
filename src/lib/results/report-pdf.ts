@@ -48,7 +48,7 @@ export function buildResultsPdf(input: { clientName: string; title: string; repo
   const header = (continuation = false) => {
     pdf.setFillColor(C.brand); pdf.rect(0, 0, 210, 2, "F");
     pdf.addImage(assets.logo, "PNG", LEFT, 13, 40, 40 * 295.55 / 1518.08, "vizantu-logo");
-    text("RESULTADOS", RIGHT, 18.5, 8, true, C.muted, "right");
+    text((report.labels?.header?.trim() || "Resultados").toUpperCase(), RIGHT, 18.5, 8, true, C.muted, "right");
     if (continuation) {
       pdf.setDrawColor(C.line); pdf.line(LEFT, 27, RIGHT, 27);
       text(clientName, LEFT, 35, 11, true);
@@ -69,7 +69,7 @@ export function buildResultsPdf(input: { clientName: string; title: string; repo
   nameLines.forEach((line, index) => text(line, 23, 53 + index * 10, nameLines.length > 1 ? 19 : 23, true));
   text("Preparado pela Vizantu", 23, 72, 8.5, false, C.muted);
   box(150, 40, 37, 30, C.white);
-  text("PERÍODO", 153, 49, 6.8, true, C.muted);
+  text((report.labels?.period?.trim() || "Período").toUpperCase(), 153, 49, 6.8, true, C.muted);
   const periodLines = wrap(report.period, 31, 11, true).slice(0, 2);
   periodLines.forEach((line, index) => text(line, 153, 59 + index * 5, periodLines.length > 1 ? 9.5 : 11, true, C.deep));
   y = 86;
@@ -186,18 +186,22 @@ export function buildResultsPdf(input: { clientName: string; title: string; repo
     y += 3;
   };
 
-  const alertCards = (items: NonNullable<ResultsSection["alerts"]>) => {
+  // Alertas saem em vermelho; os trechos de destaque (callouts), em lilás.
+  const cards = (items: NonNullable<ResultsSection["alerts"]>, tone: "alert" | "callout") => {
+    const fill = tone === "alert" ? C.redBg : C.soft;
+    const stroke = tone === "alert" ? C.redLine : C.soft;
+    const accent = tone === "alert" ? C.red : C.strong;
     for (const item of items) {
       const titleLines = wrap(item.title, WIDTH - 16, 10, true);
       const detailLines = item.detail ? wrap(item.detail, WIDTH - 16, 8.5) : [];
       const height = 15 + titleLines.length * 4.8 + (detailLines.length ? detailLines.length * 4.2 + 2 : 0);
       ensure(height + 4);
-      box(LEFT, y, WIDTH, height, C.redBg, C.redLine);
-      pdf.setFillColor(C.red); pdf.rect(LEFT, y + 2.5, 1.4, height - 5, "F");
+      box(LEFT, y, WIDTH, height, fill, stroke);
+      pdf.setFillColor(accent); pdf.rect(LEFT, y + 2.5, 1.4, height - 5, "F");
       const tag = item.tag.toUpperCase();
       font(6.5, true);
       const tagWidth = pdf.getTextWidth(tag) + 5;
-      pdf.setFillColor(C.red); pdf.roundedRect(LEFT + 7, y + 4.5, tagWidth, 5, 1.5, 1.5, "F");
+      pdf.setFillColor(accent); pdf.roundedRect(LEFT + 7, y + 4.5, tagWidth, 5, 1.5, 1.5, "F");
       text(tag, LEFT + 9.5, y + 8, 6.5, true, C.white);
       titleLines.forEach((line, row) => text(line, LEFT + 7, y + 15.5 + row * 4.8, 10, true));
       detailLines.forEach((line, row) => text(line, LEFT + 7, y + 16.5 + titleLines.length * 4.8 + row * 4.2, 8.5, false, C.muted));
@@ -231,7 +235,7 @@ export function buildResultsPdf(input: { clientName: string; title: string; repo
   for (const section of report.sections) {
     // O título nunca fica sozinho no fim da página: precisa caber junto com o
     // começo do conteúdo da seção.
-    ensure(34 + (section.summary ? 8 : 0) + (section.metrics?.length ? 26 : section.alerts?.length ? 30 : 14));
+    ensure(34 + (section.summary ? 8 : 0) + (section.metrics?.length ? 26 : section.callouts?.length || section.alerts?.length ? 30 : 14));
     pdf.setDrawColor(C.line); pdf.setLineWidth(0.25); pdf.line(LEFT, y, RIGHT, y);
     y += 8;
     if (section.eyebrow) { text(section.eyebrow.toUpperCase(), LEFT, y, 6.8, true, C.strong); y += 6; }
@@ -241,8 +245,9 @@ export function buildResultsPdf(input: { clientName: string; title: string; repo
     if (section.metrics?.length) metricGrid(section.metrics);
     if (section.bars) barChart(section.bars);
     if (section.table) table(section.table);
+    if (section.callouts?.length) cards(section.callouts, "callout");
     if (section.highlights?.length) bullets(section.highlights, (section.highlightsTitle || "O que funcionou").toUpperCase());
-    if (section.alerts?.length) alertCards(section.alerts);
+    if (section.alerts?.length) cards(section.alerts, "alert");
     if (section.images?.length) gallery(section.images, section.imageColumns ?? 2);
     y += 4;
   }
@@ -269,7 +274,7 @@ export function buildResultsPdf(input: { clientName: string; title: string; repo
   const notesHeight = 14 + noteLines.length * 3.7;
   ensure(notesHeight);
   box(LEFT, y, WIDTH, notesHeight, C.bg);
-  text("Sobre este relatório", 23, y + 8, 9, true, C.deep);
+  text(report.labels?.notes?.trim() || "Sobre este relatório", 23, y + 8, 9, true, C.deep);
   noteLines.forEach((line, row) => text(line, 23, y + 14 + row * 3.7, 7.5, false, C.muted));
 
   const count = pdf.getNumberOfPages();

@@ -64,6 +64,15 @@ describe("PDF do relatório de resultados", () => {
     expect(pdf.getNumberOfPages()).toBe(1);
   });
 
+  // O mesmo gerador serve a um tutorial: rótulos próprios e mensagens em cartões.
+  it("aceita rótulos próprios e trechos de destaque", () => {
+    const tutorial: ResultsReport = { period: "Outubro de 2026", labels: { header: "Tutorial", period: "Versão", notes: "Sobre este tutorial" }, sections: [{
+      title: "Etapa 1", callouts: [{ tag: "Mensagem pronta", title: "Perfeito! O sistema atende a sua empresa.", detail: "O trecho em destaque não pode mudar." }],
+    }] };
+    const { pdf } = buildResultsPdf({ clientName: "Cliente", title: "Tutorial", report: tutorial, assets });
+    expect(pdf.getNumberOfPages()).toBe(1);
+  });
+
   it("ignora a imagem que não foi carregada em vez de quebrar", () => {
     const withImage: ResultsReport = { period: "Outubro de 2026", sections: [{ title: "Instagram", images: [{ url: "https://exemplo.com/print.png", caption: "Melhor post" }] }] };
     expect(() => buildResultsPdf({ clientName: "Cliente", title: "Relatório de resultados", report: withImage, assets })).not.toThrow();
