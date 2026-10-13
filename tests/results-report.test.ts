@@ -80,6 +80,13 @@ describe("PDF do relatório de resultados", () => {
     expect(() => buildResultsPdf({ clientName: "Cliente", title: "Tutorial", report: withEmoji, assets, emoji: { "✅": pixel } })).not.toThrow();
   });
 
+  it("cria um campo digitável com o texto da mensagem, sem o emoji", () => {
+    const editable: ResultsReport = { period: "Outubro de 2026", sections: [{ title: "Etapa 1", callouts: [{ tag: "Mensagem", title: "Combinado! ✅ Nosso encontro ficou marcado.", editable: true }] }] };
+    const output = buildResultsPdf({ clientName: "Cliente", title: "Tutorial", report: editable, assets }).pdf.output();
+    expect(output).toContain("/FT /Tx");
+    expect(output).toContain("Combinado! Nosso encontro ficou marcado.");
+  });
+
   it("ignora a imagem que não foi carregada em vez de quebrar", () => {
     const withImage: ResultsReport = { period: "Outubro de 2026", sections: [{ title: "Instagram", images: [{ url: "https://exemplo.com/print.png", caption: "Melhor post" }] }] };
     expect(() => buildResultsPdf({ clientName: "Cliente", title: "Relatório de resultados", report: withImage, assets })).not.toThrow();

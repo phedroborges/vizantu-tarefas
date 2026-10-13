@@ -6,7 +6,7 @@
 // aqui o documento é para o cliente, então o texto é o do relatório e nada
 // aponta para dentro do sistema.
 
-import { jsPDF } from "jspdf";
+import { AcroFormTextField, jsPDF } from "jspdf";
 import type { StatementAssets } from "../finance/statement-assets";
 import type { ResultsMetric, ResultsReport, ResultsSection } from "./types";
 
@@ -229,16 +229,36 @@ export function buildResultsPdf(input: { clientName: string; title: string; repo
   };
 
   // Alertas saem em vermelho; os trechos de destaque (callouts), em lilás.
-  const cards = (items: NonNullable<ResultsSection["alerts"]>, tone: "alert" | "callout") => {
+  let fields = 0;
+  const cards = (items: NonNullable<ResultsSection["callouts"]>, tone: "alert" | "callout") => {
     const fill = tone === "alert" ? C.redBg : C.soft;
     const stroke = tone === "alert" ? C.redLine : C.soft;
     const accent = tone === "alert" ? C.red : C.strong;
     for (const item of items) {
       const titleLines = richWrap(item.title, WIDTH - 16, 10, true);
       const detailLines = item.detail ? wrap(item.detail, WIDTH - 16, 8.5) : [];
-      const height = 15 + titleLines.length * 4.8 + (detailLines.length ? detailLines.length * 4.2 + 2 : 0);
+      const textHeight = 15 + titleLines.length * 4.8 + (detailLines.length ? detailLines.length * 4.2 + 2 : 0);
+      // O campo digitável leva o mesmo texto, sem emoji (campo de formulário
+      // não tem imagem). Texto mais longo rola dentro do campo.
+      const fieldHeight = item.editable ? titleLines.length * 4.6 + 4 : 0;
+      const height = textHeight + (fieldHeight ? fieldHeight + 11 : 0);
       ensure(height + 4);
       box(LEFT, y, WIDTH, height, fill, stroke);
+      if (fieldHeight) {
+        const top = y + textHeight + 5;
+        text((item.editableLabel?.trim() || "Sua versão").toUpperCase(), LEFT + 7, top, 6.5, true, accent);
+        box(LEFT + 7, top + 2.5, WIDTH - 14, fieldHeight, C.white, C.line);
+        // O campo é desenhado em Helvetica, que só entra no arquivo se for
+        // usada em algum texto: sem isto, o campo aparece vazio.
+        if (!fields) { pdf.setFont("helvetica", "normal"); pdf.setFontSize(1); pdf.text(" ", 0, 0); }
+        const field = new AcroFormTextField();
+        field.fieldName = `texto-${fields += 1}`;
+        field.multiline = true;
+        field.fontSize = 9;
+        field.value = item.title.replace(new RegExp(`\\s*(${EMOJI.source})`, "gu"), "");
+        field.x = LEFT + 8; field.y = top + 3.5; field.width = WIDTH - 16; field.height = fieldHeight - 2;
+        pdf.addField(field);
+      }
       pdf.setFillColor(accent); pdf.rect(LEFT, y + 2.5, 1.4, height - 5, "F");
       const tag = item.tag.toUpperCase();
       font(6.5, true);
@@ -277,7 +297,7 @@ export function buildResultsPdf(input: { clientName: string; title: string; repo
   for (const section of report.sections) {
     // O título nunca fica sozinho no fim da página: precisa caber junto com o
     // começo do conteúdo da seção.
-    ensure(34 + (section.summary ? 8 : 0) + (section.metrics?.length ? 26 : section.callouts?.length || section.alerts?.length ? 30 : 14));
+    ensure(34 + (section.summary ? 8 : 0) + (section.metrics?.length ? 26 : section.callouts?.[0]?.editable ? 56 : section.callouts?.length || section.alerts?.length ? 30 : 14));
     pdf.setDrawColor(C.line); pdf.setLineWidth(0.25); pdf.line(LEFT, y, RIGHT, y);
     y += 8;
     if (section.eyebrow) { text(section.eyebrow.toUpperCase(), LEFT, y, 6.8, true, C.strong); y += 6; }

@@ -35,7 +35,12 @@ export type ResultsSection = {
   /** Trechos para ler com atenção ou copiar: a mensagem pronta de um
    * tutorial, uma regra, uma definição. Saem em cartões lilás, no mesmo
    * formato dos alertas. O `title` aceita emoji. */
-  callouts?: { tag: string; title: string; detail?: string }[];
+  callouts?: {
+    tag: string; title: string; detail?: string;
+    /** Repete o texto num campo digitável do PDF, para quem recebe poder
+     * ajustar e devolver. O rótulo padrão do campo é "Sua versão". */
+    editable?: boolean; editableLabel?: string;
+  }[];
   /** Tópicos. O título padrão é "O que funcionou". */
   highlights?: string[];
   highlightsTitle?: string;
