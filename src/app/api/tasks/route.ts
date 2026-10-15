@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { apiFailure } from "@/lib/api-error";
 import { filterTasksByAccess, filterTasksByListAccess, isResponse, requireUser } from "@/lib/authz";
 import { ROLES_DO_TIME } from "@/lib/permissions";
-import { createTask, listTaskCounts, listTasks, notifyTaskAssigned } from "@/lib/storage";
+import { TaskRuleError, createTask, listTaskCounts, listTasks, notifyTaskAssigned } from "@/lib/storage";
 import { TASK_KINDS, TASK_STATUSES } from "@/lib/types";
 
 export async function GET(request?: NextRequest) {
@@ -37,6 +37,9 @@ export async function POST(request: NextRequest) {
   if (body.status !== undefined && !TASK_STATUSES.some((status) => status.value === body.status)) {
     return NextResponse.json({ error: "Status inválido." }, { status: 400 });
   }
+  if (auth.accessibleProjectIds !== "all" && !auth.accessibleProjectIds.includes(body.projectId)) {
+    return NextResponse.json({ error: "Sem acesso." }, { status: 403 });
+  }
   if (body.kind !== undefined && !TASK_KINDS.some((kind) => kind.value === body.kind)) {
     return NextResponse.json({ error: "Tipo de tarefa inválido." }, { status: 400 });
   }
@@ -64,6 +67,7 @@ export async function POST(request: NextRequest) {
     await notifyTaskAssigned(task, auth.id);
     return NextResponse.json({ task }, { status: 201 });
   } catch (error) {
+    if (error instanceof TaskRuleError) return NextResponse.json({ error: error.message }, { status: 400 });
     return apiFailure(error, "criar a tarefa");
   }
 }

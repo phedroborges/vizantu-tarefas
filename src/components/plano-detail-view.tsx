@@ -8,6 +8,8 @@ import { useMemo, useState } from "react";
 import { PlanCalendar } from "@/components/plan-calendar";
 import { PlanRescheduleButton } from "@/components/plan-reschedule";
 import { TaskModal } from "@/components/task-modal";
+import { TaskPlanTransfer } from "@/components/task-plan-transfer";
+import { isPlanClosed } from "@/lib/plan-month";
 import { StatusTag, statusColorMap } from "@/components/status-tag";
 import { Avatar } from "@/components/avatar";
 import { ClientLinkPanel } from "@/components/client-link-panel";
@@ -208,6 +210,8 @@ function PlanBoard({
 
 export function PlanoDetailView({
   plan,
+  projectPlans = [],
+  creativeOnly = false,
   project,
   initialCaptacoes,
   initialTasks,
@@ -227,6 +231,8 @@ export function PlanoDetailView({
   canEditTasks = canEdit,
 }: {
   plan: Plan;
+  projectPlans?: Plan[];
+  creativeOnly?: boolean;
   project: Project;
   /** Etapa do plano, calculada pelas rodadas de aprovação do cliente. */
   stage?: PlanStage;
@@ -247,11 +253,22 @@ export function PlanoDetailView({
   canEdit?: boolean;
   canEditTasks?: boolean;
 }) {
+  const closed = isPlanClosed(plan, today.slice(0, 7));
+  const canTransfer = canEdit;
+  canEdit = canEdit && !closed;
+  canEditTasks = canEditTasks && !closed;
   const [captacoes, setCaptacoes] = useState(initialCaptacoes);
   const [suggestions, setSuggestions] = useState(captureSuggestions);
-  const [tasks, setTasks] = useState(initialTasks);
+  const [tasks, setTasks] = useState(() => creativeOnly ? initialTasks.filter(task => task.assigneeId === currentUserId) : initialTasks);
   const [packageCreatorOpen, setPackageCreatorOpen] = useState(false);
   const [newPackageType, setNewPackageType] = useState<"captacao" | "carrossel" | "sazonal" | "estatico">("captacao");
+  const [newPackageCount, setNewPackageCount] = useState(5);
+  const [newPackageFormat, setNewPackageFormat] = useState("");
+  const [newPackageEditor, setNewPackageEditor] = useState("");
+  const [newPackageRecorder, setNewPackageRecorder] = useState("");
+  const [packageBusy, setPackageBusy] = useState(false);
+  const [packageError, setPackageError] = useState("");
+  const packageFormatId = newPackageFormat || formatTags.find(tag => (newPackageType === "captacao" ? /reel|vídeo|video/i : newPackageType === "carrossel" ? /carrossel/i : /estático|estatico|imagem/i).test(tag.label))?.id || "";
   const [newItemName, setNewItemName] = useState("");
   const [newItemFormatId, setNewItemFormatId] = useState(formatTags[0]?.id || "");
   const [editingTask, setEditingTask] = useState<Task | null | undefined>(undefined);
@@ -321,6 +338,10 @@ export function PlanoDetailView({
 
   async function addCaptacao(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (packageBusy) return;
+    if (!packageFormatId) return setPackageError("Escolha o formato dos conteúdos do pacote.");
+    setPackageBusy(true); setPackageError("");
+    try {
     const packageNames = {
       captacao: { singular: "Captação", stem: "capt", gender: "f", kind: "capture" as const },
       carrossel: { singular: "Carrossel", stem: "carross", gender: "m", kind: "creation" as const },
@@ -336,12 +357,16 @@ export function PlanoDetailView({
     const response = await fetch("/api/plan-captacoes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ planId: plan.id, label, packageKind: selected.kind, sequenceOrder: captacoes.length }),
+      body: JSON.stringify({ planId: plan.id, label, packageKind: selected.kind, sequenceOrder: captacoes.length, itemCount: newPackageCount, formatTagId: packageFormatId, editingAssigneeId: newPackageEditor || undefined, recordingAssigneeId: newPackageRecorder || undefined }),
     });
     const result = await response.json();
-    if (!response.ok) return showToast(result.error || "Não foi possível criar o pacote.");
+    if (!response.ok) return setPackageError(result.error || "Não foi possível criar o pacote.");
     setCaptacoes((current) => [...current, result.captacao]);
+    setTasks(current => [...current, ...(result.tasks || [])]);
     setPackageCreatorOpen(false);
+    showToast(`Pacote criado com ${result.tasks?.length || 0} conteúdos prontos para planejar.`);
+    } catch { setPackageError(networkError("criar o pacote")); }
+    finally { setPackageBusy(false); }
   }
 
   async function removeCaptacao(captacao: PlanCaptacao) {
@@ -634,6 +659,7 @@ export function PlanoDetailView({
           ) : null}
           <span className={`approval-status approval-${approvalState}`}>{APPROVAL_DISPLAY_LABELS[approvalState]}</span>
           <StatusTag status={task.status} colorByStatus={coresPorEtapa} />
+          {canTransfer ? <TaskPlanTransfer task={task} plans={projectPlans} onMoved={moved => { setTasks(all => all.filter(t => t.id !== moved.id)); showToast("Tarefa transferida para outro plano."); }} /> : null}
         </div>
       </li>
     );
@@ -664,7 +690,7 @@ export function PlanoDetailView({
       { value: "calendario" as const, label: "Calendário", count: undefined },
       { value: "board" as const, label: "Board", count: undefined },
     ] : []),
-    { value: "aprovacao" as const, label: "Aprovação", count: aguardandoCliente || undefined },
+    ...(!creativeOnly ? [{ value: "aprovacao" as const, label: "Aprovação", count: aguardandoCliente || undefined }] : []),
   ];
   const normalizedQuery = query.trim().toLocaleLowerCase("pt-BR");
   const visibleTasks = tasks.filter((task) =>
@@ -680,19 +706,20 @@ export function PlanoDetailView({
   return (
     <>
       <main className="admin-page dashboard plan-screen vz-plan-page">
+        {closed ? <div className="form-message" role="status">Plano encerrado. Este histórico não aparece na aprovação do cliente. Transfira uma tarefa para outro plano para retomar o trabalho.</div> : null}
         {/* Cabeçalho: o estado do plano cabe na primeira tela, sem rolar. */}
         <div className="vz-pagehead">
           <div className="vz-pagehead__text">
-            <Link href={`/planos?cliente=${project.id}`} className="vz-eyebrow pq-back"><ArrowLeft size={12} /> {project.name} · {plan.kind === "content" ? "Plano mensal" : "Plano"}</Link>
+            <Link href={`/planos?cliente=${project.id}`} className="vz-eyebrow pq-back"><ArrowLeft size={12} /> {project.name} · {plan.periodMonth ? "Plano mensal" : "Plano"}</Link>
             <h1 className="vz-h1">{plan.title}</h1>
             <div className="vz-plan-tags">
-              <Tag tone={stage === "aprovado" ? "green" : stage === "ativo" ? "amber" : "slate"}>{planStageLabel(stage)}</Tag>
+              <Tag tone={closed ? "slate" : stage === "aprovado" ? "green" : stage === "ativo" ? "amber" : "slate"}>{closed ? "Encerrado" : creativeOnly ? "Minhas demandas" : planStageLabel(stage)}</Tag>
               <Tag outline>{tasks.length} {tasks.length === 1 ? "conteúdo" : "conteúdos"}</Tag>
               <Tag outline>{activeSummary.approved} aprovados</Tag>
               {planPeople.length ? <AvatarStack people={planPeople} max={3} size="sm" /> : null}
             </div>
           </div>
-          <div className="vz-pagehead__actions">
+          {!creativeOnly && !closed ? <div className="vz-pagehead__actions">
             <Button type="button" variant="secondary" size="sm" onClick={() => setLinkAberto((atual) => !atual)} aria-expanded={linkAberto}>
               <LinkIcon size={14} /> Link do cliente
             </Button>
@@ -702,17 +729,17 @@ export function PlanoDetailView({
                 onApplied={(atualizadas) => { setTasks(atualizadas); setToast("Calendário reorganizado."); }}
               />
             ) : null}
-          </div>
+          </div> : null}
         </div>
 
         {linkAberto ? (
-          <ClientLinkPanel projectId={project.id} projectName={project.client || project.name} canEdit={canEdit} onToast={showToast} />
+          <ClientLinkPanel projectId={project.id} planId={plan.id} projectName={project.client || project.name} canEdit={canEdit} onToast={showToast} />
         ) : null}
 
         {/* Fluxo do cliente: era um painel roxo de ~200px com duas caixas de
             etapa, uma lista de requisitos e um parágrafo de ajuda. Virou uma
             faixa: em que rodada está, quanto falta, e o que fazer. */}
-        {isContent ? (
+        {isContent && !creativeOnly && !closed ? (
           <Card tint className="vz-plan-flow" aria-label="Fluxo de aprovação do plano">
             <div className="vz-plan-flow__inner">
             <div className="vz-plan-flow__top">
@@ -735,7 +762,7 @@ export function PlanoDetailView({
           </Card>
         ) : null}
 
-        {isContent ? (
+        {isContent && !creativeOnly ? (
           <Card className="vz-plan-packages">
             <div className="vz-card__head">
               <div className="vz-card__title">
@@ -943,9 +970,14 @@ export function PlanoDetailView({
               <button type="button" className="vz-icon-btn vz-icon-btn--sm" onClick={() => setPackageCreatorOpen(false)} aria-label="Fechar"><X size={15} /></button>
             </div>
             <div className="vz-modal__body">
-              <label className="vz-field"><span className="vz-label">Tipo do pacote</span><select className="vz-select" value={newPackageType} onChange={(event) => setNewPackageType(event.target.value as typeof newPackageType)} autoFocus><option value="captacao">Captação</option><option value="carrossel">Carrossel</option><option value="sazonal">Sazonal</option><option value="estatico">Estático</option></select><span className="vz-hint">O número é criado automaticamente conforme os pacotes existentes.</span></label>
+              {packageError ? <p role="alert" className="form-message">{packageError}</p> : null}
+              <label className="vz-field"><span className="vz-label">Modelo do pacote</span><select className="vz-select" value={newPackageType} onChange={(event) => { setNewPackageType(event.target.value as typeof newPackageType); setNewPackageFormat(""); }} autoFocus><option value="captacao">Captação com Reels</option><option value="carrossel">Produção de carrosséis</option><option value="sazonal">Conteúdos sazonais</option><option value="estatico">Produção de estáticos</option></select><span className="vz-hint">O pacote já nasce com os conteúdos, formato e responsáveis escolhidos.</span></label>
+              <label className="vz-field"><span className="vz-label">Quantidade de conteúdos</span><input className="vz-input" type="number" min={1} max={30} required value={newPackageCount} onChange={event => setNewPackageCount(Number(event.target.value))} /></label>
+              <label className="vz-field"><span className="vz-label">Formato</span><select className="vz-select" required value={packageFormatId} onChange={event => setNewPackageFormat(event.target.value)}><option value="">Escolher formato</option>{formatTags.map(tag => <option key={tag.id} value={tag.id}>{tag.label}</option>)}</select></label>
+              {newPackageType === "captacao" ? <label className="vz-field"><span className="vz-label">Responsável pela captação</span><select className="vz-select" value={newPackageRecorder} onChange={event => setNewPackageRecorder(event.target.value)}><option value="">Definir depois</option>{members.filter(m => m.active).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select></label> : null}
+              <label className="vz-field"><span className="vz-label">Responsável pela {newPackageType === "captacao" ? "edição" : "criação"}</span><select className="vz-select" value={newPackageEditor} onChange={event => setNewPackageEditor(event.target.value)}><option value="">Definir depois</option>{members.filter(m => m.active).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select></label>
             </div>
-            <div className="vz-modal__foot"><Button type="button" variant="secondary" onClick={() => setPackageCreatorOpen(false)}>Cancelar</Button><Button type="submit" variant="primary"><Plus size={14} />Criar pacote</Button></div>
+            <div className="vz-modal__foot"><Button type="button" variant="secondary" disabled={packageBusy} onClick={() => setPackageCreatorOpen(false)}>Cancelar</Button><Button type="submit" variant="primary" disabled={packageBusy}><Plus size={14} />{packageBusy ? "Criando…" : `Criar pacote com ${newPackageCount} conteúdos`}</Button></div>
           </form>
         </div>
       ) : null}

@@ -15,8 +15,8 @@ describe("plano mensal", () => {
     expect(planDisplayName({ title: "Campanha Black Friday", periodMonth: null })).toBe("Campanha Black Friday");
   });
 
-  it("move o conteúdo de plano mensal para o mês da data", () => {
-    expect(targetMonth({ kind: "tarefa", dueDate: "2026-11-03" }, { periodMonth: "2026-10" })).toBe("2026-11");
+  it("preserva o plano escolhido quando a data muda", () => {
+    expect(targetMonth({ kind: "tarefa", dueDate: "2026-11-03" }, { periodMonth: "2026-10" })).toBeNull();
     expect(targetMonth({ kind: "tarefa", dueDate: "2026-10-03" }, { periodMonth: "2026-10" })).toBeNull();
   });
 
@@ -25,13 +25,13 @@ describe("plano mensal", () => {
     expect(targetMonth({ kind: "tarefa", dueDate: "2026-11-25" }, {})).toBeNull();
   });
 
-  it("não decide nada sem data", () => {
+  it("preserva o plano sem prazo e atribui o mês atual quando não há plano", () => {
     expect(targetMonth({ kind: "conteudo", dueDate: null }, { periodMonth: "2026-10" })).toBeNull();
-    expect(targetMonth({ kind: "conteudo" })).toBeNull();
+    expect(targetMonth({ kind: "conteudo" }, undefined, "2026-10")).toBe("2026-10");
   });
 
-  it("coloca conteúdo avulso com data no plano do mês, mas deixa tarefa comum em paz", () => {
-    expect(targetMonth({ kind: "conteudo", dueDate: "2026-10-15" })).toBe("2026-10");
-    expect(targetMonth({ kind: "tarefa", dueDate: "2026-10-15" })).toBeNull();
+  it("coloca toda tarefa sem plano no mês atual, independentemente do prazo", () => {
+    expect(targetMonth({ kind: "conteudo", dueDate: "2026-12-15" }, undefined, "2026-10")).toBe("2026-10");
+    expect(targetMonth({ kind: "tarefa", dueDate: "2026-09-15" }, undefined, "2026-10")).toBe("2026-10");
   });
 });

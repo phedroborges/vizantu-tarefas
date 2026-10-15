@@ -1,6 +1,6 @@
-// Plano mensal: todo mês cada cliente tem um plano próprio, criado sozinho. O
-// conteúdo cai no plano do mês da sua data de entrega. Plano de campanha
-// (Black Friday, lançamento) não tem mês e nunca é mexido por esta regra.
+import { currentMonthKey } from "./dates";
+
+// A data de entrega não muda o plano. A escolha explícita sempre prevalece.
 
 const MONTH_NAMES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
@@ -31,12 +31,15 @@ export function planDisplayName(plan: { title: string; periodMonth?: string | nu
   return isMonth(plan.periodMonth) ? `Plano de ${monthLabel(plan.periodMonth)}` : plan.title;
 }
 
-/** Em qual plano mensal a tarefa deve estar, ou null quando já está certa (ou
- * quando não é caso de plano mensal). Só entra quem já está num plano mensal,
- * ou é conteúdo avulso com data. Campanha, marca e processo ficam onde estão. */
-export function targetMonth(task: { kind: string; dueDate?: string | null }, plan?: { periodMonth?: string | null }): string | null {
-  const month = monthOfDate(task.dueDate);
-  if (!month) return null;
-  if (plan) return isMonth(plan.periodMonth) && plan.periodMonth !== month ? month : null;
-  return task.kind === "conteudo" ? month : null;
+/** Sem escolha explícita, usa o mês atual. O prazo não determina o plano. */
+export function targetMonth(_task: { kind: string; dueDate?: string | null }, plan?: { periodMonth?: string | null }, month = currentMonthKey()): string | null {
+  return plan ? null : month;
+}
+
+export function isPlanClosed(plan: { periodMonth?: string | null; status?: string }, month = currentMonthKey()): boolean {
+  return plan.status === "archived" || plan.status === "completed" || Boolean(plan.periodMonth && plan.periodMonth < month);
+}
+
+export function isClientPlanAvailable(plan: { periodMonth?: string | null; status?: string; kind?: string }, month = currentMonthKey()): boolean {
+  return (plan.kind === "content" || plan.kind === "process") && !isPlanClosed(plan, month);
 }

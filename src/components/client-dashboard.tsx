@@ -1,5 +1,6 @@
 "use client";
 
+import { currentMonthKey as currentPlanMonth } from "@/lib/dates";
 import { approvalDisplay, diffWords, type ApprovalHistoryEntry } from "@/lib/approval-history";
 import { emptySections, serializeDescription } from "@/lib/description-sections";
 import { AlertCircle, ArrowRight, CalendarClock, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Copy, ExternalLink, ImageIcon, Images, Link2, MessageCircleMore, Play, Sparkles, Video, X } from "lucide-react";
@@ -115,13 +116,14 @@ function isoDate(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-
 export function ClientDashboard({
   clientName,
   roleTitle,
   city,
   instagramHandle,
   initialItems,
+  initialPlans,
+  initialPlanId,
   initialItemId,
   events,
   initialScore,
@@ -131,12 +133,18 @@ export function ClientDashboard({
   city: string | null;
   instagramHandle: string | null;
   initialItems: DashboardItem[];
+  initialPlans?: { id: string; title: string; period: string | null }[];
+  initialPlanId?: string;
   /** Conteúdo que já abre na tela, quando o cliente veio pelo link de um aviso. */
   initialItemId?: string;
   events: DashboardEvent[];
   initialScore: number | null;
 }) {
-  const [items, setItems] = useState(initialItems);
+  const [allItems, setItems] = useState(initialItems);
+  const [availablePlans, setAvailablePlans] = useState(initialPlans);
+  const [planFilter, setPlanFilter] = useState(initialPlanId || "");
+  const currentMonth = currentPlanMonth();
+  const items = useMemo(() => allItems.filter(item => (!item.planPeriod || item.planPeriod >= currentMonth) && (!planFilter || item.planId === planFilter)), [allItems, planFilter, currentMonth]);
   const submission = useRef({ busy: false, generation: 0 });
   useEffect(() => {
     const controller = new AbortController();
@@ -146,7 +154,7 @@ export function ClientDashboard({
       refreshing = true;
       const generation = submission.current.generation;
       try {
-        const response = await fetch("/api/c/items", { cache: "no-store", signal: controller.signal });
+        const response = await fetch("/api/c/items" + (planFilter ? "?planId=" + encodeURIComponent(planFilter) : ""), { cache: "no-store", signal: controller.signal });
         if (response.status === 403) {
           const error = await response.json();
           if (error.code === "CLIENT_BLOCKED") { setItems([]); window.location.replace("/c/bloqueado"); }
@@ -154,13 +162,14 @@ export function ClientDashboard({
         }
         if (!response.ok) return;
         const result = await response.json();
-        if (!controller.signal.aborted && !submission.current.busy && generation === submission.current.generation) setItems(result.items);
+        if (!controller.signal.aborted && !submission.current.busy && generation === submission.current.generation) { setItems(result.items); if (result.plans) setAvailablePlans(result.plans); if (result.selectedPlanId !== undefined && result.selectedPlanId !== planFilter) setPlanFilter(result.selectedPlanId); }
       } catch {
         // Uma falha de atualização não apaga o plano nem o texto em edição.
       } finally {
         refreshing = false;
       }
     }
+    if (initialPlans) void refreshItems();
     const interval = window.setInterval(refreshItems, 15_000);
     window.addEventListener("focus", refreshItems);
     document.addEventListener("visibilitychange", refreshItems);
@@ -170,7 +179,7 @@ export function ClientDashboard({
       window.removeEventListener("focus", refreshItems);
       document.removeEventListener("visibilitychange", refreshItems);
     };
-  }, []);
+  }, [planFilter, initialPlans]);
   const [score, setScore] = useState(initialScore);
   const [surveyOpen, setSurveyOpen] = useState(false);
   // Guarda só o id, não o objeto — assim o modal sempre reflete o item mais
@@ -178,12 +187,7 @@ export function ClientDashboard({
   // preso a um snapshot de antes da resposta chegar.
   const [activeItemId, setActiveItemId] = useState<string | null>(() => initialItems.some((item) => item.id === initialItemId) ? initialItemId! : null);
   const activeItem = items.find((i) => i.id === activeItemId) || null;
-  const [month, setMonth] = useState(() => {
-    const counts = new Map<string, number>();
-    for (const item of initialItems) if (item.dueDate) { const key = item.dueDate.slice(0, 7); counts.set(key, (counts.get(key) || 0) + 1); }
-    const dominant = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0];
-    return dominant ? new Date(`${dominant}-01T12:00:00`) : new Date();
-  });
+  const [month, setMonth] = useState(() => new Date(currentMonth + "-01T12:00:00"));
   const [selectedMobileDate, setSelectedMobileDate] = useState<string | null>(null);
   // A identificação é pedida na ENTRADA, não na hora de decidir. Antes disso o
   // cliente com pressa ia direto nos botões, que ficavam desabilitados por
@@ -222,8 +226,8 @@ export function ClientDashboard({
     // Planos mensais na ordem do calendário, depois as campanhas.
     return [...groups.values()].sort((a, b) => (a.planPeriod || "9999").localeCompare(b.planPeriod || "9999") || (a.planTitle || "").localeCompare(b.planTitle || "", "pt-BR") || a.planId.localeCompare(b.planId) || a.order - b.order || a.id.localeCompare(b.id));
   }, [orderedItems]);
-  const [planFilter, setPlanFilter] = useState("all");
   const planOptions = useMemo(() => {
+    if (availablePlans) return availablePlans.filter(p => !p.period || p.period >= currentMonth).map(p => ({ ...p, total: items.filter(i => i.planId === p.id).length, pending: items.filter(i => i.planId === p.id && canReviewItem(i)).length }));
     const plans = new Map<string, { id: string; title: string; period: string; total: number; pending: number }>();
     for (const group of packageGroups) {
       const plan = plans.get(group.planId) || { id: group.planId, title: group.planTitle || "Conteúdos", period: group.planPeriod || "9999", total: 0, pending: 0 };
@@ -232,10 +236,10 @@ export function ClientDashboard({
       plans.set(group.planId, plan);
     }
     return [...plans.values()];
-  }, [packageGroups]);
-  // Se o plano escolhido some (a lista se atualiza sozinha), volta para todos.
-  const activePlanFilter = planOptions.some((plan) => plan.id === planFilter) ? planFilter : "all";
-  const visibleGroups = activePlanFilter === "all" ? packageGroups : packageGroups.filter((group) => group.planId === activePlanFilter);
+  }, [packageGroups, availablePlans, currentMonth, items]);
+  // A navegação sempre mostra um plano por vez.
+  const activePlanFilter = planOptions.some((plan) => plan.id === planFilter) ? planFilter : planOptions.find(p => p.period === currentMonth)?.id || (availablePlans ? "" : planOptions[0]?.id || "");
+  const visibleGroups = packageGroups.filter((group) => group.planId === activePlanFilter);
   const reviewedCount = items.filter(isReviewed).length;
   const approvedInStageCount = items.filter((item) => item.approvalStatus === "approved").length;
   const reviewedRate = items.length ? Math.round((reviewedCount / items.length) * 100) : 0;
@@ -253,14 +257,16 @@ export function ClientDashboard({
       if (!item.dueDate) continue;
       (map.get(item.dueDate) || map.set(item.dueDate, []).get(item.dueDate)!).push({ label: item.name, kind: "content", itemId: item.id, format: item.formatLabel, approvalStatus: item.approvalStatus });
     }
+    const selectedPeriod = planOptions.find(p => p.id === activePlanFilter)?.period;
     for (const ev of events) {
+      const packageId = ev.eventType.split(":")[1];
+      if (packageId ? !items.some(i => i.captacaoId === packageId) : !selectedPeriod || !ev.date.startsWith(selectedPeriod)) continue;
       const kind = ev.eventType.startsWith("captacao:") || /captação/i.test(ev.title) ? "capture" : ev.eventType.startsWith("producao:") || /prazo de criação|entrega do pacote/i.test(ev.title) ? "deadline" : "event";
       const label = ev.title.replace(/^(Sugestão de captação|Prazo de criação):\s*/i, "");
       (map.get(ev.date) || map.set(ev.date, []).get(ev.date)!).push({ label, kind });
     }
     return map;
-  }, [orderedItems, events]);
-
+  }, [orderedItems, events, items, planOptions, activePlanFilter]);
 
   function updateItemLocal(id: string, patch: Partial<DashboardItem>) {
     setItems((current) => current.map((i) => (i.id === id ? { ...i, ...patch } : i)));
@@ -356,6 +362,15 @@ export function ClientDashboard({
           </div>
         </div>
 
+          {planOptions.length ? <section className="cd-plan-filter" aria-label="Escolher plano">
+            <label className="vz-field"><span className="cd-eyebrow">Plano em exibição</span>
+              <select className="vz-select" aria-label="Plano em exibição" value={activePlanFilter} onChange={event => {
+                setActiveItemId(null); setPlanFilter(event.target.value);
+                const period = planOptions.find(p => p.id === event.target.value)?.period;
+                if (period && period !== "9999") setMonth(new Date(period + "-01T12:00:00"));
+              }}>{planOptions.map(plan => <option key={plan.id} value={plan.id}>{plan.title}{plan.period === currentMonth ? " · Mês atual" : ""}</option>)}</select>
+            </label>
+          </section> : null}
         <section className="cd-review-section">
           <div className="cd-review-heading">
             <div>
@@ -375,16 +390,7 @@ export function ClientDashboard({
             {reviewedRate === 100 && items.length ? <div className="cd-review-complete"><CheckCircle2 size={16} /><span><strong>Plano 100% revisado.</strong> A equipe já pode seguir com os aprovados e preparar os ajustes necessários.</span></div> : null}
           </div>
 
-          {planOptions.length > 1 ? (
-            <div className="cd-plan-filter" role="group" aria-label="Filtrar por plano">
-              <button type="button" className={activePlanFilter === "all" ? "is-active" : ""} aria-pressed={activePlanFilter === "all"} onClick={() => setPlanFilter("all")}>Todos <em>{items.length}</em></button>
-              {planOptions.map((plan) => (
-                <button type="button" key={plan.id} className={activePlanFilter === plan.id ? "is-active" : ""} aria-pressed={activePlanFilter === plan.id} onClick={() => setPlanFilter(plan.id)}>
-                  {plan.title} <em>{plan.pending ? `${plan.pending} p/ revisar` : plan.total}</em>
-                </button>
-              ))}
-            </div>
-          ) : null}
+
 
           <div className="cd-package-list">
             {visibleGroups.map((group) => (

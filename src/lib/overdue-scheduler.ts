@@ -1,5 +1,5 @@
 import { varrerAvisosFinanceiros } from "./finance/alerts";
-import { createDailyOverdueNotifications } from "./storage";
+import { createDailyOverdueNotifications, maintainMonthlyPlans } from "./storage";
 
 // ---------- Varredura diária de tarefas atrasadas ----------
 //
@@ -57,11 +57,12 @@ async function tentar(nome: string, acao: () => Promise<number>): Promise<number
 async function executarVarredura(agora: Date): Promise<number> {
   if (!estaNaHoraDeAvisar(agora)) return 0;
   const hoje = hojeEmSaoPaulo(agora);
-  const [tarefas, financeiro] = await Promise.all([
+  const [tarefas, financeiro, planos] = await Promise.all([
     tentar("atrasos", () => createDailyOverdueNotifications(hoje)),
     tentar("financeiro", () => varrerAvisosFinanceiros(hoje)),
+    tentar("planos mensais", () => maintainMonthlyPlans(hoje)),
   ]);
-  return tarefas + financeiro;
+  return tarefas + financeiro + planos;
 }
 
 // Cron manual e temporizador podem coincidir; compartilham o trabalho em curso.

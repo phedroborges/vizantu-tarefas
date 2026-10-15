@@ -2844,6 +2844,9 @@ audio.comment-attachment, .comment-attachment.is-audio audio { width: 100%; min-
 /* ---------- Planos: escolha do cliente e fila de demandas ---------- */
 .pq-page { display: grid; gap: 18px; }
 .pq-page .vz-pagehead { margin-bottom: 0; }
+.pq-period-selector { padding: 18px; border: 1px solid var(--vz-brand-line); border-radius: var(--vz-r-card, 12px); background: var(--vz-brand-softer); }
+.pq-period-selector select { min-height: 48px; font-size: 16px; font-weight: 600; }
+.pq-plan > select { max-width: 22rem; }
 .pq-back { display: inline-flex; align-items: center; gap: 5px; width: fit-content; color: var(--vz-text-muted); text-decoration: none; }
 .pq-back:hover { color: var(--vz-brand-strong); }
 .pq-search { min-width: 200px; }

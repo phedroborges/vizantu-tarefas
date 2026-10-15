@@ -10,6 +10,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (isResponse(auth)) return auth;
   const { id } = await params;
   const body = await request.json();
+  const existing = await getTask(id);
+  if (!existing) return NextResponse.json({ error: "Tarefa não encontrada." }, { status: 404 });
+  if (auth.accessibleProjectIds !== "all" && (!auth.accessibleProjectIds.includes(existing.projectId) || (body.projectId && !auth.accessibleProjectIds.includes(body.projectId)))) {
+    return NextResponse.json({ error: "Sem acesso." }, { status: 403 });
+  }
+  if (auth.accessibleListKinds !== "all" && existing.lists.length && !existing.lists.some(list => auth.accessibleListKinds.includes(list))) {
+    return NextResponse.json({ error: "Sem acesso." }, { status: 403 });
+  }
   if (body.status !== undefined && !TASK_STATUSES.some((status) => status.value === body.status)) {
     return NextResponse.json({ error: "Status inválido." }, { status: 400 });
   }

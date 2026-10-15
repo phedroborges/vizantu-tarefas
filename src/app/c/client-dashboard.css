@@ -68,6 +68,8 @@
 .cd-sequence-stage small { display: inline-flex; align-items: center; gap: 4px; color: var(--vz-brand-strong); font-size: var(--vz-t-micro); }
 .cd-group { overflow: hidden; background: var(--vz-panel); border: 1px solid var(--vz-line); border-radius: var(--vz-r-lg); box-shadow: var(--vz-shadow-xs); }
 .cd-plan-filter { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+.cd-plan-filter .vz-field { width: 100%; padding: 18px; border: 1px solid var(--cd-line); border-radius: 12px; background: var(--vz-panel); }
+.cd-plan-filter select { width: 100%; min-height: 48px; margin-top: 8px; font-size: 16px; font-weight: 600; }
 .cd-plan-filter button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border: 1px solid var(--vz-brand-line); border-radius: 999px; background: var(--vz-panel); color: inherit; font: inherit; font-size: 12px; cursor: pointer; }
 .cd-plan-filter button em { font-style: normal; color: var(--cd-muted); font-size: 11px; }
 .cd-plan-filter button.is-active { background: var(--vz-brand-softer); border-color: currentColor; font-weight: 600; }

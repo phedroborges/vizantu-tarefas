@@ -47,9 +47,11 @@ export default async function PlanoDetailPage({ params }: { params: Promise<{ id
     <AdminShell active="planos" user={user}>
       <PlanoDetailView
         plan={plan}
+        projectPlans={projectPlans}
         project={project}
         initialCaptacoes={captacoes}
-        initialTasks={tasks}
+        initialTasks={filterTasksByListAccess(tasks, user.accessibleListKinds).filter(task => user.role !== "diretor_criativo" || task.assigneeId === user.id)}
+        creativeOnly={user.role === "diretor_criativo"}
         initialApprovals={approvals}
         approvalResponses={approvalResponses}
         captureSuggestions={planEvents.filter((event) => event.eventType.startsWith("captacao:") || event.eventType.startsWith("producao:"))}

@@ -37,7 +37,7 @@ describe("consultas proporcionais à tela", () => {
     respond = (url) => Array.from({ length: url.searchParams.get("offset") === "0" ? 1000 : 1 }, () => ({ project_id: "a", status: "rascunho", due_date: null, lists: [] }));
     expect(await listTaskSummaries()).toHaveLength(1001);
     expect(requests).toHaveLength(2);
-    expect(requests.every((url) => url.searchParams.get("select") === "id,project_id,status,due_date,lists")).toBe(true);
+    expect(requests.every((url) => url.searchParams.get("select") === "id,project_id,status,due_date,lists,plan:plans!inner(period_month,status)")).toBe(true);
   });
   it("filtra contratos pelo projeto no banco", async () => {
     await listContracts("project-a");
@@ -46,7 +46,7 @@ describe("consultas proporcionais à tela", () => {
   it("varredura só lê atrasadas com responsável, usando o dia solicitado", async () => {
     await createDailyOverdueNotifications("2026-09-16");
     expect(requests).toHaveLength(1);
-    expect(requests[0].searchParams.get("select")).toBe("id,name,due_date,assignee_id");
+    expect(requests[0].searchParams.get("select")).toBe("id,name,due_date,assignee_id,plan:plans!inner(period_month,status)");
     expect(requests[0].searchParams.get("due_date")).toBe("lt.2026-09-16");
     expect(requests[0].searchParams.get("assignee_id")).toBe("not.is.null");
     expect(requests[0].searchParams.get("status")).toBe(`in.(${OVERDUE_STATUSES.join(",")})`);

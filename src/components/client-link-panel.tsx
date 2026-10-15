@@ -21,11 +21,13 @@ function isActive(link: ClientLink): boolean {
 export function ClientLinkPanel({
   projectId,
   projectName,
+  planId,
   canEdit,
   onToast,
 }: {
   projectId: string;
   projectName: string;
+  planId?: string;
   canEdit: boolean;
   onToast: (message: string) => void;
 }) {
@@ -35,7 +37,8 @@ export function ClientLinkPanel({
   const [copied, setCopied] = useState(false);
   const { confirm, ConfirmDialog } = useConfirm();
 
-  const url = link ? `${typeof window === "undefined" ? "" : window.location.origin}/c/${link.token}` : "";
+  const planQuery = planId ? `?plan=${encodeURIComponent(planId)}` : "";
+  const url = link ? `${typeof window === "undefined" ? "" : window.location.origin}/c/${link.token}${planQuery}` : "";
 
   // Hidrata do servidor: sem isso o botão só conhecia links criados na sessão
   // atual e, a cada reload, oferecia "gerar" de novo pra um projeto que já
@@ -78,7 +81,7 @@ export function ClientLinkPanel({
       const result = await response.json();
       if (!response.ok) return onToast("Não foi possível gerar o link.");
       setLink(result.link);
-      await copy(`${window.location.origin}/c/${result.link.token}`);
+      await copy(`${window.location.origin}/c/${result.link.token}${planQuery}`);
     } finally {
       setBusy(false);
     }
@@ -98,7 +101,7 @@ export function ClientLinkPanel({
       const result = await response.json();
       if (!response.ok) return onToast("Não foi possível gerar o link.");
       setLink(result.link);
-      await copy(`${window.location.origin}/c/${result.link.token}`);
+      await copy(`${window.location.origin}/c/${result.link.token}${planQuery}`);
     } finally {
       setBusy(false);
     }

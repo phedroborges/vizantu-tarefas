@@ -39,7 +39,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   // O aviso de um conteúdo específico traz ?item=<id>: o portal já abre nele,
   // em vez de deixar o cliente procurar na lista.
   const item = request.nextUrl.searchParams.get("item");
-  const destination = item && /^[0-9a-f-]{36}$/i.test(item) ? `/c/dashboard?item=${item}` : "/c/dashboard";
+  const query = new URLSearchParams();
+  if (item && /^[0-9a-f-]{36}$/i.test(item)) query.set("item", item);
+  const plan = request.nextUrl.searchParams.get("plan");
+  if (plan && /^[0-9a-f-]{36}$/i.test(plan)) query.set("plan", plan);
+  const destination = `/c/dashboard${query.size ? `?${query}` : ""}`;
   const response = NextResponse.redirect(absoluteUrl(request, destination));
   response.cookies.set(CLIENT_SESSION_COOKIE, signClientSession(project.id), {
     httpOnly: true,

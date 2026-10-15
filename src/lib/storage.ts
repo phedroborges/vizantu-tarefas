@@ -1,7 +1,7 @@
 import { queueApprovalNotice, queueStandaloneNotice } from "./whatsapp/queue";
 import { buildApprovalHistory, type ApprovalHistoryEntry } from "./approval-history";
 import { organizeClientPackages, type ClientPackageAssignment } from "./client-packages";
-import { todayIso } from "./dates";
+import { currentMonthKey, moveMonth, todayIso } from "./dates";
 import { canReviewItem, derivePlanStage, formatRequiresCapture, nextApprovalReviewVersion, settleApproval, taskStatusAfterClientDecision } from "./approval-workflow";
 import { mergePreferences, normalizePreferences, type MemberPreferences } from "./preferences";
 import { inheritsCaptureEditor } from "./assignee-inheritance";
@@ -10,7 +10,7 @@ import { isGuideFieldKey } from "./client-guide";
 import { getSupabase, getSupabaseStorageBucket } from "./supabase-client";
 import { activityEventsFromComments, createActivityComments, trimMinorActivity } from "./task-activity";
 import { questionsForTemplate, type SurveyTemplate } from "./survey-templates";
-import { monthlyPlanTitle, planDisplayName, targetMonth } from "./plan-month";
+import { isClientPlanAvailable, isPlanClosed, monthlyPlanTitle, planDisplayName } from "./plan-month";
 import { BRAND_STAGES, DEFAULT_STATUS_COLORS, OVERDUE_STATUSES, TASK_STATUSES } from "./types";
 import type {
   Announcement,
@@ -467,10 +467,13 @@ function transitionStatusHistory(history: StatusHistoryEntry[], next: TaskStatus
   return copy;
 }
 
-export type TaskQueryScope = { projectIds?: string[] | "all"; listKinds?: TaskListKind[] | "all" };
+export type TaskQueryScope = { projectIds?: string[] | "all"; listKinds?: TaskListKind[] | "all"; includeArchivedPlans?: boolean };
 
 function tasksQuery(columns: string, scope: TaskQueryScope) {
-  let query = getSupabase().from("tasks").select(columns);
+  let query = getSupabase().from("tasks").select(scope.includeArchivedPlans ? columns : `${columns},plan:plans!inner(period_month,status)`);
+  if (!scope.includeArchivedPlans) query = query
+    .or(`period_month.is.null,period_month.gte.${currentMonthKey()}`, { referencedTable: "plan" })
+    .not("plan.status", "in", "(completed,archived)");
   if (scope.projectIds && scope.projectIds !== "all") query = query.in("project_id", scope.projectIds);
   if (scope.listKinds && scope.listKinds !== "all") {
     // Sem lista continua visível, como em filterTasksByListAccess. Os valores
@@ -522,7 +525,7 @@ export async function listTasks(options: TaskQueryScope & { all?: boolean; proje
 // Só o necessário para decidir há quanto tempo cada demanda da pessoa espera o
 // play (ver lib/ready-nudge.ts) — sem comentários, imagens ou copy.
 export async function listReadyTasksForAssignee(memberId: string): Promise<import("./ready-nudge").ReadyTask[]> {
-  const rows = unwrap(await getSupabase().from("tasks").select("id,name,project_id,status,status_history,assignee_id,updated_at").eq("assignee_id", memberId).eq("status", "pronto_para_criacao")) as Pick<TaskRow, "id" | "name" | "project_id" | "status" | "status_history" | "assignee_id" | "updated_at">[];
+  const rows = unwrap(await tasksQuery("id,name,project_id,status,status_history,assignee_id,updated_at", {}).eq("assignee_id", memberId).eq("status", "pronto_para_criacao")) as Pick<TaskRow, "id" | "name" | "project_id" | "status" | "status_history" | "assignee_id" | "updated_at">[];
   return rows.map((row) => ({ id: row.id, name: row.name, projectId: row.project_id, status: row.status, statusHistory: row.status_history ?? [], assigneeId: row.assignee_id ?? undefined, updatedAt: row.updated_at }));
 }
 
@@ -546,8 +549,7 @@ export async function getTask(id: string): Promise<Task | undefined> {
 }
 
 // ---------- Plano mensal ----------
-// O conteúdo mora no plano do mês da sua data de entrega. O plano do mês é
-// criado na primeira vez que alguém precisa dele; campanha nunca é mexida.
+// O mês da criação é o padrão. Escolhas explícitas permanecem até transferência.
 
 async function findOrCreateMonthlyPlan(projectId: string, month: string, createdBy?: string): Promise<string> {
   const db = getSupabase();
@@ -576,6 +578,8 @@ async function equivalentCaptacao(captacaoId: string, targetPlanId: string): Pro
   const source = unwrap(await db.from("plan_captacoes").select("*").eq("id", captacaoId).maybeSingle()) as PlanCaptacaoRow | null;
   if (!source) return null;
   if (source.plan_id === targetPlanId) return source.id;
+  const [sourcePlan, targetPlan] = await Promise.all([getPlan(source.plan_id), getPlan(targetPlanId)]);
+  if (!sourcePlan || !targetPlan || sourcePlan.projectId !== targetPlan.projectId) throw new TaskRuleError("Escolha um pacote deste cliente.");
   const found = unwrap(await db.from("plan_captacoes").select("id").eq("plan_id", targetPlanId).eq("label", source.label).eq("package_kind", source.package_kind).maybeSingle()) as { id: string } | null;
   if (found) return found.id;
   const created = unwrap(await db.from("plan_captacoes").insert({
@@ -592,21 +596,50 @@ async function equivalentCaptacao(captacaoId: string, targetPlanId: string): Pro
   return created.id;
 }
 
-/** Plano (e pacote) certos para esta data, ou undefined quando a tarefa já está
- * onde deve. Nunca impede salvar: se falhar, a tarefa fica como veio. */
-async function monthlyPlacement(task: { projectId: string; kind: string; dueDate?: string | null; planId?: string | null; captacaoId?: string | null }, createdBy?: string): Promise<{ planId: string; captacaoId: string | null } | undefined> {
-  try {
-    const plan = task.planId ? unwrap(await getSupabase().from("plans").select("period_month").eq("id", task.planId).maybeSingle()) as { period_month: string | null } | null : null;
-    if (task.planId && !plan) return undefined;
-    const month = targetMonth(task, plan ? { periodMonth: plan.period_month } : undefined);
-    if (!month) return undefined;
-    const planId = await findOrCreateMonthlyPlan(task.projectId, month, createdBy);
-    if (planId === task.planId) return undefined;
-    return { planId, captacaoId: task.captacaoId ? await equivalentCaptacao(task.captacaoId, planId) : null };
-  } catch (error) {
-    console.error("[plano mensal] não foi possível reorganizar a tarefa:", error);
-    return undefined;
+/** Toda tarefa recebe um plano; escolhas explícitas não dependem do prazo. */
+async function monthlyPlacement(task: { projectId: string; kind: string; dueDate?: string | null; planId?: string | null; captacaoId?: string | null }, createdBy?: string): Promise<{ planId: string; captacaoId: string | null }> {
+  const planId = task.planId || await findOrCreateMonthlyPlan(task.projectId, currentMonthKey(), createdBy);
+  const plan = await getPlan(planId);
+  if (!plan || plan.projectId !== task.projectId) throw new TaskRuleError("Escolha um plano deste cliente.");
+  if (isPlanClosed(plan)) throw new TaskRuleError("Este plano está encerrado. Escolha o mês atual, um mês futuro ou uma campanha em andamento.");
+  return { planId, captacaoId: task.captacaoId ? await equivalentCaptacao(task.captacaoId, planId) : null };
+}
+
+/** Garante o mês atual e os dois seguintes, mesmo sem tarefas. */
+export async function ensureMonthlyPlans(projectIds: string[]): Promise<void> {
+  if (!projectIds.length) return;
+  const month = currentMonthKey();
+  const months = [0, 1, 2].map(offset => moveMonth(month, offset));
+  const existing = unwrap(await getSupabase().from("plans").select("project_id,period_month").in("project_id", projectIds).in("period_month", months)) as { project_id: string; period_month: string }[];
+  const known = new Set(existing.map(p => `${p.project_id}:${p.period_month}`));
+  for (const projectId of projectIds) {
+    await Promise.all(months.filter(m => !known.has(`${projectId}:${m}`)).map(m => findOrCreateMonthlyPlan(projectId, m)));
   }
+}
+
+export async function maintainMonthlyPlans(date = todayIso()): Promise<number> {
+  const projects = (await listProjects()).filter(p => p.status === "ativo");
+  await ensureMonthlyPlans(projects.map(p => p.id));
+  const month = date.slice(0, 7);
+  const plans = (await listPlans()).filter(p => p.periodMonth && (p.periodMonth < month || (p.periodMonth === month && Number(date.slice(8)) >= 25)));
+  if (!plans.length) return 0;
+  const tasks = await listTasks({ projectIds: projects.map(p => p.id), all: true, projection: "list", includeArchivedPlans: true });
+  const managers = (await listMembers()).filter(m => m.active && (m.role === "dono" || m.role === "social_media"));
+  let count = 0;
+  for (const plan of plans) {
+    const pending = tasks.filter(t => t.planId === plan.id && t.status !== "finalizado" && t.status !== "problema");
+    if (!pending.length) continue;
+    const recipients = new Set([...pending.map(t => t.assigneeId).filter((id): id is string => Boolean(id)), ...managers.map(m => m.id)]);
+    await createNotifications([...recipients].map(recipientMemberId => ({
+      recipientMemberId, type: "task_overdue" as const,
+      title: isPlanClosed(plan, month) ? "Pendências de plano encerrado" : "O mês está terminando",
+      body: `${plan.title}: ${pending.length} tarefas pendentes. Transfira as que precisam continuar para outro plano.`,
+      actionUrl: `/planos?cliente=${plan.projectId}`,
+      dedupeKey: `plan-rollover:${month}:${plan.id}:${recipientMemberId}`,
+    })));
+    count += pending.length;
+  }
+  return count;
 }
 
 export async function createTask(input: TaskInput): Promise<Task> {
@@ -708,6 +741,16 @@ export async function updateTask(
   const current = await getTask(id);
   if (!current) return undefined;
 
+  if (current.planId) {
+    const sourcePlan = await getPlan(current.planId);
+    if (sourcePlan && isPlanClosed(sourcePlan)) {
+      const changes = Object.entries(patch).filter(([, value]) => value !== undefined);
+      if (!patch.planId || patch.planId === current.planId || changes.some(([key]) => key !== "planId")) {
+        throw new TaskRuleError("Este plano está encerrado. Transfira a tarefa para outro plano para continuar.");
+      }
+    }
+  }
+
   // Conteúdo sem link do material não vai para "Para aprovação": é o link que
   // o cliente abre para revisar, e sem ele o aviso no grupo nem sairia.
   if (patch.status === "para_aprovacao" && current.status !== "para_aprovacao" && (current.planId || current.kind === "conteudo")) {
@@ -751,19 +794,16 @@ export async function updateTask(
   if (patch.sequenceOrder !== undefined) update.sequence_order = patch.sequenceOrder;
   if (patch.seasonal !== undefined) update.seasonal = patch.seasonal;
 
-  // Mudou a data (ou o plano): o conteúdo vai para o plano do mês da data.
-  if ((patch.dueDate !== undefined || patch.planId !== undefined || patch.kind !== undefined) && patch.planId !== "") {
+  // Só a escolha de plano/cliente transfere a tarefa; mudar prazo não transfere.
+  if (patch.planId !== undefined || patch.projectId !== undefined) {
     const placement = await monthlyPlacement({
       projectId: patch.projectId ?? current.projectId,
       kind: patch.kind ?? current.kind,
-      dueDate: patch.dueDate !== undefined ? patch.dueDate : current.dueDate,
-      planId: patch.planId !== undefined ? patch.planId : current.planId,
-      captacaoId: patch.captacaoId !== undefined ? patch.captacaoId : current.captacaoId,
+      planId: patch.planId !== undefined ? patch.planId : patch.projectId !== current.projectId ? undefined : current.planId,
+      captacaoId: patch.captacaoId !== undefined ? patch.captacaoId : patch.projectId && patch.projectId !== current.projectId ? undefined : current.captacaoId,
     }, actorMemberId);
-    if (placement) {
-      update.plan_id = placement.planId;
-      update.captacao_id = placement.captacaoId;
-    }
+    update.plan_id = placement.planId;
+    update.captacao_id = placement.captacaoId;
   }
 
   if (patch.status !== undefined && patch.status !== current.status) {
@@ -863,6 +903,8 @@ export class ApprovalRoundError extends Error {
 }
 
 export async function openPlanApprovalRound(planId: string, stage: "copy" | "creative") {
+  const plan = await getPlan(planId);
+  if (!plan || isPlanClosed(plan)) throw new ApprovalRoundError("Este plano está encerrado e não aceita novas aprovações.");
   const tasks = await listPlanTasks(planId);
   if (!tasks.length) throw new ApprovalRoundError("Adicione conteúdos ao plano antes de abrir uma aprovação.");
   const approvals = await listPlanItemApprovals(tasks.map((task) => task.id));
@@ -1021,8 +1063,7 @@ export async function markAllNotificationsRead(memberId: string): Promise<void> 
 export async function createDailyOverdueNotifications(date = todayIso()): Promise<number> {
   let total = 0;
   for (let offset = 0; ; offset += 500) {
-    const overdue = unwrap(await getSupabase().from("tasks")
-      .select("id, name, due_date, assignee_id")
+    const overdue = unwrap(await tasksQuery("id, name, due_date, assignee_id", {})
       .not("assignee_id", "is", null).lt("due_date", date)
       .in("status", OVERDUE_STATUSES)
       .order("id").range(offset, offset + 499)) as { id: string; name: string; due_date: string; assignee_id: string }[];
@@ -1034,7 +1075,9 @@ export async function createDailyOverdueNotifications(date = todayIso()): Promis
 
 export async function requestTaskDateChange(input: { projectId: string; taskId: string; reviewerName: string; requestedDate: string; reason?: string }): Promise<Task | undefined> {
   const current = await getTask(input.taskId);
-  if (!current || current.projectId !== input.projectId) return undefined;
+  if (!current || current.projectId !== input.projectId || !current.planId) return undefined;
+  const plan = await getPlan(current.planId);
+  if (!plan || !isClientPlanAvailable(plan) || ["finalizado", "problema"].includes(current.status)) return undefined;
   const date = new Date(`${input.requestedDate}T12:00:00`).toLocaleDateString("pt-BR");
   const cleanReason = input.reason?.trim();
   const reason = cleanReason ? ` Motivo: ${cleanReason}` : "";
@@ -1185,6 +1228,16 @@ export async function createPlanCaptacao(input: { planId: string; label: string;
       .single(),
   );
   return mapPlanCaptacao(row as PlanCaptacaoRow);
+}
+
+export async function createReadyPackage(input: { planId: string; label: string; packageKind: "capture" | "creation"; itemCount: number; formatTagId: string; editingAssigneeId?: string; recordingAssigneeId?: string; actorId: string }) {
+  const id = unwrap(await getSupabase().rpc("create_ready_package", {
+    p_plan: input.planId, p_label: input.label, p_kind: input.packageKind, p_count: input.itemCount,
+    p_format: input.formatTagId, p_editor: input.editingAssigneeId || null,
+    p_recorder: input.recordingAssigneeId || null, p_actor: input.actorId,
+  })) as string;
+  const [captacoes, tasks] = await Promise.all([listPlanCaptacoes(input.planId), listPlanTasks(input.planId)]);
+  return { captacao: captacoes.find(p => p.id === id)!, tasks: tasks.filter(t => t.captacaoId === id) };
 }
 
 export async function updatePlanCaptacao(id: string, patch: { label?: string; packageKind?: "capture" | "creation"; recordingAssigneeId?: string | null; editingAssigneeId?: string | null }): Promise<PlanCaptacao | undefined> {
@@ -1350,10 +1403,22 @@ function planName(plan?: { title: string; period_month?: string | null }) {
   return plan ? planDisplayName({ title: plan.title, periodMonth: plan.period_month }) : undefined;
 }
 
-export async function listProjectPlanItems(projectId: string): Promise<ProjectPlanItem[]> {
+export async function clientPlanView(projectId: string, requestedPlanId?: string, requestedItemId?: string) {
+  await ensureMonthlyPlans([projectId]);
+  const plans = (await listPlans(projectId)).filter(p => p.source === "native" && isClientPlanAvailable(p));
+  const linkedTask = !requestedPlanId && requestedItemId ? unwrap(await getSupabase().from("tasks").select("plan_id").eq("id", requestedItemId).eq("project_id", projectId).maybeSingle()) as { plan_id: string } | null : null;
+  const selected = plans.find(p => p.id === (requestedPlanId || linkedTask?.plan_id)) || plans.find(p => p.periodMonth === currentMonthKey());
+  return {
+    plans: plans.map(p => ({ id: p.id, title: planDisplayName(p), period: p.periodMonth || null })),
+    selectedPlanId: selected?.id || "",
+    items: selected ? await listProjectPlanItems(projectId, selected.id) : [],
+  };
+}
+
+export async function listProjectPlanItems(projectId: string, selectedPlanId?: string): Promise<ProjectPlanItem[]> {
   const db = getSupabase();
-  const plans = unwrap(await db.from("plans").select("*").eq("project_id", projectId).eq("source", "native")) as { id: string; kind: string; title: string; period_month?: string | null }[];
-  const planIds = plans.filter((p) => p.kind === "content" || p.kind === "process").map((p) => p.id);
+  const plans = unwrap(await db.from("plans").select("*").eq("project_id", projectId).eq("source", "native")) as { id: string; kind: string; title: string; period_month?: string | null; status?: string }[];
+  const planIds = plans.filter(p => isClientPlanAvailable({ ...p, periodMonth: p.period_month }) && (!selectedPlanId || p.id === selectedPlanId)).map(p => p.id);
   if (!planIds.length) return [];
 
   const rows = unwrap(
@@ -1568,6 +1633,8 @@ export async function submitPlanApprovalResponse(input: {
   const taskRow = unwrap(await db.from("tasks").select("*").eq("id", input.taskId).eq("project_id", input.projectId).maybeSingle()) as TaskRow | null;
   const task = taskRow ? mapTask(taskRow) : undefined;
   if (!task || !task.planId) throw new ApprovalResponseError("Conteúdo não encontrado neste projeto.", 404);
+  const plan = await getPlan(task.planId);
+  if (!plan || !isClientPlanAvailable(plan)) throw new ApprovalResponseError("Este plano está encerrado e não aceita mais respostas.");
   await syncApprovalRoundFromTask(task, true);
   const existingRow = unwrap(await db.from("plan_item_approvals").select("*").eq("task_id", input.taskId).maybeSingle()) as PlanItemApprovalRow | null;
   const reviewVersion = existingRow?.review_version ?? 1;

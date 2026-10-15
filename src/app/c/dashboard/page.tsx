@@ -3,24 +3,24 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { ClientDashboard } from "@/components/client-dashboard";
 import { CLIENT_SESSION_COOKIE, verifyClientSession } from "@/lib/client-session";
-import { getProject, listPlanEvents, listProjectPlanItems, listSatisfactionScores } from "@/lib/storage";
+import { getProject, listPlanEvents, clientPlanView, listSatisfactionScores } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Seu painel — Vizantu" };
 
-export default async function ClientDashboardPage({ searchParams }: { searchParams: Promise<{ item?: string }> }) {
-  const { item: initialItemId } = await searchParams;
+export default async function ClientDashboardPage({ searchParams }: { searchParams: Promise<{ item?: string; plan?: string }> }) {
+  const { item: initialItemId, plan: requestedPlanId } = await searchParams;
   const cookieStore = await cookies();
   const projectId = verifyClientSession(cookieStore.get(CLIENT_SESSION_COOKIE)?.value);
   if (!projectId) redirect("/c/invalido");
   if (await isClientBlocked(projectId)) redirect("/c/bloqueado");
 
-  let project, items, events, scores;
+  let project, view, events, scores;
   try {
     project = await getProject(projectId);
     if (!project) redirect("/c/invalido");
-    [items, events, scores] = await Promise.all([
-      listProjectPlanItems(projectId),
+    [view, events, scores] = await Promise.all([
+      clientPlanView(projectId, requestedPlanId, initialItemId),
       listPlanEvents(projectId),
       listSatisfactionScores(projectId),
     ]);
@@ -38,7 +38,9 @@ export default async function ClientDashboardPage({ searchParams }: { searchPara
       roleTitle={project.clientRole ?? null}
       city={project.clientCity ?? null}
       instagramHandle={project.clientInstagram ?? null}
-      initialItems={items}
+      initialItems={view.items}
+      initialPlans={view.plans}
+      initialPlanId={view.selectedPlanId}
       initialItemId={initialItemId}
       events={events.map((e: { id: string; title: string; eventDate: string; eventType: string }) => ({ id: e.id, title: e.title, date: e.eventDate, eventType: e.eventType }))}
       initialScore={scores[0]?.score ?? null}
