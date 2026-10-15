@@ -275,6 +275,14 @@ export async function runDailyApprovalRoutine(now = new Date()): Promise<void> {
   const today = isoDateInSaoPaulo(now);
   const pending = await pendingApprovalsByProject();
   const settingsByProject = new Map((await listProjectCommunications()).map((item): [string, ProjectCommunication] => [item.projectId, item]));
+  // A rotina roda de novo a cada reinício do servidor (a marca de "já rodei
+  // hoje" fica na memória), e a chave do aviso de último dia muda quando entra
+  // um aviso novo no mesmo dia. O banco é quem diz se o cliente já foi cobrado
+  // hoje: quem recebeu lembrete, último dia ou aprovação por prazo hoje não
+  // recebe outro, qualquer que seja o status da mensagem.
+  const chargedToday = new Set(unwrap<{ project_id: string | null }[]>(
+    await getSupabase().from("whatsapp_messages").select("project_id").in("kind", ["reminder", "last_day", "auto_approved"]).gte("created_at", `${today}T00:00:00-03:00`),
+  ).flatMap((row) => row.project_id ? [row.project_id] : []));
   // Ordem sorteada a cada dia; o espaçamento entre os envios é da fila.
   for (const [projectId, waiting] of shuffled([...pending])) {
     const settings = settingsByProject.get(projectId);
@@ -288,7 +296,7 @@ export async function runDailyApprovalRoutine(now = new Date()): Promise<void> {
     // avisado gera o aviso de material novo e só começa a contar a partir dele.
     const { notified, unnotified } = startDeadlineClockByStage(waiting, await sentNotices(projectId));
     if (unnotified.length) await queueApprovalNotice(projectId, "paced");
-    if (!notified.length) continue;
+    if (!notified.length || chargedToday.has(projectId)) continue;
     const name = await clientName(projectId);
 
     // Só vence o que o cliente foi avisado: precisa existir um aviso de último
