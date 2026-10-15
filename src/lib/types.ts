@@ -324,6 +324,9 @@ export type Plan = {
   status: PlanStatus;
   approvalDeadline?: string;
   approvalPeriodDays?: number;
+  /** Mês do plano mensal ("2026-10"). Sem ele o plano é de campanha: nunca é
+      reorganizado por data. */
+  periodMonth?: string;
   legacySlug?: string;
   htmlBlobKey?: string;
   source: "native" | "legacy_blob";

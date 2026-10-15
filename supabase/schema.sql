@@ -173,6 +173,9 @@ create table if not exists plans (
   updated_at timestamptz not null default now()
 );
 create index if not exists plans_project_id_idx on plans(project_id);
+-- Plano mensal ("AAAA-MM"); campanha fica sem mês. Ver migration plano_mensal.
+alter table plans add column if not exists period_month text check (period_month ~ '^\d{4}-(0[1-9]|1[0-2])$');
+create unique index if not exists plans_project_period_month_key on plans(project_id, period_month) where period_month is not null;
 alter table plans enable row level security;
 
 -- Agrupamento de captação ("1ª Captação", "2ª Captação"...) — tabela em vez

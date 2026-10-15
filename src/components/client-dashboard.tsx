@@ -17,6 +17,7 @@ import "../app/c/client-dashboard.css";
 export type DashboardItem = Partial<ClientPackageAssignment> & {
   planId?: string;
   planTitle?: string;
+  planPeriod?: string | null;
   planKind?: string;
   captacaoId?: string | null;
   sequenceOrder?: number;
@@ -210,16 +211,31 @@ export function ClientDashboard({
   const orderedItems = useMemo(() => [...items].sort((a, b) => (a.dueDate || "9999-12-31").localeCompare(b.dueDate || "9999-12-31") || a.name.localeCompare(b.name, "pt-BR")), [items]);
   const packageGroups = useMemo(() => {
     const fallback = organizeClientPackages(orderedItems, []);
-    const groups = new Map<string, { id: string; label: string; planId: string; planTitle?: string; date: string | null; kind: string; order: number; items: DashboardItem[] }>();
+    const groups = new Map<string, { id: string; label: string; planId: string; planTitle?: string; planPeriod: string | null; date: string | null; kind: string; order: number; items: DashboardItem[] }>();
     for (const [index, item] of orderedItems.entries()) {
       const assigned = item.clientPackageId ? item : fallback[index];
       const key = `${item.planId || "legacy"}:${assigned.clientPackageId}`;
-      const group = groups.get(key) || { id: key, planId: item.planId || "legacy", label: assigned.clientPackageLabel!, planTitle: item.planTitle, date: assigned.clientPackageDate || null, kind: assigned.clientPackageKind!, order: assigned.clientPackageOrder || 0, items: [] };
+      const group = groups.get(key) || { id: key, planId: item.planId || "legacy", label: assigned.clientPackageLabel!, planTitle: item.planTitle, planPeriod: item.planPeriod || null, date: assigned.clientPackageDate || null, kind: assigned.clientPackageKind!, order: assigned.clientPackageOrder || 0, items: [] };
       group.items.push(assigned);
       groups.set(key, group);
     }
-    return [...groups.values()].sort((a, b) => (a.planTitle || "").localeCompare(b.planTitle || "", "pt-BR") || a.planId.localeCompare(b.planId) || a.order - b.order || a.id.localeCompare(b.id));
+    // Planos mensais na ordem do calendário, depois as campanhas.
+    return [...groups.values()].sort((a, b) => (a.planPeriod || "9999").localeCompare(b.planPeriod || "9999") || (a.planTitle || "").localeCompare(b.planTitle || "", "pt-BR") || a.planId.localeCompare(b.planId) || a.order - b.order || a.id.localeCompare(b.id));
   }, [orderedItems]);
+  const [planFilter, setPlanFilter] = useState("all");
+  const planOptions = useMemo(() => {
+    const plans = new Map<string, { id: string; title: string; period: string; total: number; pending: number }>();
+    for (const group of packageGroups) {
+      const plan = plans.get(group.planId) || { id: group.planId, title: group.planTitle || "Conteúdos", period: group.planPeriod || "9999", total: 0, pending: 0 };
+      plan.total += group.items.length;
+      plan.pending += group.items.filter(canReviewItem).length;
+      plans.set(group.planId, plan);
+    }
+    return [...plans.values()];
+  }, [packageGroups]);
+  // Se o plano escolhido some (a lista se atualiza sozinha), volta para todos.
+  const activePlanFilter = planOptions.some((plan) => plan.id === planFilter) ? planFilter : "all";
+  const visibleGroups = activePlanFilter === "all" ? packageGroups : packageGroups.filter((group) => group.planId === activePlanFilter);
   const reviewedCount = items.filter(isReviewed).length;
   const approvedInStageCount = items.filter((item) => item.approvalStatus === "approved").length;
   const reviewedRate = items.length ? Math.round((reviewedCount / items.length) * 100) : 0;
@@ -359,8 +375,19 @@ export function ClientDashboard({
             {reviewedRate === 100 && items.length ? <div className="cd-review-complete"><CheckCircle2 size={16} /><span><strong>Plano 100% revisado.</strong> A equipe já pode seguir com os aprovados e preparar os ajustes necessários.</span></div> : null}
           </div>
 
+          {planOptions.length > 1 ? (
+            <div className="cd-plan-filter" role="group" aria-label="Filtrar por plano">
+              <button type="button" className={activePlanFilter === "all" ? "is-active" : ""} aria-pressed={activePlanFilter === "all"} onClick={() => setPlanFilter("all")}>Todos <em>{items.length}</em></button>
+              {planOptions.map((plan) => (
+                <button type="button" key={plan.id} className={activePlanFilter === plan.id ? "is-active" : ""} aria-pressed={activePlanFilter === plan.id} onClick={() => setPlanFilter(plan.id)}>
+                  {plan.title} <em>{plan.pending ? `${plan.pending} p/ revisar` : plan.total}</em>
+                </button>
+              ))}
+            </div>
+          ) : null}
+
           <div className="cd-package-list">
-            {packageGroups.map((group) => (
+            {visibleGroups.map((group) => (
               <section className="cd-group" key={group.id} aria-label={group.label}>
                 <header className="cd-group-head">
                   <div>{group.planTitle ? <span className="cd-eyebrow">{group.planTitle}</span> : null}<h3>{group.label}</h3>

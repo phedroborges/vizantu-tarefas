@@ -10,6 +10,7 @@ import { isGuideFieldKey } from "./client-guide";
 import { getSupabase, getSupabaseStorageBucket } from "./supabase-client";
 import { activityEventsFromComments, createActivityComments, trimMinorActivity } from "./task-activity";
 import { questionsForTemplate, type SurveyTemplate } from "./survey-templates";
+import { monthlyPlanTitle, planDisplayName, targetMonth } from "./plan-month";
 import { BRAND_STAGES, DEFAULT_STATUS_COLORS, OVERDUE_STATUSES, TASK_STATUSES } from "./types";
 import type {
   Announcement,
@@ -544,7 +545,73 @@ export async function getTask(id: string): Promise<Task | undefined> {
   return task;
 }
 
+// ---------- Plano mensal ----------
+// O conteúdo mora no plano do mês da sua data de entrega. O plano do mês é
+// criado na primeira vez que alguém precisa dele; campanha nunca é mexida.
+
+async function findOrCreateMonthlyPlan(projectId: string, month: string, createdBy?: string): Promise<string> {
+  const db = getSupabase();
+  const find = async () => (unwrap(await db.from("plans").select("id").eq("project_id", projectId).eq("period_month", month).maybeSingle()) as { id: string } | null)?.id;
+  const existing = await find();
+  if (existing) return existing;
+  const project = unwrap(await db.from("projects").select("name").eq("id", projectId).single()) as { name: string };
+  const now = nowIso();
+  const created = await db.from("plans").insert({
+    id: newId(), project_id: projectId, title: monthlyPlanTitle(project.name, month), kind: "content", status: "draft",
+    source: "native", period_month: month, created_by: createdBy || null, created_at: now, updated_at: now,
+  }).select("id").single();
+  // Duas criações ao mesmo tempo: o índice único deixa uma só, a outra usa a que ficou.
+  if (created.error) {
+    const winner = await find();
+    if (winner) return winner;
+    throw new Error(created.error.message);
+  }
+  return (created.data as { id: string }).id;
+}
+
+/** O pacote equivalente no plano de destino (mesmo nome e tipo), criado com os
+ * mesmos responsáveis e a mesma data quando ainda não existe. */
+async function equivalentCaptacao(captacaoId: string, targetPlanId: string): Promise<string | null> {
+  const db = getSupabase();
+  const source = unwrap(await db.from("plan_captacoes").select("*").eq("id", captacaoId).maybeSingle()) as PlanCaptacaoRow | null;
+  if (!source) return null;
+  if (source.plan_id === targetPlanId) return source.id;
+  const found = unwrap(await db.from("plan_captacoes").select("id").eq("plan_id", targetPlanId).eq("label", source.label).eq("package_kind", source.package_kind).maybeSingle()) as { id: string } | null;
+  if (found) return found.id;
+  const created = unwrap(await db.from("plan_captacoes").insert({
+    id: newId(), plan_id: targetPlanId, label: source.label, sequence_order: source.sequence_order, package_kind: source.package_kind,
+    recording_assignee_id: source.recording_assignee_id, editing_assignee_id: source.editing_assignee_id, created_at: nowIso(),
+  }).select("id").single()) as { id: string };
+  const event = unwrap(await db.from("plan_events").select("*").in("event_type", [`captacao:${source.id}`, `producao:${source.id}`]).limit(1).maybeSingle()) as PlanEventRow | null;
+  if (event) {
+    unwrap(await db.from("plan_events").insert({
+      id: newId(), project_id: event.project_id, title: event.title, event_type: `${event.event_type.split(":")[0]}:${created.id}`,
+      event_date: event.event_date, created_by: event.created_by, created_at: nowIso(),
+    }));
+  }
+  return created.id;
+}
+
+/** Plano (e pacote) certos para esta data, ou undefined quando a tarefa já está
+ * onde deve. Nunca impede salvar: se falhar, a tarefa fica como veio. */
+async function monthlyPlacement(task: { projectId: string; kind: string; dueDate?: string | null; planId?: string | null; captacaoId?: string | null }, createdBy?: string): Promise<{ planId: string; captacaoId: string | null } | undefined> {
+  try {
+    const plan = task.planId ? unwrap(await getSupabase().from("plans").select("period_month").eq("id", task.planId).maybeSingle()) as { period_month: string | null } | null : null;
+    if (task.planId && !plan) return undefined;
+    const month = targetMonth(task, plan ? { periodMonth: plan.period_month } : undefined);
+    if (!month) return undefined;
+    const planId = await findOrCreateMonthlyPlan(task.projectId, month, createdBy);
+    if (planId === task.planId) return undefined;
+    return { planId, captacaoId: task.captacaoId ? await equivalentCaptacao(task.captacaoId, planId) : null };
+  } catch (error) {
+    console.error("[plano mensal] não foi possível reorganizar a tarefa:", error);
+    return undefined;
+  }
+}
+
 export async function createTask(input: TaskInput): Promise<Task> {
+  const placement = await monthlyPlacement({ projectId: input.projectId, kind: input.kind || "tarefa", dueDate: input.dueDate, planId: input.planId, captacaoId: input.captacaoId }, input.createdBy);
+  if (placement) input = { ...input, planId: placement.planId, captacaoId: placement.captacaoId ?? undefined };
   const now = nowIso();
   // Por padrão o conteúdo nasce em rascunho. Um status de aprovação
   // informado explicitamente inicia a rodada correspondente.
@@ -683,6 +750,21 @@ export async function updateTask(
   }
   if (patch.sequenceOrder !== undefined) update.sequence_order = patch.sequenceOrder;
   if (patch.seasonal !== undefined) update.seasonal = patch.seasonal;
+
+  // Mudou a data (ou o plano): o conteúdo vai para o plano do mês da data.
+  if ((patch.dueDate !== undefined || patch.planId !== undefined || patch.kind !== undefined) && patch.planId !== "") {
+    const placement = await monthlyPlacement({
+      projectId: patch.projectId ?? current.projectId,
+      kind: patch.kind ?? current.kind,
+      dueDate: patch.dueDate !== undefined ? patch.dueDate : current.dueDate,
+      planId: patch.planId !== undefined ? patch.planId : current.planId,
+      captacaoId: patch.captacaoId !== undefined ? patch.captacaoId : current.captacaoId,
+    }, actorMemberId);
+    if (placement) {
+      update.plan_id = placement.planId;
+      update.captacao_id = placement.captacaoId;
+    }
+  }
 
   if (patch.status !== undefined && patch.status !== current.status) {
     update.status = patch.status;
@@ -973,6 +1055,7 @@ type PlanRow = {
   status: PlanStatus;
   approval_deadline: string | null;
   approval_period_days: number | null;
+  period_month?: string | null;
   legacy_slug: string | null;
   html_blob_key: string | null;
   source: "native" | "legacy_blob";
@@ -990,6 +1073,7 @@ function mapPlan(row: PlanRow): Plan {
     status: row.status,
     approvalDeadline: row.approval_deadline ?? undefined,
     approvalPeriodDays: row.approval_period_days ?? undefined,
+    periodMonth: row.period_month ?? undefined,
     legacySlug: row.legacy_slug ?? undefined,
     htmlBlobKey: row.html_blob_key ?? undefined,
     source: row.source,
@@ -1017,6 +1101,7 @@ export async function createPlan(input: {
   kind: PlanKind;
   approvalDeadline?: string;
   approvalPeriodDays?: number;
+  periodMonth?: string;
   createdBy?: string;
 }): Promise<Plan> {
   const now = nowIso();
@@ -1031,6 +1116,7 @@ export async function createPlan(input: {
         status: "draft",
         approval_deadline: input.approvalDeadline || null,
         approval_period_days: input.approvalPeriodDays ?? null,
+        ...(input.periodMonth ? { period_month: input.periodMonth } : {}),
         source: "native",
         created_by: input.createdBy || null,
         created_at: now,
@@ -1237,6 +1323,8 @@ export async function resolveClientLink(token: string): Promise<Project | undefi
 export type ProjectPlanItem = Partial<ClientPackageAssignment> & {
   planId?: string;
   planTitle?: string;
+  /** Mês do plano mensal ("2026-10"); nulo no plano de campanha. */
+  planPeriod?: string | null;
   planKind?: string;
   captacaoId?: string | null;
   sequenceOrder?: number;
@@ -1258,9 +1346,13 @@ export type ProjectPlanItem = Partial<ClientPackageAssignment> & {
   updatedAt: string;
 };
 
+function planName(plan?: { title: string; period_month?: string | null }) {
+  return plan ? planDisplayName({ title: plan.title, periodMonth: plan.period_month }) : undefined;
+}
+
 export async function listProjectPlanItems(projectId: string): Promise<ProjectPlanItem[]> {
   const db = getSupabase();
-  const plans = unwrap(await db.from("plans").select("id, kind, title").eq("project_id", projectId).eq("source", "native")) as { id: string; kind: string; title: string }[];
+  const plans = unwrap(await db.from("plans").select("*").eq("project_id", projectId).eq("source", "native")) as { id: string; kind: string; title: string; period_month?: string | null }[];
   const planIds = plans.filter((p) => p.kind === "content" || p.kind === "process").map((p) => p.id);
   if (!planIds.length) return [];
 
@@ -1323,7 +1415,8 @@ export async function listProjectPlanItems(projectId: string): Promise<ProjectPl
     return {
       id: t.id,
       planId: t.plan_id,
-      planTitle: plans.find((plan) => plan.id === t.plan_id)?.title,
+      planTitle: planName(plans.find((plan) => plan.id === t.plan_id)),
+      planPeriod: plans.find((plan) => plan.id === t.plan_id)?.period_month ?? null,
       planKind: plans.find((plan) => plan.id === t.plan_id)?.kind,
       captacaoId: t.captacao_id,
       sequenceOrder: t.sequence_order,

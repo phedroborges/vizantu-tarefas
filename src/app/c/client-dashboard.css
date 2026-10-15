@@ -67,6 +67,10 @@
 .cd-sequence-stage { display: grid; justify-items: end; gap: 7px; }
 .cd-sequence-stage small { display: inline-flex; align-items: center; gap: 4px; color: var(--vz-brand-strong); font-size: var(--vz-t-micro); }
 .cd-group { overflow: hidden; background: var(--vz-panel); border: 1px solid var(--vz-line); border-radius: var(--vz-r-lg); box-shadow: var(--vz-shadow-xs); }
+.cd-plan-filter { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+.cd-plan-filter button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border: 1px solid var(--vz-brand-line); border-radius: 999px; background: var(--vz-panel); color: inherit; font: inherit; font-size: 12px; cursor: pointer; }
+.cd-plan-filter button em { font-style: normal; color: var(--cd-muted); font-size: 11px; }
+.cd-plan-filter button.is-active { background: var(--vz-brand-softer); border-color: currentColor; font-weight: 600; }
 .cd-group-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px; background: var(--vz-brand-softer); border-bottom: 1px solid var(--vz-brand-line); }
 .cd-group-head h3 { margin: 0; font-size: 13px; }
 .cd-group-head > span { color: var(--cd-muted); font-size: 10px; }

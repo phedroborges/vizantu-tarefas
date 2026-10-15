@@ -11,6 +11,7 @@ import { TaskModal } from "@/components/task-modal";
 import { Button, Card, Count, Progress, Segmented, Tag } from "@/components/vz";
 import { planStageLabel, planStageTone } from "@/lib/approval-workflow";
 import { formatDueDate, overdueDays } from "@/lib/dates";
+import { monthLabel, monthlyPlanTitle } from "@/lib/plan-month";
 import { QUEUE_SCOPES, groupByFormat, inQueueScope, planProgress, queueSummary, type QueueScope } from "@/lib/plan-queue";
 import { networkError, responseError } from "@/lib/request-error";
 import { PLAN_KINDS } from "@/lib/types";
@@ -208,7 +209,7 @@ function ClientQueue({
       <li key={plan.id} className="pq-plan">
         <Link href={`/planos/${plan.id}`} className="pq-plan__main">
           <strong>{plan.title}</strong>
-          <span>{KIND_LABEL[plan.kind]}{progress.total ? ` · ${progress.done} de ${plural(progress.total, "item finalizado", "itens finalizados")}` : plan.kind === "presentation" ? "" : " · sem itens ainda"}</span>
+          <span>{plan.periodMonth ? `Plano mensal · ${monthLabel(plan.periodMonth)}` : plan.kind === "content" ? "Campanha" : KIND_LABEL[plan.kind]}{progress.total ? ` · ${progress.done} de ${plural(progress.total, "item finalizado", "itens finalizados")}` : plan.kind === "presentation" ? "" : " · sem itens ainda"}</span>
           {progress.total ? <Progress value={progress.done} total={progress.total} thin /> : null}
         </Link>
         <div className="pq-plan__side">
@@ -348,16 +349,22 @@ function ClientQueue({
 function NewPlanDialog({ project, onClose, onCreated }: { project: Project; onClose: () => void; onCreated: (plan: Plan) => void }) {
   const [title, setTitle] = useState("");
   const [kind, setKind] = useState<PlanKind>("content");
+  // Conteúdo é, por padrão, o plano do mês: o título sai sozinho e a data de
+  // cada conteúdo decide em que plano ele fica. Campanha tem nome próprio.
+  const [monthly, setMonthly] = useState(true);
+  const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const isMonthly = kind === "content" && monthly;
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!title.trim()) return setError("Informe o título do plano.");
+    if (isMonthly && !month) return setError("Escolha o mês do plano.");
+    if (!isMonthly && !title.trim()) return setError("Informe o título do plano.");
     setError("");
     setSaving(true);
     try {
-      const response = await fetch("/api/plans", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title, projectId: project.id, kind }) });
+      const response = await fetch("/api/plans", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: isMonthly ? monthlyPlanTitle(project.name, month) : title, projectId: project.id, kind, periodMonth: isMonthly ? month : undefined }) });
       const result = await response.json();
       if (!response.ok) return setError(result.error || "Não foi possível criar o plano.");
       onCreated(result.plan);
@@ -378,13 +385,25 @@ function NewPlanDialog({ project, onClose, onCreated }: { project: Project; onCl
         </div>
         <div className="vz-modal__body pq-form">
           {error ? <div className="form-message" role="alert">{error}</div> : null}
-          <label className="vz-field"><span className="vz-label">Título do plano</span><input className="vz-input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ex.: Novembro/2026 — Conteúdo orgânico" maxLength={140} required autoFocus /></label>
           <label className="vz-field"><span className="vz-label">Tipo</span>
             <select className="vz-select" value={kind} onChange={(event) => setKind(event.target.value as PlanKind)}>
               {PLAN_KINDS.filter((item) => item.value !== "brand").map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}
             </select>
             <span className="vz-hint">Os conteúdos e pacotes você adiciona dentro do plano.</span>
           </label>
+          {kind === "content" ? (
+            <label className="vz-field"><span className="vz-label">Plano</span>
+              <select className="vz-select" value={monthly ? "mensal" : "campanha"} onChange={(event) => setMonthly(event.target.value === "mensal")}>
+                <option value="mensal">Mensal — o conteúdo entra pelo mês da data de entrega</option>
+                <option value="campanha">Campanha — entrega à parte, com nome próprio</option>
+              </select>
+            </label>
+          ) : null}
+          {isMonthly ? (
+            <label className="vz-field"><span className="vz-label">Mês</span><input className="vz-input" type="month" value={month} onChange={(event) => setMonth(event.target.value)} required /><span className="vz-hint">O plano se chamará “{monthlyPlanTitle(project.name, month || "2026-01")}”. Os conteúdos com data neste mês entram nele sozinhos.</span></label>
+          ) : (
+            <label className="vz-field"><span className="vz-label">Título do plano</span><input className="vz-input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ex.: Campanha de Black Friday" maxLength={140} required autoFocus /></label>
+          )}
         </div>
         <div className="vz-modal__foot"><Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button><Button type="submit" variant="primary" disabled={saving}><Plus size={14} />{saving ? "Criando…" : "Criar plano"}</Button></div>
       </form>
