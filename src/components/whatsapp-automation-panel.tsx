@@ -17,13 +17,16 @@ import { DEFAULT_TEMPLATES, MESSAGE_KINDS, MESSAGE_VARIABLES, messageVariables, 
 const MAX_VARIATIONS = 5;
 const HOURS = Array.from({ length: 15 }, (_, index) => index + 6);
 
+const MONTH_PLAN = { planId: "mes", planName: "Plano de Outubro de 2026", planLink: "https://tarefas.metricz.com.br/c/…?plan=…" };
+const CAMPAIGN_PLAN = { planId: "campanha", planName: "Black Friday", planLink: "https://tarefas.metricz.com.br/c/…?plan=…" };
 const FEW: WaitingItem[] = [
-  { name: "Como começar na viola", stage: "text", format: "Carrossel", dueDate: "2026-10-16", caption: "Quer aprender viola e não sabe por onde começar? Salva esse post e chama no direct.", reference: "https://instagram.com/p/exemplo", materialLink: "https://drive.google.com/drive/folders/exemplo" },
-  { name: "Porque meu carro é branco", stage: "text", format: "Reels" },
+  { name: "Como começar na viola", stage: "text", format: "Carrossel", dueDate: "2026-10-16", caption: "Quer aprender viola e não sabe por onde começar? Salva esse post e chama no direct.", reference: "https://instagram.com/p/exemplo", materialLink: "https://drive.google.com/drive/folders/exemplo", ...MONTH_PLAN },
+  { name: "Porque meu carro é branco", stage: "text", format: "Reels", ...MONTH_PLAN },
+  { name: "Esquenta da Black", stage: "text", format: "Carrossel", ...CAMPAIGN_PLAN },
 ];
 const MANY: WaitingItem[] = [
-  ...Array.from({ length: 10 }, (_, index): WaitingItem => ({ name: `Conteúdo ${index + 1}`, stage: "text", format: "Carrossel" })),
-  ...Array.from({ length: 3 }, (_, index): WaitingItem => ({ name: `Criativo ${index + 1}`, stage: "creative", format: "Reels" })),
+  ...Array.from({ length: 10 }, (_, index): WaitingItem => ({ name: `Conteúdo ${index + 1}`, stage: "text", format: "Carrossel", ...MONTH_PLAN })),
+  ...Array.from({ length: 3 }, (_, index): WaitingItem => ({ name: `Criativo ${index + 1}`, stage: "creative", format: "Reels", ...CAMPAIGN_PLAN })),
 ];
 
 export function WhatsappAutomationPanel({ initialSettings, configured }: { initialSettings: AutomationSettings; configured: boolean }) {

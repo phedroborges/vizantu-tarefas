@@ -19,6 +19,11 @@ export type WaitingItem = {
   reference?: string;
   /** O link do material (Drive), quando o criativo já existe. */
   materialLink?: string;
+  /** O plano do conteúdo, com o nome que o cliente vê no portal ("Plano de
+   * Outubro de 2026", "Black Friday"), e o link que abre o portal nele. */
+  planId?: string;
+  planName?: string;
+  planLink?: string;
 };
 
 export type MessageKind = "content" | "standalone" | "approval" | "reminder" | "last_day" | "auto_approved";
@@ -34,8 +39,9 @@ export const MESSAGE_KINDS: { kind: MessageKind; label: string; when: string }[]
 
 export const MESSAGE_VARIABLES: { name: string; meaning: string }[] = [
   { name: "resumo", meaning: "Quanto há para aprovar. Ex.: 4 conteúdos para aprovar o texto" },
-  { name: "lista", meaning: "Os conteúdos, um por linha, quando são menos de 5; acima disso, só as quantidades" },
-  { name: "link", meaning: "Onde o cliente aprova. Na mensagem de um conteúdo, abre o portal direto nele; nas outras, abre o portal" },
+  { name: "lista", meaning: "Os conteúdos separados por plano, um por linha quando são menos de 5; acima disso, só as quantidades. Com mais de um plano, cada um leva o próprio link" },
+  { name: "link", meaning: "Onde o cliente aprova. Na mensagem de um conteúdo, abre o portal direto nele; com um plano só, abre o portal nesse plano; com vários, abre o portal" },
+  { name: "plano", meaning: "Em “Conteúdo para aprovar”: o plano do conteúdo. Ex.: Plano de Outubro de 2026" },
   { name: "link_material", meaning: "Em “Conteúdo para aprovar”: o link do material (Drive), quando o criativo já existe" },
   { name: "prazo", meaning: "A data limite. Ex.: 14/10" },
   { name: "dias_restantes", meaning: "Quanto falta para o prazo. Ex.: 3 dias" },
@@ -52,8 +58,8 @@ export const MESSAGE_VARIABLES: { name: string; meaning: string }[] = [
 
 export const DEFAULT_TEMPLATES: Record<MessageKind, string[]> = {
   content: [
-    "👁️ *Conteúdo novo para aprovar!*\n\n*{{titulo}}*\n🎬 Formato: {{formato}}\n📅 Publicação: {{data_publicacao}}\n⏳ Prazo para aprovar o {{etapa}}: *{{prazo}}*\n\n📝 Legenda: {{legenda}}\n\n🔗 Referência: {{referencia}}\n\n📂 Material: {{link_material}}\n\nAprove ou peça ajuste por aqui, em menos de 5 minutos:\n{{link}}",
-    "👁️ *Vizantu por aqui!* Tem {{etapa}} novo esperando vocês:\n\n*{{titulo}}* ({{formato}})\n📅 Vai ao ar em {{data_publicacao}}\n\n📝 Legenda: {{legenda}}\n\n🔗 Referência: {{referencia}}\n\n📂 Material: {{link_material}}\n\nÉ rapidinho: entra no link, lê e aprova ou pede ajuste.\n{{link}}\n\n⏳ Vocês têm até *{{prazo}}* para responder.",
+    "👁️ *Conteúdo novo para aprovar!*\n\n*{{titulo}}*\n📋 Plano: {{plano}}\n🎬 Formato: {{formato}}\n📅 Publicação: {{data_publicacao}}\n⏳ Prazo para aprovar o {{etapa}}: *{{prazo}}*\n\n📝 Legenda: {{legenda}}\n\n🔗 Referência: {{referencia}}\n\n📂 Material: {{link_material}}\n\nAprove ou peça ajuste por aqui, em menos de 5 minutos:\n{{link}}",
+    "👁️ *Vizantu por aqui!* Tem {{etapa}} novo esperando vocês:\n\n*{{titulo}}* ({{formato}})\n📋 {{plano}}\n📅 Vai ao ar em {{data_publicacao}}\n\n📝 Legenda: {{legenda}}\n\n🔗 Referência: {{referencia}}\n\n📂 Material: {{link_material}}\n\nÉ rapidinho: entra no link, lê e aprova ou pede ajuste.\n{{link}}\n\n⏳ Vocês têm até *{{prazo}}* para responder.",
   ],
   standalone: [
     "👁️ *Material novo para aprovar!*\n\n*{{titulo}}*\n🎬 Formato: {{formato}}\n📅 Publicação: {{data_publicacao}}\n\n📝 Legenda: {{legenda}}\n\n🔗 Referência: {{referencia}}\n\nConfira o material no link abaixo e responda aqui no grupo se está aprovado ou o que ajustar:\n{{link}}",
@@ -167,14 +173,33 @@ function summary(items: WaitingItem[]): string {
 // vira parede de texto no grupo, então ficam só as quantidades.
 const LIST_LIMIT = 5;
 
-function list(items: WaitingItem[]): string {
-  if (items.length < LIST_LIMIT) {
-    const mixed = new Set(items.map((item) => item.stage)).size > 1;
-    return items.map((item) => `• ${item.format ? `${item.format} - ` : ""}${item.name}${mixed ? ` (${item.stage === "creative" ? "criativo" : "texto"})` : ""}`).join("\n");
-  }
+function counts(items: WaitingItem[]): string[] {
   const text = items.filter((item) => item.stage === "text").length;
   const creative = items.length - text;
-  return [text ? `• *${plural(text, "texto", "textos")}* para revisar` : "", creative ? `• *${plural(creative, "criativo", "criativos")}* para revisar` : ""].filter(Boolean).join("\n");
+  return [text ? `• *${plural(text, "texto", "textos")}* para revisar` : "", creative ? `• *${plural(creative, "criativo", "criativos")}* para revisar` : ""].filter(Boolean);
+}
+
+/** Separa por plano: o cliente tem o plano do mês, o do mês seguinte e os de
+ * campanha ao mesmo tempo, e uma lista única não diz de qual cada conteúdo é.
+ * Com mais de um plano, cada um leva o link que abre o portal nele, porque o
+ * portal abre no plano do mês. O limite de nomes vale para a mensagem toda. */
+function list(items: WaitingItem[]): string {
+  const named = items.length < LIST_LIMIT;
+  const mixed = new Set(items.map((item) => item.stage)).size > 1;
+  const groups = new Map<string, WaitingItem[]>();
+  for (const item of items) {
+    const key = item.planName ? item.planId || item.planName : "";
+    groups.set(key, [...(groups.get(key) || []), item]);
+  }
+  const severalPlans = groups.size > 1;
+  return [...groups.values()].map((group) => {
+    const lines = named
+      ? group.map((item) => `• ${item.format ? `${item.format} - ` : ""}${item.name}${mixed ? ` (${item.stage === "creative" ? "criativo" : "texto"})` : ""}`)
+      : counts(group);
+    const plan = group[0].planName;
+    const planLink = severalPlans ? group[0].planLink : undefined;
+    return [plan ? `📋 *${plan}*` : "", ...lines, planLink ? `👉 ${planLink}` : ""].filter(Boolean).join("\n");
+  }).join("\n\n");
 }
 
 const dateLabel = (iso: string) => new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "America/Sao_Paulo" });
@@ -208,6 +233,7 @@ export function messageVariables(context: MessageContext): Record<string, string
   return {
     titulo: item?.name ?? "",
     formato: item?.format ?? "",
+    plano: item?.planName ?? "",
     etapa: item ? (item.stage === "creative" ? "criativo" : "texto") : "",
     data_publicacao: item?.dueDate ? dateLabel(`${item.dueDate.slice(0, 10)}T15:00:00.000Z`) : "",
     legenda: shorten(item?.caption, CAPTION_LIMIT),

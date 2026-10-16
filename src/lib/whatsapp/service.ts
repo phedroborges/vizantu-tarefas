@@ -12,6 +12,7 @@ import { AUTO_APPROVAL_REVIEWER } from "../approval-workflow";
 import { isoDateInSaoPaulo } from "../dates";
 import { parseDescription } from "../description-sections";
 import { horaEmSaoPaulo } from "../overdue-scheduler";
+import { isClientPlanAvailable, planDisplayName } from "../plan-month";
 import { submitPlanApprovalResponse } from "../storage";
 import { getSupabase } from "../supabase-client";
 import type { StatusHistoryEntry, TaskStatus } from "../types";
@@ -34,19 +35,38 @@ function unwrap<T>(result: { data: unknown; error: { message: string } | null })
 
 // ---------- O que cada cliente tem para aprovar ----------
 
-type Waiting = { taskId: string; name: string; stage: "text" | "creative"; since: number; format?: string; dueDate?: string; caption?: string; reference?: string; materialLink?: string };
+type Waiting = { taskId: string; name: string; stage: "text" | "creative"; since: number; format?: string; dueDate?: string; caption?: string; reference?: string; materialLink?: string; planId: string; planName: string; planLink?: string };
 
-/** Conteúdos de plano parados com o cliente, por projeto. */
+type PlanRow = { id: string; title: string; period_month: string | null; status: string | null; kind: string; source: string };
+
+// Na mensagem, os planos mensais vêm primeiro, do mês mais antigo ao mais
+// novo, e depois as campanhas.
+const planOrder = (plan: PlanRow) => plan.period_month ? `0${plan.period_month}` : `1${plan.title}`;
+
+/** Conteúdos de plano parados com o cliente, por projeto. Só conta o plano
+ * que o cliente vê no portal: plano de mês passado, arquivado, concluído ou de
+ * marca não aparece lá, e cobrar o que ele não consegue achar só confunde. */
 export async function pendingApprovalsByProject(): Promise<Map<string, Waiting[]>> {
   const db = getSupabase();
-  const rows = unwrap<{ id: string; project_id: string; name: string; status: TaskStatus; drive_link: string | null; due_date: string | null; description: string | null; format_tag_ids: string[] | null; status_history: StatusHistoryEntry[] | null; updated_at: string }[]>(
-    await db.from("tasks").select("id, project_id, name, status, drive_link, due_date, description, format_tag_ids, status_history, updated_at").not("plan_id", "is", null).in("status", ["aprovacao_copy", "para_aprovacao"]),
+  const rows = unwrap<{ id: string; project_id: string; plan_id: string; name: string; status: TaskStatus; drive_link: string | null; due_date: string | null; description: string | null; format_tag_ids: string[] | null; status_history: StatusHistoryEntry[] | null; updated_at: string }[]>(
+    await db.from("tasks").select("id, project_id, plan_id, name, status, drive_link, due_date, description, format_tag_ids, status_history, updated_at").not("plan_id", "is", null).in("status", ["aprovacao_copy", "para_aprovacao"]),
   );
+  const planIds = [...new Set(rows.map((row) => row.plan_id))];
+  const plans = new Map((planIds.length ? unwrap<PlanRow[]>(await db.from("plans").select("id, title, period_month, status, kind, source").in("id", planIds)) : [])
+    .filter((plan) => plan.source === "native" && isClientPlanAvailable({ periodMonth: plan.period_month, status: plan.status ?? undefined, kind: plan.kind }))
+    .map((plan): [string, PlanRow] => [plan.id, plan]));
+  rows.sort((a, b) => {
+    const planA = plans.get(a.plan_id), planB = plans.get(b.plan_id);
+    return (planA ? planOrder(planA) : "").localeCompare(planB ? planOrder(planB) : "") || a.plan_id.localeCompare(b.plan_id)
+      || (a.due_date || "9999-12-31").localeCompare(b.due_date || "9999-12-31") || a.name.localeCompare(b.name, "pt-BR");
+  });
   // O formato vai na frente do nome na mensagem: "Carrossel - Como começar".
   const formatIds = [...new Set(rows.flatMap((row) => row.format_tag_ids ?? []))];
   const formats = new Map(formatIds.length ? unwrap<{ id: string; label: string }[]>(await db.from("tags").select("id, label").eq("kind", "formato").in("id", formatIds)).map((tag): [string, string] => [tag.id, tag.label]) : []);
   const byProject = new Map<string, Waiting[]>();
   for (const row of rows) {
+    const plan = plans.get(row.plan_id);
+    if (!plan) continue;
     // Criativo sem link do material não tem o que o cliente revisar.
     if (row.status === "para_aprovacao" && !row.drive_link?.trim()) continue;
     const entered = (row.status_history ?? []).filter((entry) => entry.status === row.status).map((entry) => new Date(entry.enteredAt).getTime()).filter(Number.isFinite);
@@ -57,9 +77,17 @@ export async function pendingApprovalsByProject(): Promise<Map<string, Waiting[]
       taskId: row.id, name: row.name, stage: row.status === "para_aprovacao" ? "creative" : "text", since, format,
       dueDate: row.due_date || undefined, caption: sections.legenda || undefined, reference: sections.referencia || undefined,
       materialLink: row.status === "para_aprovacao" ? row.drive_link?.trim() || undefined : undefined,
+      planId: plan.id, planName: planDisplayName({ title: plan.title, periodMonth: plan.period_month }),
     }]);
   }
   return byProject;
+}
+
+/** Cada conteúdo ganha o link do portal aberto no plano dele, e a mensagem
+ * leva o link do plano quando todos são do mesmo; com vários, o do portal. */
+function withPlanLinks<T extends Waiting>(items: T[], portal: string): { items: T[]; link: string } {
+  const linked = items.map((item) => ({ ...item, planLink: `${portal}?plan=${item.planId}` }));
+  return { items: linked, link: new Set(items.map((item) => item.planId)).size === 1 ? linked[0].planLink : portal };
 }
 
 async function clientName(projectId: string): Promise<string | undefined> {
@@ -159,8 +187,9 @@ async function deliver(row: MessageRow): Promise<void> {
     // Um conteúdo só vai com os detalhes dele; vários viram um resumo.
     // O link de um conteúdo só abre o portal direto nele, pronto para aprovar.
     const single = unnotified.length === 1 ? unnotified[0] : undefined;
+    const byPlan = withPlanLinks(unnotified, link);
     body = composeMessage(single ? "content" : "approval", automation, {
-      items: unnotified, link: single ? `${link}?item=${single.taskId}` : link, clientName: await clientName(row.project_id), deadlineDays: days,
+      items: byPlan.items, link: single ? `${link}?item=${single.taskId}` : byPlan.link, clientName: await clientName(row.project_id), deadlineDays: days,
       deadlineIso: new Date(Date.now() + days * DAY).toISOString(), daysLeft: days,
     });
     // Libera a chave para o próximo aviso deste cliente.
@@ -317,7 +346,8 @@ export async function runDailyApprovalRoutine(now = new Date()): Promise<void> {
     const daysWaiting = Math.floor((now.getTime() - oldest.since) / DAY);
     const step = reminderStep(daysWaiting, deadlineDays, automation.reminderEveryDays);
     if (!step) continue;
-    const body = composeMessage(step, automation, { items: waiting, link, clientName: name, deadlineDays, deadlineIso: new Date(oldest.since + deadlineMs).toISOString(), daysLeft: deadlineDays - daysWaiting });
+    const byPlan = withPlanLinks(waiting, link);
+    const body = composeMessage(step, automation, { items: byPlan.items, link: byPlan.link, clientName: name, deadlineDays, deadlineIso: new Date(oldest.since + deadlineMs).toISOString(), daysLeft: deadlineDays - daysWaiting });
     await enqueue({ projectId, kind: step, groupId: settings.whatsappGroupId, body, dedupeKey: step === "last_day" ? `last_day:${projectId}:${oldest.taskId}:${oldest.since}` : `reminder:${projectId}:${today}` });
   }
 }

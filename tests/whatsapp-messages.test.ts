@@ -84,6 +84,33 @@ describe("mensagens de aprovação no grupo do cliente", () => {
     expect(variables.resumo).toBe("1 texto e 1 criativo para aprovar");
   });
 
+  // O cliente tem o plano do mês, o do mês seguinte e os de campanha ao mesmo
+  // tempo: a lista diz de qual plano é cada conteúdo.
+  it("separa os conteúdos por plano, com o link de cada um quando são vários", () => {
+    const outubro = { planId: "p1", planName: "Plano de Outubro de 2026", planLink: `${link}?plan=p1` };
+    const black = { planId: "p2", planName: "Black Friday", planLink: `${link}?plan=p2` };
+    const variables = messageVariables({ items: [{ ...texto("A"), ...outubro }, { ...criativo("B"), ...outubro }, { ...texto("C"), ...black }], link, deadlineDays: 7 });
+    expect(variables.lista).toBe(`📋 *Plano de Outubro de 2026*\n• Carrossel - A (texto)\n• Reels - B (criativo)\n👉 ${link}?plan=p1\n\n📋 *Black Friday*\n• Carrossel - C (texto)\n👉 ${link}?plan=p2`);
+  });
+
+  it("com um plano só, diz qual é e deixa o link para a mensagem", () => {
+    const outubro = { planId: "p1", planName: "Plano de Outubro de 2026", planLink: `${link}?plan=p1` };
+    expect(messageVariables({ items: [{ ...texto("A"), ...outubro }, { ...texto("B"), ...outubro }], link, deadlineDays: 7 }).lista).toBe("📋 *Plano de Outubro de 2026*\n• Carrossel - A\n• Carrossel - B");
+  });
+
+  it("a partir de cinco, as quantidades também vêm por plano", () => {
+    const outubro = { planId: "p1", planName: "Plano de Outubro de 2026", planLink: `${link}?plan=p1` };
+    const black = { planId: "p2", planName: "Black Friday", planLink: `${link}?plan=p2` };
+    const items = [...Array.from({ length: 4 }, (_, index) => ({ ...texto(`T${index}`), ...outubro })), { ...criativo("C"), ...outubro }, ...Array.from({ length: 2 }, (_, index) => ({ ...texto(`B${index}`), ...black }))];
+    expect(messageVariables({ items, link, deadlineDays: 7 }).lista).toBe(`📋 *Plano de Outubro de 2026*\n• *4 textos* para revisar\n• *1 criativo* para revisar\n👉 ${link}?plan=p1\n\n📋 *Black Friday*\n• *2 textos* para revisar\n👉 ${link}?plan=p2`);
+  });
+
+  it("a mensagem de um conteúdo diz de qual plano ele é", () => {
+    const text = composeMessage("content", DEFAULT_AUTOMATION, { items: [{ ...texto("A"), planId: "p2", planName: "Black Friday" }], link, deadlineDays: 7 }, first);
+    expect(text).toContain("📋 Plano: Black Friday");
+    expect(composeMessage("content", DEFAULT_AUTOMATION, { items: [texto("A")], link, deadlineDays: 7 }, first)).not.toContain("Plano:");
+  });
+
   it("concorda o singular e funciona sem formato", () => {
     const variables = messageVariables({ items: [{ name: "Sem formato", stage: "text" }], link, deadlineDays: 1, daysLeft: 1 });
     expect(variables).toMatchObject({ resumo: "1 conteúdo para aprovar o texto", lista: "• Sem formato", dias_restantes: "1 dia", dias_prazo: "1 dia" });
