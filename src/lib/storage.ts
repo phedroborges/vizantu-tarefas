@@ -2,7 +2,7 @@ import { queueApprovalNotice, queueStandaloneNotice } from "./whatsapp/queue";
 import { buildApprovalHistory, type ApprovalHistoryEntry } from "./approval-history";
 import { organizeClientPackages, type ClientPackageAssignment } from "./client-packages";
 import { currentMonthKey, moveMonth, todayIso } from "./dates";
-import { canReviewItem, derivePlanStage, formatRequiresCapture, nextApprovalReviewVersion, settleApproval, taskStatusAfterClientDecision } from "./approval-workflow";
+import { AUTO_APPROVAL_REVIEWER, approvalDeadlineReached, approvalWaitingSince, canReviewItem, derivePlanStage, formatRequiresCapture, nextApprovalReviewVersion, settleApproval, taskStatusAfterClientDecision } from "./approval-workflow";
 import { mergePreferences, normalizePreferences, type MemberPreferences } from "./preferences";
 import { inheritsCaptureEditor } from "./assignee-inheritance";
 import { parseDescription } from "./description-sections";
@@ -1404,13 +1404,21 @@ function planName(plan?: { title: string; period_month?: string | null }) {
 }
 
 export async function clientPlanView(projectId: string, requestedPlanId?: string, requestedItemId?: string) {
+  // Abrir/atualizar o portal também fecha imediatamente qualquer rodada cujo
+  // prazo venceu. A rotina de fundo faz o mesmo sem depender de o cliente
+  // entrar, mas esta chamada evita mostrar um estado velho entre varreduras.
+  await approveExpiredPlanItems(new Date(), projectId);
   await ensureMonthlyPlans([projectId]);
   const plans = (await listPlans(projectId)).filter(p => p.source === "native" && isClientPlanAvailable(p));
+  const communication = unwrap(
+    await getSupabase().from("project_communication").select("approval_deadline_days").eq("project_id", projectId).maybeSingle(),
+  ) as { approval_deadline_days: number } | null;
   const linkedTask = !requestedPlanId && requestedItemId ? unwrap(await getSupabase().from("tasks").select("plan_id").eq("id", requestedItemId).eq("project_id", projectId).maybeSingle()) as { plan_id: string } | null : null;
   const selected = plans.find(p => p.id === (requestedPlanId || linkedTask?.plan_id)) || plans.find(p => p.periodMonth === currentMonthKey());
   return {
     plans: plans.map(p => ({ id: p.id, title: planDisplayName(p), period: p.periodMonth || null })),
     selectedPlanId: selected?.id || "",
+    approvalDeadlineDays: communication?.approval_deadline_days ?? 7,
     items: selected ? await listProjectPlanItems(projectId, selected.id) : [],
   };
 }
@@ -1723,6 +1731,62 @@ export async function submitPlanApprovalResponse(input: {
   );
 
   return { taskId: input.taskId, status: aggregated, reviewVersion, taskStatus: nextTaskStatus, updatedAt: nowIso() };
+}
+
+/** Encerra rodadas que passaram do prazo do cliente. Esta regra não depende
+ * de WhatsApp, grupo configurado, lembrete ou horário de envio: comunicação
+ * pode falhar sem deixar o fluxo operacional preso para sempre. */
+export async function approveExpiredPlanItems(now = new Date(), projectId?: string): Promise<number> {
+  const db = getSupabase();
+  let query = db
+    .from("tasks")
+    .select("id, project_id, status, status_history, updated_at")
+    .not("plan_id", "is", null)
+    .in("status", ["aprovacao_copy", "para_aprovacao"]);
+  if (projectId) query = query.eq("project_id", projectId);
+  const tasks = unwrap(await query) as {
+    id: string;
+    project_id: string;
+    status: TaskStatus;
+    status_history: StatusHistoryEntry[] | null;
+    updated_at: string;
+  }[];
+  if (!tasks.length) return 0;
+
+  const taskIds = tasks.map((task) => task.id);
+  const approvals = unwrap(
+    await db.from("plan_item_approvals").select("task_id, status, review_version").in("task_id", taskIds),
+  ) as { task_id: string; status: PlanApprovalStatus; review_version: number }[];
+  const approvalByTask = new Map(approvals.map((approval) => [approval.task_id, approval]));
+  const projectIds = [...new Set(tasks.map((task) => task.project_id))];
+  const communicationRows = unwrap(
+    await db.from("project_communication").select("project_id, approval_deadline_days").in("project_id", projectIds),
+  ) as { project_id: string; approval_deadline_days: number }[];
+  const communication = new Map(communicationRows.map((setting) => [setting.project_id, setting.approval_deadline_days]));
+
+  let approved = 0;
+  for (const task of tasks) {
+    const current = approvalByTask.get(task.id);
+    if (current && current.status !== "pending") continue;
+    const since = approvalWaitingSince({ status: task.status, statusHistory: task.status_history, updatedAt: task.updated_at });
+    const days = communication.get(task.project_id) ?? 7;
+    if (!approvalDeadlineReached(since, days, now.getTime())) continue;
+    try {
+      await submitPlanApprovalResponse({
+        projectId: task.project_id,
+        taskId: task.id,
+        reviewerName: AUTO_APPROVAL_REVIEWER,
+        status: "approved",
+        reviewVersion: current?.review_version ?? (task.status === "para_aprovacao" ? 100 : 1),
+      });
+      approved += 1;
+    } catch (error) {
+      // Outra instância pode ter encerrado a mesma rodada entre a leitura e a
+      // escrita. Um item isolado não impede os demais de seguirem.
+      if (!(error instanceof ApprovalResponseError)) throw error;
+    }
+  }
+  return approved;
 }
 
 type PlanApprovalEventRow = {

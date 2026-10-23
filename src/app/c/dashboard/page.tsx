@@ -41,6 +41,7 @@ export default async function ClientDashboardPage({ searchParams }: { searchPara
       initialItems={view.items}
       initialPlans={view.plans}
       initialPlanId={view.selectedPlanId}
+      approvalDeadlineDays={view.approvalDeadlineDays}
       initialItemId={initialItemId}
       events={events.map((e: { id: string; title: string; eventDate: string; eventType: string }) => ({ id: e.id, title: e.title, date: e.eventDate, eventType: e.eventType }))}
       initialScore={scores[0]?.score ?? null}

@@ -32,6 +32,11 @@ describe("selo da aprovação depois de um pedido", () => {
     expect(approvalDisplay({ approvalStatus: "pending", reviewVersion: 2, taskStatus: "aprovacao_copy", hadRequest: false })).toBe("pending");
   });
 
+  it("mostra como liberado o texto que já seguiu para criação", () => {
+    expect(approvalDisplay({ approvalStatus: "pending", reviewVersion: 1, taskStatus: "pronto_para_criacao", hadRequest: false })).toBe("released");
+    expect(approvalDisplay({ approvalStatus: "pending", reviewVersion: 1, taskStatus: "em_criacao", hadRequest: false })).toBe("released");
+  });
+
   it("na criação, voltar para produzir ainda é ajuste em andamento", () => {
     const criacao = { approvalStatus: "changes_requested" as const, reviewVersion: 100, hadRequest: true };
     expect(approvalDisplay({ ...criacao, taskStatus: "em_criacao" })).toBe("changes_requested");

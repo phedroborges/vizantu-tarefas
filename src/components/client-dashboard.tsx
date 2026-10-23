@@ -41,7 +41,7 @@ export type DashboardItem = Partial<ClientPackageAssignment> & {
 
 export type DashboardEvent = { id: string; title: string; date: string; eventType: string };
 
-const STATUS_LABEL: Record<string, string> = { pending: "pendente", approved: "aprovado", changes_requested: "em ajuste", rejected: "reprovado", adjusted: "ajuste aplicado", resent: "nova versão para revisar" };
+const STATUS_LABEL: Record<string, string> = { pending: "pendente", approved: "aprovado", changes_requested: "em ajuste", rejected: "reprovado", adjusted: "ajuste aplicado", resent: "nova versão para revisar", released: "liberado", problem: "em resolução" };
 const REVIEWER_KEY = "vizantu-client-reviewer-name";
 
 // O nome do revisor vive no localStorage, que é externo ao React. Lê-lo no
@@ -59,6 +59,27 @@ const displayStatus = (item: DashboardItem) => approvalDisplay({
   approvalStatus: item.approvalStatus, reviewVersion: item.reviewVersion, taskStatus: item.status,
   hadRequest: (item.history || []).some((entry) => entry.action !== "approved" && (entry.stage === "creative") === isCreativeStage(item)),
 });
+
+const isProblem = (item: DashboardItem) => item.status === "problema";
+const isResolvedForClient = (item: DashboardItem) => !isProblem(item) && displayStatus(item) !== "pending" && displayStatus(item) !== "resent";
+
+function ApprovalStatusBlock({ item }: { item: DashboardItem }) {
+  const status = displayStatus(item);
+  const stage = isCreativeStage(item) ? "Criativo" : "Texto";
+  const waiting = status === "pending" || status === "resent";
+  const description = status === "pending" ? "Aguardando sua resposta"
+    : status === "resent" ? "Nova versão para conferir"
+      : status === "released" ? "A equipe já pode criar"
+        : status === "approved" ? "Etapa concluída"
+          : status === "adjusted" ? "Retorno aplicado pela equipe"
+            : status === "changes_requested" ? "A equipe está ajustando"
+              : "Retorno registrado";
+  return <span className={`cd-sequence-stage status-${status}`}>
+    <span className="cd-sequence-status-icon" aria-hidden="true">{waiting ? <Clock3 size={18} /> : status === "rejected" ? <X size={18} /> : <CheckCircle2 size={18} />}</span>
+    <span className="cd-sequence-status-copy"><small>Aprovação do {stage.toLocaleLowerCase("pt-BR")}</small><strong className={`cd-pill status-${status}`}>{stage}: {STATUS_LABEL[status]}</strong><em>{description}</em></span>
+    {item.reference ? <small className="cd-sequence-reference"><Link2 size={10} /> referência</small> : null}
+  </span>;
+}
 
 function ApprovalHistory({ entries }: { entries: ApprovalHistoryEntry[] }) {
   const requests = entries.filter((entry) => entry.action !== "approved");
@@ -124,6 +145,7 @@ export function ClientDashboard({
   initialItems,
   initialPlans,
   initialPlanId,
+  approvalDeadlineDays = 7,
   initialItemId,
   events,
   initialScore,
@@ -135,6 +157,7 @@ export function ClientDashboard({
   initialItems: DashboardItem[];
   initialPlans?: { id: string; title: string; period: string | null }[];
   initialPlanId?: string;
+  approvalDeadlineDays?: number;
   /** Conteúdo que já abre na tela, quando o cliente veio pelo link de um aviso. */
   initialItemId?: string;
   events: DashboardEvent[];
@@ -185,8 +208,8 @@ export function ClientDashboard({
   // Guarda só o id, não o objeto — assim o modal sempre reflete o item mais
   // recente de `items` depois de um approve/ajuste/reprova, em vez de ficar
   // preso a um snapshot de antes da resposta chegar.
-  const [activeItemId, setActiveItemId] = useState<string | null>(() => initialItems.some((item) => item.id === initialItemId) ? initialItemId! : null);
-  const activeItem = items.find((i) => i.id === activeItemId) || null;
+  const [activeItemId, setActiveItemId] = useState<string | null>(() => initialItems.some((item) => item.id === initialItemId && !isProblem(item)) ? initialItemId! : null);
+  const activeItem = items.find((i) => i.id === activeItemId && !isProblem(i)) || null;
   const [month, setMonth] = useState(() => new Date(currentMonth + "-01T12:00:00"));
   const [selectedMobileDate, setSelectedMobileDate] = useState<string | null>(null);
   // A identificação é pedida na ENTRADA, não na hora de decidir. Antes disso o
@@ -240,12 +263,12 @@ export function ClientDashboard({
   // A navegação sempre mostra um plano por vez.
   const activePlanFilter = planOptions.some((plan) => plan.id === planFilter) ? planFilter : planOptions.find(p => p.period === currentMonth)?.id || (availablePlans ? "" : planOptions[0]?.id || "");
   const visibleGroups = packageGroups.filter((group) => group.planId === activePlanFilter);
-  const reviewedCount = items.filter(isReviewed).length;
-  const approvedInStageCount = items.filter((item) => item.approvalStatus === "approved").length;
-  const reviewedRate = items.length ? Math.round((reviewedCount / items.length) * 100) : 0;
-  const approvalRate = items.length ? Math.round((approvedInStageCount / items.length) * 100) : 0;
-  const adjustmentCount = items.filter((i) => i.approvalStatus === "changes_requested" || i.approvalStatus === "rejected").length;
-  const pendingCount = items.filter(canReviewItem).length;
+  const approvalItems = items.filter((item) => !isProblem(item));
+  const reviewedCount = approvalItems.filter(isResolvedForClient).length;
+  const approvedInStageCount = approvalItems.filter((item) => ["approved", "released", "adjusted"].includes(displayStatus(item))).length;
+  const reviewedRate = approvalItems.length ? Math.round((reviewedCount / approvalItems.length) * 100) : 0;
+  const pendingCount = approvalItems.filter(canReviewItem).length;
+  const preparingCount = Math.max(0, approvalItems.length - reviewedCount - pendingCount);
   const lastDeliveries = useMemo(
     () => [...items].filter((i) => isCreativeStage(i) && i.approvalStatus === "approved" && (i.status === "aprovado" || i.status === "finalizado")).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 3),
     [items],
@@ -255,7 +278,7 @@ export function ClientDashboard({
     const map = new Map<string, { label: string; kind: "content" | "event" | "capture" | "deadline"; itemId?: string; format?: string | null; approvalStatus?: string }[]>();
     for (const item of orderedItems) {
       if (!item.dueDate) continue;
-      (map.get(item.dueDate) || map.set(item.dueDate, []).get(item.dueDate)!).push({ label: item.name, kind: "content", itemId: item.id, format: item.formatLabel, approvalStatus: item.approvalStatus });
+      (map.get(item.dueDate) || map.set(item.dueDate, []).get(item.dueDate)!).push({ label: item.name, kind: "content", itemId: isProblem(item) ? undefined : item.id, format: item.formatLabel, approvalStatus: isProblem(item) ? "problem" : displayStatus(item) });
     }
     const selectedPeriod = planOptions.find(p => p.id === activePlanFilter)?.period;
     for (const ev of events) {
@@ -340,9 +363,9 @@ export function ClientDashboard({
           <div className="cd-card">
             <h3>Visão geral</h3>
             <div className="cd-status-overview">
-              <span><CheckCircle2 size={16} /> <strong>{reviewedCount}</strong> revisados</span>
-              <span><Clock3 size={16} /> <strong>{pendingCount}</strong> pendentes</span>
-              <span><MessageCircleMore size={16} /> <strong>{adjustmentCount}</strong> ajustes/reprovações</span>
+              <span><Clock3 size={16} /> <strong>{pendingCount}</strong> aguardando você</span>
+              <span><CheckCircle2 size={16} /> <strong>{reviewedCount}</strong> resolvidos</span>
+              <span><MessageCircleMore size={16} /> <strong>{preparingCount}</strong> em preparação</span>
             </div>
           </div>
           <div className="cd-card">
@@ -381,30 +404,31 @@ export function ClientDashboard({
           </div>
 
           <div className="cd-approval-bar-wrap">
+            <div className="cd-deadline-note"><CalendarClock size={17} /><span><strong>Prazo de aprovação: {approvalDeadlineDays} {approvalDeadlineDays === 1 ? "dia" : "dias"}.</strong> Ao terminar, o que estiver sem resposta é liberado automaticamente para a próxima etapa.</span></div>
             <div className="cd-approval-bar-label">
-              <strong>{reviewedRate}% revisado</strong>
-              <span>{reviewedCount} de {items.length} analisados</span>
+              <strong>{reviewedRate}% resolvido</strong>
+              <span>{reviewedCount} de {approvalItems.length} sem pendência</span>
             </div>
             <div className="cd-approval-bar-track"><div className="cd-approval-bar-fill" style={{ width: `${reviewedRate}%` }} /></div>
-            <div className="cd-stage-progress"><span>Aprovação: {approvalRate}%</span><span>{approvedInStageCount} aprovados · {reviewedCount - approvedInStageCount} com retorno</span></div>
-            {reviewedRate === 100 && items.length ? <div className="cd-review-complete"><CheckCircle2 size={16} /><span><strong>Plano 100% revisado.</strong> A equipe já pode seguir com os aprovados e preparar os ajustes necessários.</span></div> : null}
+            <div className="cd-stage-progress"><span>{pendingCount ? `${pendingCount} aguardando sua resposta` : "Nenhuma resposta pendente"}</span><span>{approvedInStageCount} liberados ou aprovados</span></div>
+            {reviewedRate === 100 && approvalItems.length ? <div className="cd-review-complete"><CheckCircle2 size={16} /><span><strong>Plano sem pendências de aprovação.</strong> A equipe já pode seguir com a produção.</span></div> : null}
           </div>
 
 
 
           <div className="cd-package-list">
-            {visibleGroups.map((group) => (
+            {visibleGroups.map((group) => ({ ...group, items: group.items.filter((item) => !isProblem(item)) })).filter((group) => group.items.length).map((group) => (
               <section className="cd-group" key={group.id} aria-label={group.label}>
                 <header className="cd-group-head">
                   <div>{group.planTitle ? <span className="cd-eyebrow">{group.planTitle}</span> : null}<h3>{group.label}</h3>
                     <p className="cd-package-date">{group.date ? `${group.kind === "capture" ? "Captação" : "Criação"}: ${new Date(`${group.date}T12:00:00`).toLocaleDateString("pt-BR")}` : group.kind === "capture" ? "Data da captação a definir" : "Produção de conteúdo"}</p>
                   </div>
-                  <span>{group.items.length} conteúdos · {group.items.filter(isReviewed).length} revisados</span>
+                  <span>{group.items.length} conteúdos · {group.items.filter(isResolvedForClient).length} resolvidos</span>
                 </header>
                 {group.items.some((item) => item.clientPackageWarning && item.clientPackageWarning !== "Data da captação a definir.") ? <div className="cd-package-notices">{[...new Set(group.items.map((item) => item.clientPackageWarning).filter((warning) => warning && warning !== "Data da captação a definir."))].map((warning) => <p key={warning}><AlertCircle size={14} />{warning}</p>)}</div> : null}
                 <div className="cd-package-items">
             {group.items.map((item, index) => (
-              <button type="button" className="cd-sequence-item" key={item.id} onClick={() => setActiveItemId(item.id)}>
+              <button type="button" className={`cd-sequence-item status-${displayStatus(item)}`} key={item.id} onClick={() => setActiveItemId(item.id)}>
                 <span className="cd-item-index">{String(index + 1).padStart(2, "0")}</span>
                 <span className="cd-sequence-date">{item.dueDate ? new Date(`${item.dueDate}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }) : "Sem data"}</span>
                 <span className="cd-group-item-main">
@@ -415,13 +439,13 @@ export function ClientDashboard({
                     {item.categoryLabel ? <Tag>{item.categoryLabel}</Tag> : null}
                   </span>
                 </span>
-                <span className="cd-sequence-stage"><span className={`cd-pill status-${displayStatus(item)}`}>{isCreativeStage(item) ? "Criativo" : "Texto"}: {STATUS_LABEL[displayStatus(item)]}</span>{item.reference ? <small><Link2 size={10} /> referência</small> : null}</span>
+                <ApprovalStatusBlock item={item} />
               </button>
             ))}
                 </div>
               </section>
             ))}
-            {!orderedItems.length ? <div className="cd-empty-state"><CheckCircle2 size={26} /><strong>Tudo certo por aqui</strong><span>Nenhum conteúdo aguardando revisão.</span></div> : null}
+            {!approvalItems.length ? <div className="cd-empty-state"><CheckCircle2 size={26} /><strong>Tudo certo por aqui</strong><span>Nenhum conteúdo aguardando revisão.</span></div> : null}
           </div>
         </section>
 
@@ -474,7 +498,7 @@ export function ClientDashboard({
               return (
                 <div className={`vz-cal__day${muted ? " vz-cal__day--out" : ""}`} key={idx}><span className="vz-cal__daynum">{cell.date.getDate()}</span>
                   {dayItems.slice(0, 3).map((d, i) => (
-                    <button key={i} className={`vz-cal-card ${d.kind === "content" ? `vz-cal-card--${/carrossel/i.test(d.format || "") ? "blue" : /estát|imagem/i.test(d.format || "") ? "green" : "violet"}` : `cd-milestone-card cd-milestone-card--${d.kind}`}`} title={d.label} onClick={() => d.itemId && setActiveItemId(d.itemId)} disabled={!d.itemId}><div className="vz-cal-card__top">{d.kind === "content" ? <span className="vz-minitag vz-minitag--outline"><ContentIcon format={d.format} size={10} /> Publicação · {d.format || "formato não informado"}</span> : <span className="cd-milestone-label">{d.kind === "capture" ? <><Video size={11} /> Captação do pacote</> : d.kind === "deadline" ? <><CalendarClock size={11} /> Entrega do pacote</> : <><CalendarDays size={11} /> Marco do plano</>}</span>}</div><span className="vz-cal-card__title">{d.label}</span>{d.kind === "content" ? <span className={`vz-minitag vz-minitag--${d.approvalStatus === "approved" ? "green" : d.approvalStatus === "rejected" ? "red" : "blue"}`}>{STATUS_LABEL[d.approvalStatus || "pending"]}</span> : null}</button>
+                    <button key={i} className={`vz-cal-card ${d.kind === "content" ? `vz-cal-card--${/carrossel/i.test(d.format || "") ? "blue" : /estát|imagem/i.test(d.format || "") ? "green" : "violet"}` : `cd-milestone-card cd-milestone-card--${d.kind}`}`} title={d.label} onClick={() => d.itemId && setActiveItemId(d.itemId)} disabled={!d.itemId}><div className="vz-cal-card__top">{d.kind === "content" ? <span className="vz-minitag vz-minitag--outline"><ContentIcon format={d.format} size={10} /> Publicação · {d.format || "formato não informado"}</span> : <span className="cd-milestone-label">{d.kind === "capture" ? <><Video size={11} /> Captação do pacote</> : d.kind === "deadline" ? <><CalendarClock size={11} /> Entrega do pacote</> : <><CalendarDays size={11} /> Marco do plano</>}</span>}</div><span className="vz-cal-card__title">{d.label}</span>{d.kind === "content" ? <span className={`vz-minitag vz-minitag--${d.approvalStatus === "approved" || d.approvalStatus === "released" || d.approvalStatus === "adjusted" ? "green" : d.approvalStatus === "rejected" || d.approvalStatus === "problem" ? "red" : "blue"}`}>{STATUS_LABEL[d.approvalStatus || "pending"]}</span> : null}</button>
                   ))}
                 </div>
               );
@@ -627,7 +651,7 @@ function IdentificationGate({ onConfirm }: { onConfirm: (name: string) => void }
 
 type SectionKey = "direcionamento" | "conteudo" | "criativo" | "publicado";
 type SectionPill = { label: string; tone: string };
-const SECTION_STATE_LABEL: Record<string, string> = { approved: "Aprovado", changes_requested: "Em ajuste", rejected: "Reprovado", adjusted: "Ajuste aplicado", resent: "Nova versão" };
+const SECTION_STATE_LABEL: Record<string, string> = { approved: "Aprovado", changes_requested: "Em ajuste", rejected: "Reprovado", adjusted: "Ajuste aplicado", resent: "Nova versão", released: "Liberado" };
 
 function ApprovalModal({
   item,
@@ -691,7 +715,7 @@ function ApprovalModal({
   const sectionCards: { key: SectionKey; label: string; pill: SectionPill }[] = [
     { key: "direcionamento", label: "Direcionamento", pill: !parts.direcionamento ? { label: "Sem direcionamento", tone: "stage-locked" } : readDirection && textState === "pending" ? { label: "Lido", tone: "status-approved" } : textPill },
     { key: "conteudo", label: "Conteúdo", pill: textPill },
-    { key: "criativo", label: "Criativo", pill: creativeStage ? pill(displayStatus(item), reviewable, delivered ? "Concluído" : undefined) : { label: textState === "approved" ? "Em produção" : "Depois do texto", tone: "stage-locked" } },
+    { key: "criativo", label: "Criativo", pill: creativeStage ? delivered ? { label: "Concluído", tone: "status-approved" } : pill(displayStatus(item), reviewable) : { label: textState === "approved" ? "Em produção" : "Depois do texto", tone: "stage-locked" } },
     { key: "publicado", label: "Publicado", pill: item.status === "finalizado" ? { label: "Publicado", tone: "status-approved" } : { label: "Ainda não", tone: "stage-locked" } },
   ];
   function openSection(next: SectionKey) {

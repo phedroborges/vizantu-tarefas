@@ -112,6 +112,20 @@ describe("pacotes no painel do cliente", () => {
     await click(groups[1].querySelector(".cd-sequence-item"));
     expect(container.querySelector(".cd-modal")?.textContent || container.textContent).toContain("Vídeo posterior");
   });
+
+  it("retira conteúdo em Problema da fila de aprovação", async () => {
+    const problem = { ...creative, id: "problem", name: "Conteúdo bloqueado", status: "problema", approvalStatus: "pending" as const };
+    await act(async () => root.render(<ClientDashboard clientName="Cliente" roleTitle={null} city={null} instagramHandle={null} initialItems={[problem]} initialItemId={problem.id} events={[]} initialScore={null} />));
+    expect(container.querySelector(".cd-sequence-item")).toBeNull();
+    expect(container.querySelector(".cd-approval-modal")).toBeNull();
+    expect(container.textContent).toContain("Nenhum conteúdo aguardando revisão");
+  });
+
+  it("mostra o estado liberado no cartão, sem a etiqueta pendente", async () => {
+    await act(async () => root.render(<ClientDashboard clientName="Cliente" roleTitle={null} city={null} instagramHandle={null} initialItems={[{ ...creative, status: "em_criacao", materialLink: null, reviewVersion: 1, approvalStatus: "pending" }]} events={[]} initialScore={null} />));
+    expect(container.querySelector(".cd-sequence-stage .cd-pill")?.textContent).toBe("Texto: liberado");
+    expect(container.querySelector(".cd-sequence-status-copy")?.textContent).toContain("A equipe já pode criar");
+  });
 });
 
 describe("histórico de ajustes no portal", () => {

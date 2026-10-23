@@ -8,6 +8,29 @@ export type ApprovalStage = "copy" | "creative";
 // aprovou" no histórico e nos números de adesão.
 export const AUTO_APPROVAL_REVIEWER = "Aprovação automática (prazo)";
 
+export const APPROVAL_DAY_MS = 86_400_000;
+
+/** Instante em que a rodada atual entrou nas mãos do cliente. O histórico é
+ * a fonte principal; updatedAt preserva os registros antigos que ainda não
+ * tinham histórico de status. */
+export function approvalWaitingSince(input: {
+  status: string;
+  statusHistory?: { status: string; enteredAt: string }[] | null;
+  updatedAt: string;
+}): number {
+  const entries = (input.statusHistory || [])
+    .filter((entry) => entry.status === input.status)
+    .map((entry) => new Date(entry.enteredAt).getTime())
+    .filter(Number.isFinite);
+  const fallback = new Date(input.updatedAt).getTime();
+  return entries.length ? Math.max(...entries) : fallback;
+}
+
+export function approvalDeadlineReached(waitingSince: number, deadlineDays: number, now = Date.now()): boolean {
+  const days = Number.isFinite(deadlineDays) ? Math.max(1, Math.round(deadlineDays)) : 7;
+  return Number.isFinite(waitingSince) && now - waitingSince >= days * APPROVAL_DAY_MS;
+}
+
 /** Finalizado é absoluto: se a tarefa foi finalizada, tudo que havia para
  * aprovar nela está resolvido, com ou sem resposta registrada no portal. Um
  * conteúdo publicado não pode aparecer como "pendente de revisão" nem segurar

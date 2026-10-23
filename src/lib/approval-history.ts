@@ -14,7 +14,7 @@ import type { Comment, PlanApprovalEvent, PlanApprovalStatus, StatusHistoryEntry
 
 /** "adjusted": o pedido foi atendido e o conteúdo seguiu sem nova aprovação.
  * "resent": o pedido foi atendido e o conteúdo voltou para o cliente revisar. */
-export type ApprovalDisplay = PlanApprovalStatus | "adjusted" | "resent";
+export type ApprovalDisplay = PlanApprovalStatus | "adjusted" | "resent" | "released";
 
 // Enquanto a tarefa está num destes status, o pedido ainda está sendo resolvido.
 const REWORK: Record<ApprovalStage, ReadonlySet<string>> = {
@@ -38,6 +38,12 @@ export function approvalDisplay(input: {
     return REWORK[stage].has(input.taskStatus) ? input.approvalStatus : "adjusted";
   }
   if (input.approvalStatus === "pending" && input.hadRequest && withClient) return "resent";
+  // O registro de aprovação pode continuar pendente quando a equipe libera o
+  // texto manualmente (ou por prazo). Para o cliente, o estado real é o da
+  // produção: depois que saiu da aprovação de texto, ele não deve mais ver
+  // "Texto pendente" numa lista e "Conteúdo liberado" dentro do modal.
+  if (input.approvalStatus === "pending" && stage === "copy" && !REWORK.copy.has(input.taskStatus) && !withClient) return "released";
+  if (input.approvalStatus === "pending" && stage === "creative" && (input.taskStatus === "aprovado" || input.taskStatus === "finalizado")) return "approved";
   return input.approvalStatus;
 }
 
@@ -48,6 +54,7 @@ export const APPROVAL_DISPLAY_LABELS: Record<ApprovalDisplay, string> = {
   rejected: "Reprovado",
   adjusted: "Ajuste aplicado",
   resent: "Reenviado ao cliente",
+  released: "Liberado para criação",
 };
 
 export type ApprovalHistoryEntry = {

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const { getDb } = vi.hoisted(() => ({ getDb: vi.fn() }));
 vi.mock("@/lib/supabase-client", () => ({ getSupabase: getDb }));
 vi.mock("@/lib/whatsapp/queue", () => ({ queueApprovalNotice: vi.fn(), queueStandaloneNotice: vi.fn() }));
-import { clientPlanView, createTask, submitPlanApprovalResponse, updateTask } from "@/lib/storage";
+import { approveExpiredPlanItems, clientPlanView, createTask, submitPlanApprovalResponse, updateTask } from "@/lib/storage";
 
 type Row = Record<string, unknown>;
 let tables: Record<string, Row[]>;
@@ -29,7 +29,16 @@ beforeEach(() => {
     if (init?.method === "PATCH") {
       const patch = JSON.parse(String(init.body)); result.forEach(row => Object.assign(row, patch));
     } else if (init?.method === "POST") {
-      const payload = JSON.parse(String(init.body)); result = (Array.isArray(payload) ? payload : [payload]).map(row => ({ id: crypto.randomUUID(), ...row })); rows.push(...result);
+      const payload = JSON.parse(String(init.body));
+      const incoming = (Array.isArray(payload) ? payload : [payload]).map(row => ({ id: crypto.randomUUID(), ...row }));
+      const mergeKey = table === "plan_item_approvals" ? "task_id" : table === "project_communication" ? "project_id" : "id";
+      if (new Headers(init.headers).get("prefer")?.includes("resolution=merge-duplicates")) {
+        result = incoming.map(row => {
+          const current = rows.find(existing => existing[mergeKey] === row[mergeKey]);
+          if (current) { Object.assign(current, row); return current; }
+          rows.push(row); return row;
+        });
+      } else { result = incoming; rows.push(...result); }
     }
     const single = new Headers(init?.headers).get("accept")?.includes("vnd.pgrst.object");
     return Response.json(single ? result[0] || null : result);
@@ -63,5 +72,20 @@ describe("planos na persistência e no portal", () => {
     expect(view.plans.map(p => p.id)).not.toContain("foreign");
     expect((await clientPlanView("client", "november")).items.map(i => i.id)).toEqual(["future"]);
     expect((await clientPlanView("client", "foreign")).items.map(i => i.id)).toEqual(["current"]);
+  });
+
+  it("libera automaticamente texto pendente depois de sete dias, sem depender do WhatsApp", async () => {
+    tables.project_communication = [{ project_id: "client", approval_deadline_days: 7 }];
+    tables.tasks.push({
+      ...task("expired", "october"), status: "aprovacao_copy", updated_at: "2026-10-01T12:00:00Z",
+      status_history: [{ status: "aprovacao_copy", enteredAt: "2026-10-01T12:00:00Z", exitedAt: null }],
+    });
+    tables.plan_item_approvals = [{ task_id: "expired", status: "pending", review_version: 1, updated_at: "2026-10-01T12:00:00Z" }];
+    tables.plan_approval_responses = [];
+    tables.plan_approval_events = [];
+    expect(await approveExpiredPlanItems(new Date("2026-10-15T12:00:00Z"), "client")).toBe(1);
+    expect(tables.tasks.find(row => row.id === "expired")?.status).toBe("pronto_para_criacao");
+    expect(tables.plan_item_approvals[0].status).toBe("approved");
+    expect(tables.plan_approval_events).toEqual(expect.arrayContaining([expect.objectContaining({ reviewer_name: "Aprovação automática (prazo)" })]));
   });
 });

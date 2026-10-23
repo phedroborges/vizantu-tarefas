@@ -1,5 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { canReviewItem, approvalRound, approvalStage, derivePlanStage, formatRequiresCapture, nextApprovalReviewVersion, planStageLabel, settleApproval, summarizeApprovalRound, taskStatusAfterClientDecision } from "../src/lib/approval-workflow";
+import { approvalDeadlineReached, approvalWaitingSince, canReviewItem, approvalRound, approvalStage, derivePlanStage, formatRequiresCapture, nextApprovalReviewVersion, planStageLabel, settleApproval, summarizeApprovalRound, taskStatusAfterClientDecision } from "../src/lib/approval-workflow";
+
+describe("prazo de aprovação", () => {
+  it("usa a entrada mais recente na etapa atual e vence em sete dias completos", () => {
+    const since = approvalWaitingSince({
+      status: "aprovacao_copy",
+      updatedAt: "2026-10-01T12:00:00Z",
+      statusHistory: [
+        { status: "aprovacao_copy", enteredAt: "2026-10-02T12:00:00Z" },
+        { status: "ajuste", enteredAt: "2026-10-03T12:00:00Z" },
+        { status: "aprovacao_copy", enteredAt: "2026-10-04T12:00:00Z" },
+      ],
+    });
+    expect(since).toBe(new Date("2026-10-04T12:00:00Z").getTime());
+    expect(approvalDeadlineReached(since, 7, new Date("2026-10-11T11:59:59Z").getTime())).toBe(false);
+    expect(approvalDeadlineReached(since, 7, new Date("2026-10-11T12:00:00Z").getTime())).toBe(true);
+  });
+
+  it("preserva tarefas antigas usando updatedAt como início do prazo", () => {
+    expect(approvalWaitingSince({ status: "aprovacao_copy", statusHistory: [], updatedAt: "2026-10-01T12:00:00Z" })).toBe(new Date("2026-10-01T12:00:00Z").getTime());
+  });
+});
 
 describe("finalizado é absoluto", () => {
   it("conta como criativo aprovado o que foi finalizado sem resposta do cliente", () => {
