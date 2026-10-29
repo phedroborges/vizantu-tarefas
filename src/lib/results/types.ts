@@ -47,6 +47,15 @@ export type ResultsSection = {
   /** Pontos de atenção: o que deu errado ou precisa de decisão. Saem em
    * cartões vermelhos, com a etiqueta em destaque. */
   alerts?: { tag: string; title: string; detail?: string }[];
+  /** Conversas de exemplo desenhadas como no WhatsApp, lado a lado: o
+   * atendimento como está e como deveria ser. Dispensa print (e hospedagem de
+   * imagem) e permite tirar o que identifica o cliente. `tone` pinta a
+   * etiqueta: "bad" em vermelho, "good" em verde. Mensagem com `from: "note"`
+   * sai centralizada, como aviso de tempo ("21 dias depois"). */
+  conversations?: {
+    title: string; tone?: "bad" | "good"; caption?: string;
+    messages: { from: "client" | "store" | "note"; text: string }[];
+  }[];
   /** Prints e criativos. `url` é um endereço público (https). */
   images?: { url: string; caption?: string }[];
   /** Quantas imagens por linha (padrão 2). */

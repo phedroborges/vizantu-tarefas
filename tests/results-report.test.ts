@@ -90,6 +90,16 @@ describe("PDF do relatório de resultados", () => {
     expect(output).toContain("Combinado! Nosso encontro ficou marcado.");
   });
 
+  // Conversa de exemplo no lugar de print: desenhada pelo próprio PDF.
+  it("desenha conversas de exemplo lado a lado, sem emoji", () => {
+    const chat: ResultsReport = { period: "Outubro de 2026", sections: [{ title: "Atendimento", conversations: [
+      { title: "Como está", tone: "bad", messages: [{ from: "client", text: "Vocês fazem entrega?" }, { from: "store", text: "Nossa entrega é terceirizada e cobram uma taxa de 8,00" }, { from: "note", text: "A cliente desistiu" }] },
+      { title: "Como deveria ser", tone: "good", caption: "Primeiro o sim, depois o valor.", messages: [{ from: "client", text: "Vocês fazem entrega?" }, { from: "store", text: "Fazemos sim! 😊 Me fala o que você precisa que eu já separo." }] },
+    ] }] };
+    const { pdf } = buildResultsPdf({ clientName: "Cliente", title: "Auditoria", report: chat, assets });
+    expect(pdf.getNumberOfPages()).toBe(1);
+  });
+
   it("ignora a imagem que não foi carregada em vez de quebrar", () => {
     const withImage: ResultsReport = { period: "Outubro de 2026", sections: [{ title: "Instagram", images: [{ url: "https://exemplo.com/print.png", caption: "Melhor post" }] }] };
     expect(() => buildResultsPdf({ clientName: "Cliente", title: "Relatório de resultados", report: withImage, assets })).not.toThrow();

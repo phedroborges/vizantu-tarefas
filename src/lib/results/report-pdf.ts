@@ -297,10 +297,66 @@ export function buildResultsPdf(input: { clientName: string; title: string; repo
     }
   };
 
+  // Conversas de exemplo, duas por linha: fundo de WhatsApp, cliente à
+  // esquerda em balão branco, loja à direita em balão verde.
+  const chats = (items: NonNullable<ResultsSection["conversations"]>) => {
+    const gap = 6;
+    const width = (WIDTH - gap) / 2;
+    const bubbleMax = width * 0.78;
+    const pad = 2.6;
+    const step = 3.9;
+    const layout = (item: (typeof items)[number]) => {
+      let height = 15;
+      const messages = item.messages.map((message) => {
+        // A fonte do PDF não tem emoji: na conversa ele simplesmente sai.
+        const value = message.text.replace(EMOJI, "").replace(/\s{2,}/g, " ").trim();
+        const note = message.from === "note";
+        const lines = wrap(value, note ? width - 16 : bubbleMax - pad * 2, note ? 6.8 : 8);
+        font(note ? 6.8 : 8);
+        const inner = Math.max(...lines.map((line) => pdf.getTextWidth(line)));
+        const bubble = { lines, note, from: message.from, w: inner + (note ? 6 : pad * 2), h: lines.length * (note ? 3.2 : step) + (note ? 2.4 : pad * 1.6), top: height };
+        height += bubble.h + 2.2;
+        return bubble;
+      });
+      const caption = item.caption ? wrap(item.caption, width, 7.5) : [];
+      return { item, messages, chatHeight: height + 1.8, caption };
+    };
+    for (let start = 0; start < items.length; start += 2) {
+      const pair = items.slice(start, start + 2).map(layout);
+      const chatHeight = Math.max(...pair.map((entry) => entry.chatHeight));
+      const height = chatHeight + Math.max(...pair.map((entry) => entry.caption.length ? entry.caption.length * 3.8 + 3 : 0));
+      ensure(height + 4);
+      pair.forEach(({ item, messages, caption }, index) => {
+        const x = LEFT + index * (width + gap);
+        box(x, y, width, chatHeight, "#efeae2", C.line);
+        const accent = item.tone === "bad" ? C.red : item.tone === "good" ? C.green : C.strong;
+        const tag = item.title.toUpperCase();
+        font(6.5, true);
+        pdf.setFillColor(accent); pdf.roundedRect(x + 4, y + 4, pdf.getTextWidth(tag) + 5, 5, 1.5, 1.5, "F");
+        text(tag, x + 6.5, y + 7.5, 6.5, true, C.white);
+        for (const message of messages) {
+          const top = y + message.top;
+          if (message.note) {
+            const left = x + (width - message.w) / 2;
+            pdf.setFillColor("#fff3c4"); pdf.roundedRect(left, top, message.w, message.h, 1.5, 1.5, "F");
+            message.lines.forEach((line, row) => { font(6.8); text(line, x + width / 2 - pdf.getTextWidth(line) / 2, top + 3.4 + row * 3.2, 6.8, false, C.muted); });
+            continue;
+          }
+          const store = message.from === "store";
+          const left = store ? x + width - 4 - message.w : x + 4;
+          pdf.setFillColor(store ? "#d9fdd3" : C.white); pdf.roundedRect(left, top, message.w, message.h, 1.8, 1.8, "F");
+          message.lines.forEach((line, row) => text(line, left + pad, top + pad + 2.2 + row * step, 8));
+        }
+        caption.forEach((line, row) => text(line, x, y + chatHeight + 4.5 + row * 3.8, 7.5, false, C.muted));
+      });
+      y += height + 6;
+    }
+  };
+
   for (const section of report.sections) {
     // O título nunca fica sozinho no fim da página: precisa caber junto com o
     // começo do conteúdo da seção.
-    ensure(34 + (section.summary ? 8 : 0) + (section.metrics?.length ? 26 : section.callouts?.[0]?.editable ? 56 : section.callouts?.length || section.alerts?.length ? 30 : 14));
+    ensure(34 + (section.summary ? 8 : 0) + (section.metrics?.length ? 26 : section.callouts?.[0]?.editable ? 56 : section.callouts?.length || section.alerts?.length ? 30 : section.conversations?.length ? 60 : 14));
     pdf.setDrawColor(C.line); pdf.setLineWidth(0.25); pdf.line(LEFT, y, RIGHT, y);
     y += 8;
     if (section.eyebrow) { text(section.eyebrow.toUpperCase(), LEFT, y, 6.8, true, C.strong); y += 6; }
@@ -313,6 +369,7 @@ export function buildResultsPdf(input: { clientName: string; title: string; repo
     if (section.callouts?.length) cards(section.callouts, "callout");
     if (section.highlights?.length) bullets(section.highlights, (section.highlightsTitle || "O que funcionou").toUpperCase());
     if (section.alerts?.length) cards(section.alerts, "alert");
+    if (section.conversations?.length) chats(section.conversations);
     if (section.images?.length) gallery(section.images, section.imageColumns ?? 2);
     y += 4;
   }
