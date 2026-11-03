@@ -8,14 +8,14 @@
 // não é repetida: mandar de menos é melhor do que mandar em dobro num grupo de
 // cliente.
 
-import { AUTO_APPROVAL_REVIEWER } from "../approval-workflow";
+import { AUTO_APPROVAL_REVIEWER, canReviewItem } from "../approval-workflow";
 import { isoDateInSaoPaulo } from "../dates";
 import { parseDescription } from "../description-sections";
 import { horaEmSaoPaulo } from "../overdue-scheduler";
 import { isClientPlanAvailable, planDisplayName } from "../plan-month";
 import { submitPlanApprovalResponse } from "../storage";
 import { getSupabase } from "../supabase-client";
-import type { StatusHistoryEntry, TaskStatus } from "../types";
+import type { PlanApprovalStatus, StatusHistoryEntry, TaskStatus } from "../types";
 import { composeMessage, insideSendWindow, isBusinessDay, nextGapMs, noticeFromKey, planBroadcast, reminderStep, shuffled, startDeadlineClockByStage, type SentNotice } from "./messages";
 import { sendWhatsappMedia, sendWhatsappText, whatsappConfigured, type WhatsappMedia } from "./provider";
 import { getAutomationSettings, listProjectCommunications, queueApprovalNotice, type ProjectCommunication } from "./queue";
@@ -61,14 +61,22 @@ export async function pendingApprovalsByProject(): Promise<Map<string, Waiting[]
       || (a.due_date || "9999-12-31").localeCompare(b.due_date || "9999-12-31") || a.name.localeCompare(b.name, "pt-BR");
   });
   // O formato vai na frente do nome na mensagem: "Carrossel - Como começar".
+  const approvals = new Map(rows.length ? unwrap<{ task_id: string; status: PlanApprovalStatus; review_version: number }[]>(await db.from("plan_item_approvals").select("task_id, status, review_version").in("task_id", rows.map((row) => row.id))).map((approval): [string, typeof approval] => [approval.task_id, approval]) : []);
+  const today = isoDateInSaoPaulo(new Date());
   const formatIds = [...new Set(rows.flatMap((row) => row.format_tag_ids ?? []))];
   const formats = new Map(formatIds.length ? unwrap<{ id: string; label: string }[]>(await db.from("tags").select("id, label").eq("kind", "formato").in("id", formatIds)).map((tag): [string, string] => [tag.id, tag.label]) : []);
   const byProject = new Map<string, Waiting[]>();
   for (const row of rows) {
     const plan = plans.get(row.plan_id);
     if (!plan) continue;
-    // Criativo sem link do material não tem o que o cliente revisar.
-    if (row.status === "para_aprovacao" && !row.drive_link?.trim()) continue;
+    // Só entra o que o cliente consegue aprovar no portal agora, pela mesma
+    // regra do portal: tarefa que voltou para texto com a rodada do criativo
+    // aberta, ou criativo sem link do material, não tem o que ele responder.
+    const approval = approvals.get(row.id);
+    if (!approval || !canReviewItem({ status: row.status, approvalStatus: approval.status, reviewVersion: approval.review_version, materialLink: row.drive_link })) continue;
+    // Conteúdo que já devia ter ido ao ar não é cobrado do cliente: o que
+    // fazer com ele é decisão da equipe.
+    if (row.due_date && row.due_date < today) continue;
     const entered = (row.status_history ?? []).filter((entry) => entry.status === row.status).map((entry) => new Date(entry.enteredAt).getTime()).filter(Number.isFinite);
     const since = entered.length ? Math.max(...entered) : new Date(row.updated_at).getTime();
     const format = (row.format_tag_ids ?? []).map((id) => formats.get(id)).find(Boolean);
@@ -136,7 +144,7 @@ async function finish(id: string, patch: Partial<Pick<MessageRow, "status" | "er
 // precisa ser liberada: dedupe_key é única, e uma chave presa num "failed"
 // barraria em silêncio todos os próximos avisos daquele cliente ou tarefa.
 async function markFailed(row: Pick<MessageRow, "id" | "dedupe_key">, error: unknown): Promise<void> {
-  const freeKey = row.dedupe_key && /:(pending|catchup)$/.test(row.dedupe_key) ? `${row.dedupe_key}:failed:${row.id}` : undefined;
+  const freeKey = row.dedupe_key && /:pending$/.test(row.dedupe_key) ? `${row.dedupe_key}:failed:${row.id}` : undefined;
   await finish(row.id, { status: "failed", error: error instanceof Error ? error.message.slice(0, 500) : "Falha no envio.", ...(freeKey ? { dedupe_key: freeKey } : {}) }).catch(() => {});
 }
 
@@ -172,12 +180,9 @@ async function deliver(row: MessageRow): Promise<void> {
     body = composed;
   } else if (row.kind === "approval" && row.project_id) {
     // O texto é montado na hora de enviar: conta o que está pendente agora,
-    // não o que estava quando a primeira tarefa entrou em aprovação.
-    // A mensagem direta (disparada pelo status "Para aprovação") fala só dos
-    // criativos; o aviso do dia fala de tudo que está pendente. A chave final
-    // registra o que foi coberto, para o relógio do prazo de cada etapa.
-    const creativeOnly = Boolean(row.dedupe_key?.endsWith(":pending"));
-    const freeKey = `approval:${row.project_id}:${row.id}${creativeOnly ? ":creative" : ""}`;
+    // não o que estava quando o primeiro conteúdo entrou em aprovação. Fala de
+    // texto e de criativo juntos, para o cliente receber um aviso só.
+    const freeKey = `approval:${row.project_id}:${row.id}`;
     const automation = await getAutomationSettings();
     if (!automation.enabled) return finish(row.id, { status: "skipped", error: "Avisos automáticos desligados.", dedupe_key: freeKey });
     const waiting = (await pendingApprovalsByProject()).get(row.project_id) || [];
@@ -189,7 +194,7 @@ async function deliver(row: MessageRow): Promise<void> {
     // repetido a cada conteúdo novo; volta a ser avisado apenas se sair da
     // aprovação (um ajuste, por exemplo) e entrar de novo, porque aí mudou de
     // fato. Esta própria mensagem não conta: ela é o aviso que está saindo.
-    const unnotified = startDeadlineClockByStage(waiting, await sentNotices(row.project_id, row.id)).unnotified.filter((item) => !creativeOnly || item.stage === "creative");
+    const unnotified = startDeadlineClockByStage(waiting, await sentNotices(row.project_id, row.id)).unnotified;
     if (!unnotified.length) return finish(row.id, { status: "skipped", error: "Tudo que está pendente já tinha sido avisado.", dedupe_key: freeKey });
     // Para o que é avisado agora, o prazo começa agora.
     // Um conteúdo só vai com os detalhes dele; vários viram um resumo.
@@ -206,6 +211,19 @@ async function deliver(row: MessageRow): Promise<void> {
   const media: WhatsappMedia | undefined = row.media_url && (row.media_type === "image" || row.media_type === "video" || row.media_type === "document") ? { url: row.media_url, type: row.media_type } : undefined;
   if (media) await sendWhatsappMedia(row.group_id, media, body);
   else await sendWhatsappText(row.group_id, body);
+}
+
+const PLAN_NOTICES = ["approval", "reminder", "last_day", "auto_approved"];
+const isPlanNotice = (message: { kind: string; project_id: string | null; dedupe_key: string | null }) =>
+  PLAN_NOTICES.includes(message.kind) && Boolean(message.project_id) && !message.dedupe_key?.startsWith("standalone:");
+
+/** Clientes que já receberam hoje um aviso de plano (material, lembrete,
+ * último dia ou aprovado por prazo). Aviso de tarefa avulsa não conta. */
+async function projectsNoticedToday(now: Date): Promise<Set<string>> {
+  const rows = unwrap<{ kind: string; project_id: string | null; dedupe_key: string | null }[]>(
+    await getSupabase().from("whatsapp_messages").select("kind, project_id, dedupe_key").eq("status", "sent").in("kind", PLAN_NOTICES).gte("sent_at", `${isoDateInSaoPaulo(now)}T00:00:00-03:00`),
+  );
+  return new Set(rows.filter(isPlanNotice).map((row) => row.project_id!));
 }
 
 // Lembrete escrito de manhã não pode sair de noite, nem no dia seguinte, com
@@ -233,10 +251,11 @@ export async function processOutbox(): Promise<number> {
   // Comunicado é decisão de quem enviou e sai na hora combinada; aviso
   // automático respeita a janela do dia.
   const windowOpen = insideSendWindow(new Date(now), automation);
-  const due = unwrap<{ id: string; kind: string; dedupe_key: string | null }[]>(await db.from("whatsapp_messages").select("id, kind, dedupe_key").eq("status", "pending").lte("scheduled_at", new Date(now).toISOString()).order("scheduled_at").limit(30));
-  // O aviso imediato de aprovação tem o próprio caminho (processApprovalNotices).
-  const paced = due.filter((message) => !(message.kind === "approval" && message.dedupe_key?.endsWith(":pending")));
-  const next = paced.find((message) => message.kind === "broadcast" || windowOpen);
+  const due = unwrap<{ id: string; kind: string; project_id: string | null; dedupe_key: string | null }[]>(await db.from("whatsapp_messages").select("id, kind, project_id, dedupe_key").eq("status", "pending").lte("scheduled_at", new Date(now).toISOString()).order("scheduled_at").limit(30));
+  // Um aviso de plano por cliente por dia: o que entrou em aprovação depois
+  // do aviso de hoje espera o de amanhã, junto com o resto.
+  const noticed = windowOpen && due.some(isPlanNotice) ? await projectsNoticedToday(new Date(now)) : new Set<string>();
+  const next = due.find((message) => message.kind === "broadcast" || (windowOpen && !(isPlanNotice(message) && noticed.has(message.project_id!))));
   if (!next) return 0;
   const claimed = unwrap<MessageRow[]>(await db.from("whatsapp_messages").update({ status: "sent", sent_at: new Date(now).toISOString() }).eq("id", next.id).eq("status", "pending").select());
   if (!claimed.length) return 0;
@@ -248,33 +267,6 @@ export async function processOutbox(): Promise<number> {
     await markFailed(claimed[0], error);
     return 0;
   }
-}
-
-/** Avisos de conteúdo recém-colocado em aprovação. Saem na hora, fora da fila
- * espaçada e da janela do dia: é a resposta a uma ação de quem está usando o
- * sistema, para um cliente só, e ele precisa ver logo. A parada de emergência
- * e o interruptor dos avisos continuam valendo. */
-export async function processApprovalNotices(): Promise<number> {
-  if (!whatsappConfigured()) return 0;
-  const automation = await getAutomationSettings();
-  if (automation.paused || !automation.enabled) return 0;
-  const db = getSupabase();
-  // Os avisos imediatos são os de chave terminada em ":pending": conteúdo de
-  // plano (approval:…) e tarefa avulsa (standalone:…).
-  const candidates = unwrap<{ id: string; dedupe_key: string | null }[]>(await db.from("whatsapp_messages").select("id, dedupe_key").eq("status", "pending").eq("kind", "approval").lte("scheduled_at", new Date().toISOString()).order("scheduled_at").limit(30));
-  const due = candidates.filter((message) => message.dedupe_key?.endsWith(":pending"));
-  let sent = 0;
-  for (const { id } of due) {
-    const claimed = unwrap<MessageRow[]>(await db.from("whatsapp_messages").update({ status: "sent", sent_at: new Date().toISOString() }).eq("id", id).eq("status", "pending").select());
-    if (!claimed.length) continue;
-    try {
-      await deliver(claimed[0]);
-      sent += 1;
-    } catch (error) {
-      await markFailed(claimed[0], error);
-    }
-  }
-  return sent;
 }
 
 /** Quantas mensagens estão esperando para sair. */
@@ -308,7 +300,7 @@ async function autoApprove(projectId: string, overdue: Waiting[]): Promise<numbe
 export async function runDailyApprovalRoutine(now = new Date()): Promise<void> {
   if (!whatsappConfigured()) return;
   const automation = await getAutomationSettings();
-  if (automation.paused || !automation.enabled || (automation.weekdaysOnly && !isBusinessDay(now)) || horaEmSaoPaulo(now) < automation.sendHour) return;
+  if (automation.paused || !(automation.enabled || automation.reminders) || (automation.weekdaysOnly && !isBusinessDay(now)) || horaEmSaoPaulo(now) < automation.sendHour) return;
   const today = isoDateInSaoPaulo(now);
   const pending = await pendingApprovalsByProject();
   const settingsByProject = new Map((await listProjectCommunications()).map((item): [string, ProjectCommunication] => [item.projectId, item]));
@@ -319,7 +311,7 @@ export async function runDailyApprovalRoutine(now = new Date()): Promise<void> {
   // recebe outro, qualquer que seja o status da mensagem.
   const chargedToday = new Set(unwrap<{ project_id: string | null }[]>(
     await getSupabase().from("whatsapp_messages").select("project_id").in("kind", ["reminder", "last_day", "auto_approved"]).gte("created_at", `${today}T00:00:00-03:00`),
-  ).flatMap((row) => row.project_id ? [row.project_id] : []));
+  ).flatMap((row) => row.project_id ? [row.project_id] : []).concat([...await projectsNoticedToday(now)]));
   // Ordem sorteada a cada dia; o espaçamento entre os envios é da fila.
   for (const [projectId, waiting] of shuffled([...pending])) {
     const settings = settingsByProject.get(projectId);
@@ -332,8 +324,16 @@ export async function runDailyApprovalRoutine(now = new Date()): Promise<void> {
     // O relógio do prazo é o do primeiro aviso recebido. O que nunca foi
     // avisado gera o aviso de material novo e só começa a contar a partir dele.
     const { notified, unnotified } = startDeadlineClockByStage(waiting, await sentNotices(projectId));
-    if (unnotified.length) await queueApprovalNotice(projectId, "paced");
-    if (!notified.length || chargedToday.has(projectId)) continue;
+    // Um aviso por dia. O que ainda não foi avisado vai no aviso de material
+    // (rede de segurança do que a troca de status agenda), e a cobrança do que
+    // já foi avisado fica para outro dia.
+    if (chargedToday.has(projectId)) continue;
+    if (unnotified.length && automation.enabled) {
+      await queueApprovalNotice(projectId);
+      continue;
+    }
+    // Sem as cobranças ligadas, nenhum prazo corre e nada é aprovado sozinho.
+    if (!automation.reminders || !notified.length) continue;
     const name = await clientName(projectId);
 
     // Só vence o que o cliente foi avisado: precisa existir um aviso de último
@@ -434,7 +434,7 @@ async function tick(): Promise<void> {
   // os avisos ou mudar o horário vale sem reiniciar o servidor.
   if (lastDailyRun !== today) {
     const automation = await getAutomationSettings().catch(() => undefined);
-    if (automation?.enabled && !automation.paused && (!automation.weekdaysOnly || isBusinessDay(now)) && horaEmSaoPaulo(now) >= automation.sendHour) {
+    if (automation && (automation.enabled || automation.reminders) && !automation.paused && (!automation.weekdaysOnly || isBusinessDay(now)) && horaEmSaoPaulo(now) >= automation.sendHour) {
       lastDailyRun = today;
       await runDailyApprovalRoutine(now).catch((error) => console.error("[whatsapp] rotina diária falhou:", error));
     }
@@ -448,8 +448,6 @@ async function tick(): Promise<void> {
       await import("./team").then((team) => team.runDailyTeamRoutine(now)).catch((error) => console.error("[whatsapp] avisos da equipe falharam:", error));
     }
   }
-  // Rede de segurança do aviso imediato, caso o disparo direto não tenha rodado.
-  await processApprovalNotices().catch((error) => console.error("[whatsapp] aviso de aprovação falhou:", error));
   await processOutbox().catch((error) => console.error("[whatsapp] fila falhou:", error));
 }
 
@@ -460,6 +458,6 @@ export function agendarWhatsapp(): void {
   const run = () => { if (!running) running = tick().finally(() => { running = undefined; }); };
   run();
   // A fila é olhada a cada 15 segundos para o aviso de material novo sair
-  // logo depois da espera, e não até um minuto mais tarde.
+  // logo depois da espera de agrupamento.
   setInterval(run, 15_000).unref?.();
 }

@@ -29,9 +29,9 @@ export type WaitingItem = {
 export type MessageKind = "content" | "standalone" | "approval" | "reminder" | "last_day" | "auto_approved";
 
 export const MESSAGE_KINDS: { kind: MessageKind; label: string; when: string }[] = [
-  { kind: "content", label: "Conteúdo para aprovar", when: "Na hora em que o criativo de um conteúdo entra em “Para aprovação”. Leva os detalhes dele e o link que abre o portal direto nele." },
+  { kind: "content", label: "Conteúdo para aprovar", when: "Quando um conteúdo entra em “Aprovação de texto” ou “Para aprovação” e é o único do aviso. Leva os detalhes dele e o link que abre o portal direto nele." },
   { kind: "standalone", label: "Tarefa avulsa para aprovar", when: "Quando uma tarefa que não faz parte de um plano entra em Para aprovação. Ela não aparece no portal do cliente, então o link da mensagem é o do material, e a resposta vem pelo grupo." },
-  { kind: "approval", label: "Vários conteúdos de uma vez", when: "Quando vários criativos entram em “Para aprovação” em sequência, e no aviso do dia do que está esperando e ainda não foi avisado, incluindo os textos em “Aprovação de texto”." },
+  { kind: "approval", label: "Vários conteúdos de uma vez", when: "Quando vários conteúdos entram em aprovação perto um do outro: o que entra em até 20 minutos vira uma mensagem só, e o cliente recebe no máximo um aviso por dia." },
   { kind: "reminder", label: "Lembrete", when: "Enquanto houver material sem resposta, no intervalo de dias configurado." },
   { kind: "last_day", label: "Último dia", when: "No dia em que o prazo de aprovação do cliente termina." },
   { kind: "auto_approved", label: "Aprovado por prazo", when: "No dia seguinte ao aviso de último dia, se ninguém respondeu." },
@@ -114,8 +114,12 @@ export type AutomationSettings = {
   /** Parada de emergência: enquanto estiver ligada, NADA sai pelo WhatsApp —
    * nem aviso automático, nem comunicado, nem mensagem de teste. */
   paused: boolean;
-  /** Interruptor dos avisos de aprovação. Desligado, nenhum aviso automático sai e nenhum prazo corre. */
+  /** Aviso de material para aprovar: sai quando a equipe coloca um conteúdo em
+   * aprovação. É o que tira da social media o envio manual. */
   enabled: boolean;
+  /** Cobranças: lembrete, último dia e aprovação por prazo. Desligadas, nenhum
+   * prazo corre e nada é aprovado sozinho. Nascem desligadas. */
+  reminders: boolean;
   /** A partir de que hora (São Paulo) os avisos automáticos podem sair. */
   sendHour: number;
   /** Até que hora eles saem. Depois disso, esperam o dia seguinte. */
@@ -130,7 +134,7 @@ export type AutomationSettings = {
   team: TeamNoticeSettings;
 };
 
-export const DEFAULT_AUTOMATION: AutomationSettings = { paused: false, enabled: false, sendHour: 9, sendUntilHour: 18, minGapMinutes: 4, reminderEveryDays: 2, weekdaysOnly: true, templates: DEFAULT_TEMPLATES, team: DEFAULT_TEAM_NOTICES };
+export const DEFAULT_AUTOMATION: AutomationSettings = { paused: false, enabled: false, reminders: false, sendHour: 9, sendUntilHour: 18, minGapMinutes: 4, reminderEveryDays: 2, weekdaysOnly: true, templates: DEFAULT_TEMPLATES, team: DEFAULT_TEAM_NOTICES };
 
 /** Junta o que veio do banco com os padrões: tipo sem modelo válido volta ao
  * texto padrão, para nunca sair mensagem vazia. */
@@ -148,6 +152,7 @@ export function normalizeAutomation(stored: Partial<AutomationSettings> | null |
   return {
     paused: stored?.paused === true,
     enabled: stored?.enabled === true,
+    reminders: stored?.reminders === true,
     sendHour,
     // A janela tem pelo menos uma hora, para a fila do dia conseguir sair.
     sendUntilHour: Math.min(22, Math.max(sendHour + 1, Number.isFinite(until) ? until : DEFAULT_AUTOMATION.sendUntilHour)),

@@ -1,14 +1,21 @@
 import { createClient } from "@supabase/supabase-js";
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const { getDb } = vi.hoisted(() => ({ getDb: vi.fn() }));
 vi.mock("@/lib/supabase-client", () => ({ getSupabase: getDb }));
 vi.mock("@/lib/whatsapp/provider", () => ({ whatsappConfigured: () => true, sendWhatsappText: vi.fn(), sendWhatsappMedia: vi.fn() }));
 import { queueApprovalNotice } from "@/lib/whatsapp/queue";
-import { processApprovalNotices } from "@/lib/whatsapp/service";
+import { pendingApprovalsByProject, processOutbox } from "@/lib/whatsapp/service";
 
 type Row = Record<string, unknown>;
 let tables: Record<string, Row[]>;
+// Cada teste anda uma hora no relógio: o intervalo mínimo entre envios da fila
+// fica na memória do módulo, e um teste não pode segurar o próximo.
+let hour = 12;
+const message = (row: Row) => ({ id: crypto.randomUUID(), kind: "approval", group_id: "grupo", status: "pending", scheduled_at: "2026-11-04T12:00:00Z", ...row });
+
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date(`2026-11-04T${hour++}:00:00-03:00`)); // quarta-feira, dentro da janela
   tables = {
     whatsapp_messages: [],
     whatsapp_settings: [{ id: 1, settings: { enabled: true } }],
@@ -16,12 +23,16 @@ beforeEach(() => {
   };
   getDb.mockReturnValue(createClient("https://database.example", "test", { auth: { persistSession: false, autoRefreshToken: false }, global: { fetch: async (input, init) => {
     const url = new URL(String(input)); const table = url.pathname.split("/").at(-1)!;
-    // Leitura das tarefas falha: é a falha passageira que acontece antes de a chave ser liberada.
+    // Tabela que o teste não montou responde como banco fora do ar.
     if (!tables[table]) return Response.json({ message: "banco fora do ar" }, { status: 503 });
     const rows = tables[table];
     const matches = (row: Row) => [...url.searchParams].every(([key, value]) => {
       if (value.startsWith("eq.")) return String(row[key]) === value.slice(3);
       if (value.startsWith("lte.")) return String(row[key]) <= value.slice(4);
+      if (value.startsWith("gte.")) return row[key] != null && new Date(String(row[key])) >= new Date(value.slice(4));
+      if (value.startsWith("in.(")) return value.slice(4, -1).split(",").map((item) => item.replace(/"/g, "")).includes(String(row[key]));
+      if (value === "not.is.null") return row[key] != null;
+      if (value === "is.null") return row[key] == null;
       return true;
     });
     let result = rows.filter(matches);
@@ -35,16 +46,46 @@ beforeEach(() => {
     return Response.json(single ? result[0] ?? null : result);
   } } }));
 });
+afterEach(() => vi.useRealTimers());
+
+it("cliente que já recebeu aviso hoje espera o de amanhã; os outros seguem", async () => {
+  tables.tasks = []; tables.plans = []; tables.tags = [];
+  tables.whatsapp_messages.push(
+    message({ project_id: "cliente", dedupe_key: "approval:cliente:enviado", status: "sent", sent_at: "2026-11-04T09:00:00-03:00" }),
+    message({ project_id: "cliente", dedupe_key: "approval:cliente:pending" }),
+    message({ project_id: "outro", dedupe_key: "approval:outro:pending" }),
+  );
+  await processOutbox();
+  expect(tables.whatsapp_messages.find((row) => row.dedupe_key === "approval:cliente:pending")?.status).toBe("pending");
+  expect(tables.whatsapp_messages.find((row) => row.project_id === "outro")?.status).not.toBe("pending");
+});
 
 it("um envio que falha não barra o próximo aviso do mesmo cliente", async () => {
   await queueApprovalNotice("cliente");
   const [first] = tables.whatsapp_messages;
   first.scheduled_at = new Date(Date.now() - 1000).toISOString();
 
-  await processApprovalNotices();
+  await processOutbox(); // a leitura das tarefas falha antes de a chave ser liberada
   expect(first).toMatchObject({ status: "failed" });
   expect(first.dedupe_key).not.toBe("approval:cliente:pending");
 
   await queueApprovalNotice("cliente");
   expect(tables.whatsapp_messages.filter((row) => row.status === "pending" && row.dedupe_key === "approval:cliente:pending")).toHaveLength(1);
+});
+
+it("a mensagem só lista o que o cliente consegue aprovar no portal", async () => {
+  const task = (id: string, status: string, due: string, link: string | null = null) => ({ id, project_id: "cliente", plan_id: "novembro", name: id, status, due_date: due, drive_link: link, description: null, format_tag_ids: [], status_history: [], updated_at: "2026-11-03T12:00:00Z" });
+  tables.tasks = [
+    task("texto", "aprovacao_copy", "2026-11-20"),
+    task("voltou-para-texto", "aprovacao_copy", "2026-11-20"),
+    task("ja-passou", "para_aprovacao", "2026-11-01", "https://drive.example/material"),
+  ];
+  tables.plans = [{ id: "novembro", title: "Plano", period_month: "2026-11", status: "draft", kind: "content", source: "native" }];
+  tables.tags = [];
+  tables.plan_item_approvals = [
+    { task_id: "texto", status: "pending", review_version: 1 },
+    { task_id: "voltou-para-texto", status: "pending", review_version: 100 },
+    { task_id: "ja-passou", status: "pending", review_version: 100 },
+  ];
+  expect((await pendingApprovalsByProject()).get("cliente")?.map((item) => item.taskId)).toEqual(["texto"]);
 });

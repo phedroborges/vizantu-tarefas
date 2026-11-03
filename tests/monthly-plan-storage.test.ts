@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const { getDb } = vi.hoisted(() => ({ getDb: vi.fn() }));
 vi.mock("@/lib/supabase-client", () => ({ getSupabase: getDb }));
 vi.mock("@/lib/whatsapp/queue", () => ({ queueApprovalNotice: vi.fn(), queueStandaloneNotice: vi.fn() }));
-import { approveExpiredPlanItems, clientPlanView, createTask, submitPlanApprovalResponse, updateTask } from "@/lib/storage";
+import { clientPlanView, createTask, submitPlanApprovalResponse, updateTask } from "@/lib/storage";
 
 type Row = Record<string, unknown>;
 let tables: Record<string, Row[]>;
@@ -80,19 +80,16 @@ describe("planos na persistência e no portal", () => {
     expect((await clientPlanView("client", "foreign")).items.map(i => i.id)).toEqual(["current"]);
   });
 
-  it("libera automaticamente texto pendente depois de sete dias, sem depender do WhatsApp", async () => {
+  it("abrir o portal não aprova sozinho o que passou do prazo sem o cliente ser avisado", async () => {
     tables.project_communication = [{ project_id: "client", approval_deadline_days: 7 }];
     tables.tasks.push({
       ...task("expired", "october"), status: "aprovacao_copy", updated_at: "2026-10-01T12:00:00Z",
       status_history: [{ status: "aprovacao_copy", enteredAt: "2026-10-01T12:00:00Z", exitedAt: null }],
     });
     tables.plan_item_approvals = [{ task_id: "expired", status: "pending", review_version: 1, updated_at: "2026-10-01T12:00:00Z" }];
-    tables.plan_approval_responses = [];
-    tables.plan_approval_events = [];
-    expect(await approveExpiredPlanItems(new Date("2026-10-15T12:00:00Z"), "client")).toBe(1);
-    expect(tables.tasks.find(row => row.id === "expired")?.status).toBe("pronto_para_criacao");
-    expect(tables.plan_item_approvals[0].status).toBe("approved");
-    expect(tables.plan_approval_events).toEqual(expect.arrayContaining([expect.objectContaining({ reviewer_name: "Aprovação automática (prazo)" })]));
+    await clientPlanView("client");
+    expect(tables.tasks.find(row => row.id === "expired")?.status).toBe("aprovacao_copy");
+    expect(tables.plan_item_approvals[0].status).toBe("pending");
   });
 
   it("duas respostas ao mesmo tempo viram uma só; a outra recebe o aviso", async () => {

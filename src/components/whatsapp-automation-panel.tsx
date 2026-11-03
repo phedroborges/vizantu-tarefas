@@ -52,8 +52,16 @@ export function WhatsappAutomationPanel({ initialSettings, configured }: { initi
   async function save() {
     if (settings.enabled && !saved.enabled) {
       const ok = await confirm({
-        title: "Ligar os avisos automáticos?",
-        message: "Os clientes com grupo configurado e material esperando aprovação recebem o aviso de material novo nos próximos minutos, se já passou da hora de envio de hoje. A partir daí correm os lembretes e o prazo.",
+        title: "Ligar o aviso de material para aprovar?",
+        message: "Os clientes com grupo configurado e material esperando aprovação recebem o aviso dentro da janela de envio de hoje, um por cliente.",
+        confirmLabel: "Ligar e salvar",
+      });
+      if (!ok) return;
+    }
+    if (settings.reminders && !saved.reminders) {
+      const ok = await confirm({
+        title: "Ligar as cobranças?",
+        message: "A partir do primeiro aviso de cada conteúdo correm o lembrete e o prazo. Sem resposta, o cliente recebe o aviso de último dia e, no dia seguinte, o conteúdo é dado como aprovado.",
         confirmLabel: "Ligar e salvar",
       });
       if (!ok) return;
@@ -66,7 +74,7 @@ export function WhatsappAutomationPanel({ initialSettings, configured }: { initi
     const result = (await response.json()).settings as AutomationSettings;
     setSettings(result);
     setSaved(result);
-    setMessage({ text: result.enabled ? "Salvo. Os avisos automáticos estão ligados." : "Salvo. Os avisos automáticos estão desligados; nada sai para os clientes." });
+    setMessage({ text: `Salvo. Aviso de material ${result.enabled ? "ligado" : "desligado"}; cobranças ${result.reminders ? "ligadas" : "desligadas"}.` });
   }
 
   return <>
@@ -76,7 +84,11 @@ export function WhatsappAutomationPanel({ initialSettings, configured }: { initi
       <Card className="automation__rules">
         <label className="project-communication__toggle">
           <input type="checkbox" checked={settings.enabled} onChange={(event) => setSettings({ ...settings, enabled: event.target.checked })} />
-          <span><strong>Avisos automáticos de aprovação {settings.enabled ? "ligados" : "desligados"}</strong>{settings.enabled ? "Material novo, lembretes, último dia e aprovação por prazo saem para os clientes com grupo configurado." : "Nada sai para os clientes e nenhum prazo corre. Os comunicados manuais continuam funcionando."}</span>
+          <span><strong>Aviso de material para aprovar {settings.enabled ? "ligado" : "desligado"}</strong>{settings.enabled ? "Quando a equipe coloca um conteúdo em aprovação, o grupo do cliente recebe o aviso. O que entra em sequência vira uma mensagem só, e cada cliente recebe no máximo um aviso por dia." : "A equipe avisa o cliente por conta própria. Os comunicados manuais continuam funcionando."}</span>
+        </label>
+        <label className="project-communication__toggle">
+          <input type="checkbox" checked={settings.reminders} onChange={(event) => setSettings({ ...settings, reminders: event.target.checked })} />
+          <span><strong>Cobranças {settings.reminders ? "ligadas" : "desligadas"}</strong>{settings.reminders ? "Lembrete, aviso de último dia e aprovação por prazo. Só é aprovado pelo prazo o que o cliente foi avisado e recebeu o aviso de último dia." : "Nenhum lembrete sai, nenhum prazo corre e nada é aprovado sozinho."}</span>
         </label>
         <div className="automation__grid">
           <Field label="Enviar a partir de" hint="Início da janela do dia. Não é um disparo: as mensagens saem uma por vez a partir desta hora.">

@@ -10,10 +10,12 @@ import { whatsappConfigured } from "./provider";
 export const DEFAULT_APPROVAL_DEADLINE_DAYS = 7;
 
 // Quando alguém coloca um conteúdo em aprovação, o grupo do cliente é avisado
-// em seguida. A espera é só o bastante para dois casos: quem clicou no status
-// errado consegue voltar atrás (na hora de enviar, só entra o que ainda está em
-// aprovação), e vários conteúdos colocados em sequência viram uma mensagem só.
-const DEBOUNCE_MS = 5_000;
+// depois de uma espera que recomeça a cada conteúdo novo. É o que faz a social
+// media colocar vários em sequência e o cliente receber uma mensagem só, e o
+// que deixa voltar atrás de um status errado (na hora de enviar, só entra o que
+// ainda está em aprovação). Cinco segundos não bastavam: ela coloca um por um,
+// e cada um saía numa mensagem.
+const DEBOUNCE_MS = 20 * 60_000;
 
 export type ProjectCommunication = {
   projectId: string;
@@ -76,24 +78,19 @@ export async function saveAutomationSettings(input: Partial<AutomationSettings>)
 
 
 /** Material esperando o cliente: agenda o aviso no grupo. Nunca lança — falha
- * de aviso não pode impedir a troca de status.
- *
- * "instant" é quando alguém acabou de colocar o conteúdo em aprovação: sai em
- * segundos, sem esperar a fila. "paced" é o aviso atrasado de material que já
- * estava parado quando os avisos foram ligados: vai pela fila, espaçado como
- * os lembretes, porque são vários clientes de uma vez. */
-export async function queueApprovalNotice(projectId: string, mode: "instant" | "paced" = "instant"): Promise<void> {
-  await queueNotice(projectId, `approval:${projectId}:${mode === "instant" ? "pending" : "catchup"}`, mode === "instant");
+ * de aviso não pode impedir a troca de status. A fila manda dentro da janela do
+ * dia, e no máximo um aviso de plano por cliente por dia (ver processOutbox). */
+export async function queueApprovalNotice(projectId: string): Promise<void> {
+  await queueNotice(projectId, `approval:${projectId}:pending`);
 }
 
 /** Tarefa avulsa (fora de plano) entrou em "Para aprovação". Ela não aparece no
- * portal do cliente, então tem o próprio aviso, com o link do material. Sai em
- * segundos, como o aviso de conteúdo de plano, e também nunca lança. */
+ * portal do cliente, então tem o próprio aviso, com o link do material. */
 export async function queueStandaloneNotice(projectId: string, taskId: string): Promise<void> {
-  await queueNotice(projectId, `standalone:${taskId}:pending`, true);
+  await queueNotice(projectId, `standalone:${taskId}:pending`);
 }
 
-async function queueNotice(projectId: string, key: string, instant: boolean): Promise<void> {
+async function queueNotice(projectId: string, key: string): Promise<void> {
   try {
     if (!whatsappConfigured()) return;
     const automation = await getAutomationSettings();
@@ -101,20 +98,13 @@ async function queueNotice(projectId: string, key: string, instant: boolean): Pr
     const settings = await getProjectCommunication(projectId);
     if (!settings.whatsappGroupId || !settings.notifyEnabled) return;
     const db = getSupabase();
-    const scheduledAt = new Date(Date.now() + (instant ? DEBOUNCE_MS : 0)).toISOString();
-    const waiting = await db.from("whatsapp_messages").update(instant ? { scheduled_at: scheduledAt } : {}).eq("dedupe_key", key).eq("status", "pending").select("id");
+    const scheduledAt = new Date(Date.now() + DEBOUNCE_MS).toISOString();
+    const waiting = await db.from("whatsapp_messages").update({ scheduled_at: scheduledAt }).eq("dedupe_key", key).eq("status", "pending").select("id");
     if (!waiting.data?.length) {
       await db.from("whatsapp_messages").upsert({
         id: crypto.randomUUID(), project_id: projectId, kind: "approval", group_id: settings.whatsappGroupId,
         dedupe_key: key, status: "pending", scheduled_at: scheduledAt,
       }, { onConflict: "dedupe_key", ignoreDuplicates: true });
-    }
-    if (instant) {
-      // Não espera a próxima volta da fila: dispara assim que a espera acaba.
-      // (Import dinâmico porque o serviço depende do storage, que depende daqui.)
-      setTimeout(() => {
-        void import("./service").then((service) => service.processApprovalNotices()).catch((error) => console.error("[whatsapp] aviso de aprovação falhou:", error));
-      }, DEBOUNCE_MS + 400).unref?.();
     }
   } catch (error) {
     console.error("[whatsapp] não foi possível agendar o aviso de aprovação:", error);

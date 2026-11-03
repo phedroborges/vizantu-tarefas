@@ -171,8 +171,10 @@ describe("modelos editáveis", () => {
 describe("configuração das mensagens automáticas", () => {
   // Nada sai para cliente antes de alguém revisar os textos e ligar.
   it("nasce desligada, com os padrões", () => {
-    expect(normalizeAutomation(null)).toEqual({ paused: false, enabled: false, sendHour: 9, sendUntilHour: 18, minGapMinutes: 4, reminderEveryDays: 2, weekdaysOnly: true, templates: DEFAULT_TEMPLATES, team: { enabled: false, overdue: true, missingInfo: true, fastest: true } });
+    expect(normalizeAutomation(null)).toEqual({ paused: false, enabled: false, reminders: false, sendHour: 9, sendUntilHour: 18, minGapMinutes: 4, reminderEveryDays: 2, weekdaysOnly: true, templates: DEFAULT_TEMPLATES, team: { enabled: false, overdue: true, missingInfo: true, fastest: true } });
     expect(normalizeAutomation({}).enabled).toBe(false);
+    // Quem já tinha os avisos ligados não ganha cobrança sem escolher.
+    expect(normalizeAutomation({ enabled: true }).reminders).toBe(false);
   });
 
   it("guarda os textos editados e volta ao padrão no tipo que ficou vazio", () => {
