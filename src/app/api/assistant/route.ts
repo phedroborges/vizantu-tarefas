@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { ASSISTANT_TOOLS, PendingDeleteConfirmation, executeTool } from "@/lib/assistant-tools";
-import { isResponse, podeAbrirTarefa, requireUser, semAcesso } from "@/lib/authz";
+import { isResponse, podeAbrirProjeto, podeAbrirTarefa, requireUser, semAcesso } from "@/lib/authz";
 import { ROLES_QUE_PLANEJAM } from "@/lib/permissions";
 import { todayIso } from "@/lib/dates";
 import { appendAssistantMessages, deleteTask, getAssistantConversation, getTask, listKnowledgeDocs } from "@/lib/storage";
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Só quem planeja pode apagar tarefa. Peça ao gestor ou ao social media." }, { status: 403 });
     }
     const target = await getTask(body.confirmDeleteTaskId);
-    if (target && !podeAbrirTarefa(auth, target)) return semAcesso();
+    if (target && (!podeAbrirTarefa(auth, target) || !podeAbrirProjeto(auth, target.projectId))) return semAcesso();
     const removed = target ? await deleteTask(target.id) : false;
     return finish(removed ? "Tarefa excluída." : "Não encontrei essa tarefa — talvez já tenha sido excluída.");
   }

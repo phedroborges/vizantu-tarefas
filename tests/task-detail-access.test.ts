@@ -22,3 +22,10 @@ it("sem sessão não consulta tarefas", async () => {
   expect((await read()).status).toBe(401);
   expect(task).not.toHaveBeenCalled();
 });
+it("quem fez a tarefa continua abrindo depois de sair do cliente", async () => {
+  auth.mockResolvedValue({ id: "m1", accessibleProjectIds: [], accessibleListKinds: "all" });
+  task.mockResolvedValue({ id: "t1", projectId: "p1", lists: [], assigneeId: "m1", description: "Conteúdo completo" });
+  expect((await read()).status).toBe(200);
+  task.mockResolvedValue({ id: "t1", projectId: "p1", lists: [], assigneeId: "outra", description: "Conteúdo completo" });
+  expect((await read()).status).toBe(403);
+});

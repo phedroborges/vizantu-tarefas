@@ -105,7 +105,7 @@ export async function buildTeamNotices(now = new Date(), options: { always?: boo
   }
 
   if (team.fastest) {
-    const [history, tags] = await Promise.all([listTasks({ all: true, projection: "production" }), listTags()]);
+    const [history, tags] = await Promise.all([listTasks({ all: true, projection: "production", includeArchivedPlans: true }), listTags()]);
     const { metrics } = buildDashboardReport({
       tasks: history, projects, members, tags, nowIso: now.toISOString(),
       window: dayRangeInstants({ from: shiftDay(today, -(RANKING_DAYS - 1)), to: today }),

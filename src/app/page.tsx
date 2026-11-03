@@ -17,7 +17,8 @@ export default async function Home({ searchParams }: HomeProps) {
   const period = resolveDashboardPeriod(await searchParams, todayIso());
 
   const [allTasks, allProjects, members, tags, events, links] = await Promise.all([
-    listTasks({ projectIds: user.accessibleProjectIds, listKinds: user.accessibleListKinds }), listProjects(), listMembers(), listTags(),
+    // O painel mede períodos passados, então lê também os planos de meses encerrados.
+    listTasks({ projectIds: user.accessibleProjectIds, listKinds: user.accessibleListKinds, all: true, includeArchivedPlans: true }), listProjects(), listMembers(), listTags(),
     listClientApprovalActivity(), listClientLinkAccess(),
   ]);
   const tasks = filterTasksByListAccess(filterTasksByAccess(allTasks, user.accessibleProjectIds), user.accessibleListKinds);

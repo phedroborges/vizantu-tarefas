@@ -32,8 +32,10 @@ export function semAcesso(): NextResponse {
 }
 
 // Toda rota que recebe o id de uma tarefa passa por aqui: o cliente e a lista
-// dela precisam estar entre os que a pessoa enxerga.
-export function podeAbrirTarefa(user: CurrentUser, task: { projectId: string; lists: TaskListKind[] }): boolean {
+// dela precisam estar entre os que a pessoa enxerga. Quem é o responsável
+// abre a tarefa mesmo depois de sair do cliente: o trabalho continua dele.
+export function podeAbrirTarefa(user: CurrentUser, task: { projectId: string; lists: TaskListKind[]; assigneeId?: string }): boolean {
+  if (task.assigneeId && task.assigneeId === user.id) return true;
   return podeAbrirProjeto(user, task.projectId) && filterTasksByListAccess([task], user.accessibleListKinds).length > 0;
 }
 

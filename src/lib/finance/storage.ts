@@ -27,7 +27,7 @@ export async function loadFinance(actor: string, options: { includeProduction?: 
   const includeProduction = options.includeProduction !== false;
   const db = getSupabase();
   const [contracts, projects, members, tasks, tags, settingsRow, storedEntries, blockRows, scoreRows, auditRows] = await Promise.all([
-    listContracts(), listProjects(), listMembers(), includeProduction ? listTasks({ all: true, projection: "production" }) : Promise.resolve([]), includeProduction ? listTags() : Promise.resolve([]), db.from("finance_settings").select("data").eq("id", true).maybeSingle().then(checked),
+    listContracts(), listProjects(), listMembers(), includeProduction ? listTasks({ all: true, projection: "production", includeArchivedPlans: true }) : Promise.resolve([]), includeProduction ? listTags() : Promise.resolve([]), db.from("finance_settings").select("data").eq("id", true).maybeSingle().then(checked),
     allRows("finance_entries"), allRows("finance_project_blocks", "project_id"), allRows("client_satisfaction_scores"),
     db.from("finance_audit").select("id,entity_id,action,actor_id,created_at").order("created_at", { ascending: false }).limit(100).then(checked),
   ]);
@@ -78,7 +78,7 @@ export async function loadFinance(actor: string, options: { includeProduction?: 
 // dessas integrações não impede consultar a equipe e fechar suas entregas.
 export async function loadFinanceProduction(): Promise<FinanceData> {
   const [projects, members, tasks, tags, settingsRow, entryRows] = await Promise.all([
-    listProjects(), listMembers(), listTasks({ all: true, projection: "production" }), listTags(),
+    listProjects(), listMembers(), listTasks({ all: true, projection: "production", includeArchivedPlans: true }), listTags(),
     getSupabase().from("finance_settings").select("data").eq("id", true).maybeSingle().then(checked),
     allRows("finance_entries", "id", "producao"),
   ]);

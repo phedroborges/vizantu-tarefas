@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiFailure } from "@/lib/api-error";
-import { isResponse, podeAbrirTarefa, requireUser, semAcesso } from "@/lib/authz";
+import { isResponse, podeAbrirProjeto, podeAbrirTarefa, requireUser, semAcesso } from "@/lib/authz";
 import { ROLES_DO_TIME } from "@/lib/permissions";
 import { duplicateTask, getTask } from "@/lib/storage";
 
@@ -11,7 +11,7 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
   try {
     const existing = await getTask(id);
     if (!existing) return NextResponse.json({ error: "Tarefa não encontrada." }, { status: 404 });
-    if (!podeAbrirTarefa(auth, existing)) return semAcesso();
+    if (!podeAbrirTarefa(auth, existing) || !podeAbrirProjeto(auth, existing.projectId)) return semAcesso();
     const task = await duplicateTask(id, auth.id);
     if (!task) return NextResponse.json({ error: "Tarefa não encontrada." }, { status: 404 });
     return NextResponse.json({ task }, { status: 201 });

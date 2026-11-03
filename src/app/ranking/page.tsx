@@ -17,7 +17,7 @@ export default async function RankingPage({ searchParams }: RankingPageProps) {
   const period = resolveDashboardPeriod(await searchParams, todayIso(), "mes");
   // O ranking é o mesmo para todo mundo: conta as tarefas de todos os clientes,
   // e não só as dos que a pessoa atende. Para o navegador vai só o pódio.
-  const [tasks, members] = await Promise.all([listTasks({ all: true, projection: "production" }), listMembers()]);
+  const [tasks, members] = await Promise.all([listTasks({ all: true, projection: "production", includeArchivedPlans: true }), listMembers()]);
   const { metrics } = buildDashboardReport({
     tasks, projects: [], members, tags: [], nowIso: new Date().toISOString(),
     window: period.range && dayRangeInstants(period.range),

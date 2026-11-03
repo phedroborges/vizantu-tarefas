@@ -10,7 +10,6 @@
 import { Plus, RotateCcw, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Button, Card, Field, Select, Textarea } from "@/components/vz";
-import { useConfirm } from "@/components/confirm-dialog";
 import { responseError } from "@/lib/request-error";
 import { DEFAULT_TEMPLATES, MESSAGE_KINDS, MESSAGE_VARIABLES, messageVariables, renderTemplate, type AutomationSettings, type MessageKind, type WaitingItem } from "@/lib/whatsapp/messages";
 
@@ -35,7 +34,6 @@ export function WhatsappAutomationPanel({ initialSettings, configured }: { initi
   const [sample, setSample] = useState<"few" | "many">("few");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
-  const { confirm, ConfirmDialog } = useConfirm();
   const dirty = JSON.stringify(settings) !== JSON.stringify(saved);
 
   // A prévia usa uma data fixa em relação a agora só para ter o que mostrar.
@@ -50,22 +48,6 @@ export function WhatsappAutomationPanel({ initialSettings, configured }: { initi
   }
 
   async function save() {
-    if (settings.enabled && !saved.enabled) {
-      const ok = await confirm({
-        title: "Ligar o aviso de material para aprovar?",
-        message: "Os clientes com grupo configurado e material esperando aprovação recebem o aviso dentro da janela de envio de hoje, um por cliente.",
-        confirmLabel: "Ligar e salvar",
-      });
-      if (!ok) return;
-    }
-    if (settings.reminders && !saved.reminders) {
-      const ok = await confirm({
-        title: "Ligar as cobranças?",
-        message: "A partir do primeiro aviso de cada conteúdo correm o lembrete e o prazo. Sem resposta, o cliente recebe o aviso de último dia e, no dia seguinte, o conteúdo é dado como aprovado.",
-        confirmLabel: "Ligar e salvar",
-      });
-      if (!ok) return;
-    }
     setBusy(true);
     setMessage(null);
     const response = await fetch("/api/whatsapp/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(settings) });
@@ -74,7 +56,7 @@ export function WhatsappAutomationPanel({ initialSettings, configured }: { initi
     const result = (await response.json()).settings as AutomationSettings;
     setSettings(result);
     setSaved(result);
-    setMessage({ text: `Salvo. Aviso de material ${result.enabled ? "ligado" : "desligado"}; cobranças ${result.reminders ? "ligadas" : "desligadas"}.` });
+    setMessage({ text: "Salvo." });
   }
 
   return <>
@@ -82,14 +64,7 @@ export function WhatsappAutomationPanel({ initialSettings, configured }: { initi
       {!configured ? <p className="form-message">O WhatsApp ainda não está conectado no servidor. Você pode deixar os textos prontos; nada é enviado até a conexão existir.</p> : null}
 
       <Card className="automation__rules">
-        <label className="project-communication__toggle">
-          <input type="checkbox" checked={settings.enabled} onChange={(event) => setSettings({ ...settings, enabled: event.target.checked })} />
-          <span><strong>Aviso de material para aprovar {settings.enabled ? "ligado" : "desligado"}</strong>{settings.enabled ? "Quando a equipe coloca um conteúdo em aprovação, o grupo do cliente recebe o aviso. O que entra em sequência vira uma mensagem só, e cada cliente recebe no máximo um aviso por dia." : "A equipe avisa o cliente por conta própria. Os comunicados manuais continuam funcionando."}</span>
-        </label>
-        <label className="project-communication__toggle">
-          <input type="checkbox" checked={settings.reminders} onChange={(event) => setSettings({ ...settings, reminders: event.target.checked })} />
-          <span><strong>Cobranças {settings.reminders ? "ligadas" : "desligadas"}</strong>{settings.reminders ? "Lembrete, aviso de último dia e aprovação por prazo. Só é aprovado pelo prazo o que o cliente foi avisado e recebeu o aviso de último dia." : "Nenhum lembrete sai, nenhum prazo corre e nada é aprovado sozinho."}</span>
-        </label>
+        <p className="broadcasts__hint">Ligar ou pausar o aviso de material e as cobranças fica no topo da página e vale na hora. Aqui ficam os horários e os textos.</p>
         <div className="automation__grid">
           <Field label="Enviar a partir de" hint="Início da janela do dia. Não é um disparo: as mensagens saem uma por vez a partir desta hora.">
             <Select value={settings.sendHour} onChange={(event) => { const sendHour = Number(event.target.value); setSettings({ ...settings, sendHour, sendUntilHour: Math.max(settings.sendUntilHour, sendHour + 1) }); }}>{HOURS.map((hour) => <option key={hour} value={hour}>{String(hour).padStart(2, "0")}:00</option>)}</Select>
@@ -146,6 +121,5 @@ export function WhatsappAutomationPanel({ initialSettings, configured }: { initi
         <Button variant="primary" type="button" onClick={save} disabled={busy || !dirty}>{busy ? "Salvando…" : "Salvar mensagens automáticas"}</Button>
       </div>
     </div>
-    {ConfirmDialog}
   </>;
 }

@@ -22,24 +22,26 @@ export async function PUT(request: NextRequest) {
   const auth = await requireUser(ROLES_DE_GESTAO);
   if (isResponse(auth)) return auth;
   try {
-    // A parada de emergência tem a própria rota (PATCH): salvar os textos não
-    // pode religar nem pausar os envios por tabela.
+    // A parada de emergência e as chaves de aviso e cobrança têm a própria rota
+    // (PATCH): salvar os textos não pode religar nem pausar nada por tabela.
     // Os avisos da equipe também (PUT em /api/whatsapp/team): esta tela guarda
     // uma cópia antiga deles e não pode gravar por cima.
-    const { paused, team } = await getAutomationSettings();
-    return NextResponse.json({ settings: await saveAutomationSettings({ ...(await request.json()), paused, team }) });
+    const { paused, enabled, reminders, team } = await getAutomationSettings();
+    return NextResponse.json({ settings: await saveAutomationSettings({ ...(await request.json()), paused, enabled, reminders, team }) });
   } catch (error) {
     return apiFailure(error, "salvar as mensagens automáticas");
   }
 }
 
-// Parada de emergência: pausa ou retoma todos os envios, na hora.
+// Chaves que valem na hora: a parada de emergência, o aviso de material para
+// aprovar e as cobranças. Só muda a chave que veio no pedido.
 export async function PATCH(request: NextRequest) {
   const auth = await requireUser(ROLES_DE_GESTAO);
   if (isResponse(auth)) return auth;
   try {
     const body = await request.json();
-    const settings = await saveAutomationSettings({ ...(await getAutomationSettings()), paused: body.paused === true });
+    const changes = Object.fromEntries((["paused", "enabled", "reminders"] as const).filter((key) => typeof body?.[key] === "boolean").map((key) => [key, body[key]]));
+    const settings = await saveAutomationSettings({ ...(await getAutomationSettings()), ...changes });
     return NextResponse.json({ settings, pending: await countPendingMessages() });
   } catch (error) {
     return apiFailure(error, "alterar a parada de emergência");

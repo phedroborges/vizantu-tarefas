@@ -49,7 +49,7 @@ describe("carregamento financeiro", () => {
   });
   it("visão geral carrega os dados necessários para computar equipe a lançar", async () => {
     await loadFinance("owner");
-    expect(mocks.tasks).toHaveBeenCalledWith({ all: true, projection: "production" });
+    expect(mocks.tasks).toHaveBeenCalledWith({ all: true, projection: "production", includeArchivedPlans: true });
     expect(mocks.tags).toHaveBeenCalledOnce();
   });
   it("contrato já importado não reescreve parcelas ou desfaz cancelamentos", async () => {
@@ -88,7 +88,7 @@ it("produção funciona sem consultar ou importar contratos", async () => {
   mocks.contracts.mockRejectedValue(new Error("Contratos indisponíveis"));
   const result = await loadFinanceProduction();
   expect(result.members[0].id).toBe("owner");
-  expect(mocks.tasks).toHaveBeenCalledWith({ all: true, projection: "production" });
+  expect(mocks.tasks).toHaveBeenCalledWith({ all: true, projection: "production", includeArchivedPlans: true });
   expect(mocks.contracts).not.toHaveBeenCalled();
   expect(writes).toEqual([]);
 });

@@ -77,7 +77,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
   try {
     const task = await getTask(id);
     if (!task) return NextResponse.json({ error: "Tarefa não encontrada." }, { status: 404 });
-    if (!podeAbrirTarefa(auth, task)) return semAcesso();
+    if (!podeAbrirTarefa(auth, task) || !podeAbrirProjeto(auth, task.projectId)) return semAcesso();
     const removed = await deleteTask(id);
     if (!removed) return NextResponse.json({ error: "Tarefa não encontrada." }, { status: 404 });
     return NextResponse.json({ ok: true });
