@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { ASSISTANT_TOOLS, PendingDeleteConfirmation, executeTool } from "@/lib/assistant-tools";
-import { isResponse, requireUser } from "@/lib/authz";
+import { isResponse, podeAbrirTarefa, requireUser, semAcesso } from "@/lib/authz";
 import { ROLES_QUE_PLANEJAM } from "@/lib/permissions";
 import { todayIso } from "@/lib/dates";
-import { appendAssistantMessages, deleteTask, getAssistantConversation, listKnowledgeDocs } from "@/lib/storage";
+import { appendAssistantMessages, deleteTask, getAssistantConversation, getTask, listKnowledgeDocs } from "@/lib/storage";
 import { buildMessageContent } from "@/lib/vision-content";
 
 const MODEL = "gpt-4o-mini";
@@ -65,6 +65,7 @@ Como agir:
 export async function POST(request: NextRequest) {
   const auth = await requireUser();
   if (isResponse(auth)) return auth;
+  const memberId = auth.id;
 
   const body = await request.json();
   const conversationId = typeof body.conversationId === "string" ? body.conversationId : undefined;
@@ -73,7 +74,7 @@ export async function POST(request: NextRequest) {
   // cliente — um só lugar pros três pontos de retorno do loop abaixo.
   async function finish(message: string, pendingConfirmation?: { taskId: string; taskName: string }) {
     if (conversationId) {
-      await appendAssistantMessages(conversationId, [{ id: crypto.randomUUID(), role: "assistant", text: message, pendingConfirmation: pendingConfirmation ?? null }]);
+      await appendAssistantMessages(memberId, conversationId, [{ id: crypto.randomUUID(), role: "assistant", text: message, pendingConfirmation: pendingConfirmation ?? null }]);
     }
     return NextResponse.json(pendingConfirmation ? { message, pendingConfirmation } : { message });
   }
@@ -85,7 +86,9 @@ export async function POST(request: NextRequest) {
     if (!ROLES_QUE_PLANEJAM.includes(auth.role)) {
       return NextResponse.json({ error: "Só quem planeja pode apagar tarefa. Peça ao gestor ou ao social media." }, { status: 403 });
     }
-    const removed = await deleteTask(body.confirmDeleteTaskId);
+    const target = await getTask(body.confirmDeleteTaskId);
+    if (target && !podeAbrirTarefa(auth, target)) return semAcesso();
+    const removed = target ? await deleteTask(target.id) : false;
     return finish(removed ? "Tarefa excluída." : "Não encontrei essa tarefa — talvez já tenha sido excluída.");
   }
 
@@ -115,12 +118,12 @@ export async function POST(request: NextRequest) {
     // do que já está salvo — evita reenviar (e retrimar) o histórico inteiro
     // a cada turno, e é o que permite reabrir a conversa depois de recarregar
     // a página.
-    const conversation = await getAssistantConversation(conversationId);
+    const conversation = await getAssistantConversation(auth.id, conversationId);
     if (!conversation) return NextResponse.json({ error: "Conversa não encontrada." }, { status: 404 });
     const userText = typeof body.message === "string" ? body.message.trim() : "";
     if (!userText && !incomingImages) return NextResponse.json({ error: "Mensagem vazia." }, { status: 400 });
     const userMessage = { id: crypto.randomUUID(), role: "user" as const, text: userText, images: incomingImages, pendingConfirmation: null };
-    await appendAssistantMessages(conversationId, [userMessage]);
+    await appendAssistantMessages(auth.id, conversationId, [userMessage]);
     const historySlice = [...conversation.messages, userMessage].slice(-MAX_HISTORY);
     incoming = historySlice.map((m) => ({ role: m.role, content: buildMessageContent(m.text, m.images) }) as ChatCompletionMessageParam);
   } else {

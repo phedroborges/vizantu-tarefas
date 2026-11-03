@@ -9,6 +9,10 @@ beforeEach(() => {
   row = { id: "task", project_id: "project", name: "Reels", kind: "conteudo", status: "em_criacao", assignee_id: "erika", status_history: [{ status: "em_criacao", enteredAt: "2026-09-01T12:00:00Z", exitedAt: null }], comments: [], created_at: "2026-09-01T12:00:00Z", updated_at: "2026-09-01T12:00:00Z" };
   db.mockReturnValue(createClient("https://database.example", "test-key", { auth: { persistSession: false, autoRefreshToken: false }, global: { fetch: async (_input, init) => {
     const url = new URL(String(_input));
+    if (url.pathname.endsWith("/rpc/append_task_comments")) {
+      row = { ...row, comments: [...(row.comments as unknown[]), ...JSON.parse(String(init?.body)).p_comments] };
+      return Response.json([row]);
+    }
     if (url.pathname.endsWith("/plans")) {
       const plan = { id: "plan", project_id: "project", kind: "content", status: "draft" };
       return Response.json(url.searchParams.get("id")?.startsWith("in.") ? [plan] : plan);

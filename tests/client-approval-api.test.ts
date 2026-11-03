@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-const { submit, session } = vi.hoisted(() => ({ submit: vi.fn(), session: vi.fn((): string | null => "project-1") }));
-vi.mock("@/lib/supabase-client", () => ({ getSupabase: () => ({ from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }) }) }));
+const { submit, session, link } = vi.hoisted(() => ({ submit: vi.fn(), session: vi.fn((): string | null => "link-1"), link: { revoked_at: null as string | null } }));
+vi.mock("@/lib/supabase-client", () => ({ getSupabase: () => ({ from: (table: string) => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: table === "client_links" ? { project_id: "project-1", expires_at: null, ...link } : null, error: null }) }) }) }) }) }));
 vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => ({ value: "signed" }) }) }));
 vi.mock("@/lib/client-session", () => ({ CLIENT_SESSION_COOKIE: "client", verifyClientSession: session }));
 vi.mock("@/lib/storage", async (original) => ({ ...await original<typeof import("@/lib/storage")>(), submitPlanApprovalResponse: submit }));
@@ -9,7 +9,7 @@ import { POST } from "../src/app/api/c/approve/route";
 import { ApprovalResponseError } from "../src/lib/storage";
 const decision = { taskId: "task-1", reviewerName: "Maria", status: "approved", reviewVersion: 100 };
 const post = (body: object) => POST(new NextRequest("http://localhost/api/c/approve", { method: "POST", body: JSON.stringify(body) }));
-beforeEach(() => { submit.mockReset(); session.mockReturnValue("project-1"); });
+beforeEach(() => { submit.mockReset(); session.mockReturnValue("link-1"); link.revoked_at = null; });
 describe("API de decisão do cliente", () => {
   it.each(["rejected", "changes_requested"])("recusa %s sem um motivo válido", async (status) => {
     for (const comment of [undefined, "   ", { invalid: true }]) expect((await post({ ...decision, status, comment })).status).toBe(400);
@@ -22,6 +22,11 @@ describe("API de decisão do cliente", () => {
   });
   it("recusa sessão ausente", async () => {
     session.mockReturnValue(null);
+    expect((await post(decision)).status).toBe(401);
+    expect(submit).not.toHaveBeenCalled();
+  });
+  it("recusa a sessão de um link já revogado", async () => {
+    link.revoked_at = "2026-11-01T00:00:00Z";
     expect((await post(decision)).status).toBe(401);
     expect(submit).not.toHaveBeenCalled();
   });

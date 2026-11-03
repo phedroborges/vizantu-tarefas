@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiFailure } from "@/lib/api-error";
-import { isResponse, requireUser } from "@/lib/authz";
+import { isResponse, podeAbrirProjeto, requireUser, semAcesso } from "@/lib/authz";
 import { ROLES_QUE_PLANEJAM } from "@/lib/permissions";
 import { createProjectSource, deleteProjectSource, listProjectSources } from "@/lib/storage";
 import { PROJECT_SOURCE_KINDS } from "@/lib/types";
@@ -9,6 +9,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const auth = await requireUser();
   if (isResponse(auth)) return auth;
   const { id } = await params;
+  if (!podeAbrirProjeto(auth, id)) return semAcesso();
   try {
     return NextResponse.json({ sources: await listProjectSources(id) });
   } catch (error) {
@@ -20,6 +21,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const auth = await requireUser(ROLES_QUE_PLANEJAM);
   if (isResponse(auth)) return auth;
   const { id } = await params;
+  if (!podeAbrirProjeto(auth, id)) return semAcesso();
   const body = await request.json();
 
   if (!body?.title || typeof body.title !== "string" || !body.title.trim()) {
@@ -47,13 +49,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
 }
 
-export async function DELETE(request: NextRequest) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireUser(ROLES_QUE_PLANEJAM);
   if (isResponse(auth)) return auth;
+  const { id } = await params;
+  if (!podeAbrirProjeto(auth, id)) return semAcesso();
   const sourceId = request.nextUrl.searchParams.get("sourceId");
   if (!sourceId) return NextResponse.json({ error: "Informe a fonte." }, { status: 400 });
   try {
-    await deleteProjectSource(sourceId);
+    await deleteProjectSource(id, sourceId);
     return NextResponse.json({ ok: true });
   } catch (error) {
     return apiFailure(error, "remover a fonte do guia");

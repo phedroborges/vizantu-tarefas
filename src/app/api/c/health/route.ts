@@ -3,26 +3,20 @@ import { getSupabase } from "@/lib/supabase-client";
 
 export const dynamic = "force-dynamic";
 
-// Diagnóstico do pipeline nativo (dashboard do cliente). NÃO expõe valor de
-// variável nenhuma — só diz se está presente e se o banco responde, pra dar
-// pra descobrir o que falta no ambiente sem ler log de container.
+// Diagnóstico do pipeline nativo (dashboard do cliente). A rota é pública, então
+// a resposta diz só se está pronto; o que falta (variável, erro do banco) vai
+// para o log do servidor, não para quem chamou.
 export async function GET() {
-  const env = {
-    SUPABASE_URL: Boolean(process.env.SUPABASE_URL),
-    SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
-    CLIENT_SESSION_SECRET: Boolean(process.env.CLIENT_SESSION_SECRET),
-  };
-
-  let database: { ok: boolean; error?: string };
-  try {
-    const { error } = await getSupabase().from("client_links").select("id").limit(1);
-    database = error ? { ok: false, error: error.message } : { ok: true };
-  } catch (err) {
-    database = { ok: false, error: err instanceof Error ? err.message : "erro desconhecido" };
+  let ready = Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
+  if (!ready) console.error("[/api/c/health] SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY ausente.");
+  else {
+    try {
+      const { error } = await getSupabase().from("client_links").select("id").limit(1);
+      if (error) throw new Error(error.message);
+    } catch (err) {
+      ready = false;
+      console.error("[/api/c/health] banco não respondeu:", err);
+    }
   }
-
-  // CLIENT_SESSION_SECRET não entra no "ready": ela é opcional (cai pra uma
-  // chave derivada da service-role key — ver src/lib/client-session.ts).
-  const ready = env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY && database.ok;
-  return NextResponse.json({ ready, env, database }, { status: ready ? 200 : 503 });
+  return NextResponse.json({ ready }, { status: ready ? 200 : 503 });
 }

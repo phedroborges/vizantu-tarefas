@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiFailure } from "@/lib/api-error";
-import { isResponse, requireUser } from "@/lib/authz";
+import { isResponse, podeAbrirProjeto, requireUser, semAcesso } from "@/lib/authz";
 import { ROLES_QUE_PLANEJAM } from "@/lib/permissions";
 import { saveProjectProfile } from "@/lib/storage";
 
@@ -8,6 +8,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const auth = await requireUser(ROLES_QUE_PLANEJAM);
   if (isResponse(auth)) return auth;
   const { id } = await params;
+  if (!podeAbrirProjeto(auth, id)) return semAcesso();
   const body = await request.json();
   try {
     return NextResponse.json({ profile: await saveProjectProfile(id, body) });

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isResponse, requireUser } from "@/lib/authz";
+import { isResponse, podeAbrirProjeto, requireUser, semAcesso } from "@/lib/authz";
 import { ROLES_QUE_PLANEJAM } from "@/lib/permissions";
 import { deleteProject, updateProject } from "@/lib/storage";
 
@@ -7,6 +7,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const auth = await requireUser(ROLES_QUE_PLANEJAM);
   if (isResponse(auth)) return auth;
   const { id } = await params;
+  if (!podeAbrirProjeto(auth, id)) return semAcesso();
   const body = await request.json();
   const project = await updateProject(id, {
     name: body.name,
@@ -26,6 +27,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
   const auth = await requireUser(ROLES_QUE_PLANEJAM);
   if (isResponse(auth)) return auth;
   const { id } = await params;
+  if (!podeAbrirProjeto(auth, id)) return semAcesso();
   const removed = await deleteProject(id);
   if (!removed) return NextResponse.json({ error: "Projeto não encontrado." }, { status: 404 });
   return NextResponse.json({ ok: true });

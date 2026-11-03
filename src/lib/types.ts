@@ -109,6 +109,9 @@ export const TASK_STATUSES: { value: TaskStatus; label: string; group: StatusGro
 // atrasar. Antes só "em_criacao" era cobrado, então uma tarefa vencida em
 // Ajuste ou Aguardando informação parecia estar em dia na lista inteira.
 export const CLOSED_TASK_STATUSES: TaskStatus[] = ["problema", "finalizado"];
+
+/** Um comentário cabe um briefing inteiro; o limite só barra colagem acidental. */
+export const MAX_COMMENT_LENGTH = 5000;
 export const DONE_STATUSES: TaskStatus[] = ["para_aprovacao", "aprovado", "problema", "finalizado"];
 export const OVERDUE_STATUSES: TaskStatus[] = TASK_STATUSES
   .map(({ value }) => value)

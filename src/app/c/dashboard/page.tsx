@@ -1,8 +1,6 @@
-import { isClientBlocked } from "@/lib/client-access";
-import { cookies } from "next/headers";
+import { clientSessionProject, isClientBlocked } from "@/lib/client-access";
 import { redirect } from "next/navigation";
 import { ClientDashboard } from "@/components/client-dashboard";
-import { CLIENT_SESSION_COOKIE, verifyClientSession } from "@/lib/client-session";
 import { getProject, listPlanEvents, clientPlanView, listSatisfactionScores } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -10,8 +8,7 @@ export const metadata = { title: "Seu painel — Vizantu" };
 
 export default async function ClientDashboardPage({ searchParams }: { searchParams: Promise<{ item?: string; plan?: string }> }) {
   const { item: initialItemId, plan: requestedPlanId } = await searchParams;
-  const cookieStore = await cookies();
-  const projectId = verifyClientSession(cookieStore.get(CLIENT_SESSION_COOKIE)?.value);
+  const projectId = await clientSessionProject();
   if (!projectId) redirect("/c/invalido");
   if (await isClientBlocked(projectId)) redirect("/c/bloqueado");
 

@@ -132,6 +132,14 @@ async function finish(id: string, patch: Partial<Pick<MessageRow, "status" | "er
   unwrap(await getSupabase().from("whatsapp_messages").update(patch).eq("id", id));
 }
 
+// Envio que falha não é repetido, mas a chave do aviso imediato ou do atrasado
+// precisa ser liberada: dedupe_key é única, e uma chave presa num "failed"
+// barraria em silêncio todos os próximos avisos daquele cliente ou tarefa.
+async function markFailed(row: Pick<MessageRow, "id" | "dedupe_key">, error: unknown): Promise<void> {
+  const freeKey = row.dedupe_key && /:(pending|catchup)$/.test(row.dedupe_key) ? `${row.dedupe_key}:failed:${row.id}` : undefined;
+  await finish(row.id, { status: "failed", error: error instanceof Error ? error.message.slice(0, 500) : "Falha no envio.", ...(freeKey ? { dedupe_key: freeKey } : {}) }).catch(() => {});
+}
+
 /** Aviso de tarefa avulsa: os dados são lidos na hora do envio, e só sai se a
  * tarefa ainda estiver em "Para aprovação" com o link do material. */
 async function composeStandalone(row: MessageRow, taskId: string): Promise<string | undefined> {
@@ -237,7 +245,7 @@ export async function processOutbox(): Promise<number> {
     await deliver(claimed[0]);
     return 1;
   } catch (error) {
-    await finish(next.id, { status: "failed", error: error instanceof Error ? error.message.slice(0, 500) : "Falha no envio." }).catch(() => {});
+    await markFailed(claimed[0], error);
     return 0;
   }
 }
@@ -263,7 +271,7 @@ export async function processApprovalNotices(): Promise<number> {
       await deliver(claimed[0]);
       sent += 1;
     } catch (error) {
-      await finish(id, { status: "failed", error: error instanceof Error ? error.message.slice(0, 500) : "Falha no envio." }).catch(() => {});
+      await markFailed(claimed[0], error);
     }
   }
   return sent;

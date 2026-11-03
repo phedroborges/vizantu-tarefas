@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiFailure } from "@/lib/api-error";
-import { isResponse, requireUser } from "@/lib/authz";
+import { isResponse, requirePlanAccess, requireUser } from "@/lib/authz";
 import { ROLES_QUE_PLANEJAM } from "@/lib/permissions";
 import { todayIso } from "@/lib/dates";
 import { addDays, reschedulePlan, weeklyDiagnosis, type ScheduleItem } from "@/lib/plan-schedule";
@@ -32,6 +32,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const auth = await requireUser(ROLES_QUE_PLANEJAM);
   if (isResponse(auth)) return auth;
   const { id } = await params;
+  const plan = await requirePlanAccess(auth, id);
+  if (isResponse(plan)) return plan;
   try {
     const dados = await carregar(id);
     if (!dados) return NextResponse.json({ error: "Plano não encontrado." }, { status: 404 });
@@ -50,6 +52,8 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
   const auth = await requireUser(ROLES_QUE_PLANEJAM);
   if (isResponse(auth)) return auth;
   const { id } = await params;
+  const plan = await requirePlanAccess(auth, id);
+  if (isResponse(plan)) return plan;
   try {
     const dados = await carregar(id);
     if (!dados) return NextResponse.json({ error: "Plano não encontrado." }, { status: 404 });

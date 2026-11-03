@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiFailure } from "@/lib/api-error";
-import { isResponse, requireUser } from "@/lib/authz";
+import { isResponse, podeAbrirProjeto, podeAbrirTarefa, requireUser, semAcesso } from "@/lib/authz";
 import { ROLES_DO_TIME, ROLES_QUE_PLANEJAM } from "@/lib/permissions";
 import { TaskRuleError, deleteTask, getTask, listTaskActivity, notifyTaskAssigned, updateTask } from "@/lib/storage";
 import { TASK_KINDS, TASK_STATUSES } from "@/lib/types";
@@ -12,12 +12,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const body = await request.json();
   const existing = await getTask(id);
   if (!existing) return NextResponse.json({ error: "Tarefa não encontrada." }, { status: 404 });
-  if (auth.accessibleProjectIds !== "all" && (!auth.accessibleProjectIds.includes(existing.projectId) || (body.projectId && !auth.accessibleProjectIds.includes(body.projectId)))) {
-    return NextResponse.json({ error: "Sem acesso." }, { status: 403 });
-  }
-  if (auth.accessibleListKinds !== "all" && existing.lists.length && !existing.lists.some(list => auth.accessibleListKinds.includes(list))) {
-    return NextResponse.json({ error: "Sem acesso." }, { status: 403 });
-  }
+  if (!podeAbrirTarefa(auth, existing) || (body.projectId && !podeAbrirProjeto(auth, body.projectId))) return semAcesso();
   if (body.status !== undefined && !TASK_STATUSES.some((status) => status.value === body.status)) {
     return NextResponse.json({ error: "Status inválido." }, { status: 400 });
   }
@@ -61,8 +56,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   try {
     const task = await getTask(id);
     if (!task) return NextResponse.json({ error: "Tarefa não encontrada." }, { status: 404 });
-    if (auth.accessibleProjectIds !== "all" && !auth.accessibleProjectIds.includes(task.projectId)) return NextResponse.json({ error: "Sem acesso." }, { status: 403 });
-    if (auth.accessibleListKinds !== "all" && task.lists.length && !task.lists.some((list) => auth.accessibleListKinds.includes(list))) return NextResponse.json({ error: "Sem acesso." }, { status: 403 });
+    if (!podeAbrirTarefa(auth, task)) return semAcesso();
     // A lista pede o conteúdo completo só ao abrir o modal. Histórico continua
     // disponível pela mesma rota, sem acrescentar sua consulta à abertura.
     if (_request.nextUrl.searchParams.get("detail") === "1") return NextResponse.json({ task }, { headers: { "Cache-Control": "private, no-store" } });
@@ -81,6 +75,9 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
   if (isResponse(auth)) return auth;
   const { id } = await params;
   try {
+    const task = await getTask(id);
+    if (!task) return NextResponse.json({ error: "Tarefa não encontrada." }, { status: 404 });
+    if (!podeAbrirTarefa(auth, task)) return semAcesso();
     const removed = await deleteTask(id);
     if (!removed) return NextResponse.json({ error: "Tarefa não encontrada." }, { status: 404 });
     return NextResponse.json({ ok: true });

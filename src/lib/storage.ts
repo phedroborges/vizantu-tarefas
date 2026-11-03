@@ -32,7 +32,6 @@ import type {
   PlanApprovalResponse,
   PlanApprovalStatus,
   PlanCaptacao,
-  ClientLink,
   PlanEvent,
   PlanItemApproval,
   PlanKind,
@@ -69,7 +68,7 @@ function nowIso() {
 // Devolve `unknown` de propósito: o cliente Supabase sem um Database type
 // gerado não infere o formato da linha, então cada chamada faz seu próprio
 // cast explícito pro Row correspondente.
-function unwrap(result: { data: unknown; error: { message: string } | null }): unknown {
+export function unwrap(result: { data: unknown; error: { message: string } | null }): unknown {
   if (result.error) throw new Error(result.error.message);
   return result.data;
 }
@@ -829,8 +828,7 @@ export async function updateTask(
   const changes = tracked.filter(([, before, after]) => JSON.stringify(before) !== JSON.stringify(after));
   if (changes.length) {
     const createdAt = changedAt;
-    const comments = [...updated.comments, ...createActivityComments(changes, actorMemberId, createdAt, newId)];
-    const activityRow = unwrap(await getSupabase().from("tasks").update({ comments }).eq("id", id).select().maybeSingle());
+    const activityRow = await appendComments(id, createActivityComments(changes, actorMemberId, createdAt, newId));
     if (activityRow) [updated] = await attachPlanKind([mapTask(activityRow as TaskRow)]);
   }
   await syncApprovalRoundFromTask(updated);
@@ -961,6 +959,13 @@ function sanitizeAttachments(attachments: unknown): import("./types").CommentAtt
   }).slice(0, 6);
 }
 
+// Comentário e histórico entram somando à lista no próprio banco, nunca
+// regravando a lista lida antes: dois comentários ao mesmo tempo (o cliente
+// pedindo ajuste enquanto alguém do time escreve) não apagam um ao outro.
+async function appendComments(taskId: string, comments: Task["comments"]): Promise<TaskRow | undefined> {
+  return (unwrap(await getSupabase().rpc("append_task_comments", { p_task_id: taskId, p_comments: comments })) as TaskRow[])[0];
+}
+
 export async function addComment(taskId: string, input: { author: string; authorMemberId?: string; mentionedMemberIds?: string[]; text: string; attachments?: unknown }): Promise<Task | undefined> {
   const current = await getTask(taskId);
   if (!current) return undefined;
@@ -970,8 +975,7 @@ export async function addComment(taskId: string, input: { author: string; author
   const mentionedMemberIds = requestedMentions.filter((id) => validMembers.has(id));
   const attachments = sanitizeAttachments(input.attachments);
   if (!input.text.trim() && !attachments.length) return current;
-  const comments = [...current.comments, { id: commentId, author: input.author.trim() || "Equipe", authorMemberId: input.authorMemberId, mentionedMemberIds, text: input.text.trim(), ...(attachments.length ? { attachments } : {}), createdAt: nowIso() }];
-  const row = unwrap(await getSupabase().from("tasks").update({ comments, updated_at: nowIso() }).eq("id", taskId).select().maybeSingle());
+  const row = await appendComments(taskId, [{ id: commentId, author: input.author.trim() || "Equipe", authorMemberId: input.authorMemberId, mentionedMemberIds, text: input.text.trim(), ...(attachments.length ? { attachments } : {}), createdAt: nowIso() }]);
   if (row && mentionedMemberIds.length) {
     await createNotifications(mentionedMemberIds.map((memberId) => ({
       recipientMemberId: memberId, actorMemberId: input.authorMemberId, type: "mention" as const, taskId,
@@ -1270,6 +1274,11 @@ export async function updatePlanCaptacao(id: string, patch: { label?: string; pa
   return mapPlanCaptacao(row);
 }
 
+export async function planIdOfCaptacao(id: string): Promise<string | undefined> {
+  const row = unwrap(await getSupabase().from("plan_captacoes").select("plan_id").eq("id", id).maybeSingle()) as { plan_id: string } | null;
+  return row?.plan_id;
+}
+
 export async function deletePlanCaptacao(id: string): Promise<boolean> {
   const rows = unwrap(await getSupabase().from("plan_captacoes").delete().eq("id", id).select("id"));
   return (rows as unknown[]).length > 0;
@@ -1281,93 +1290,6 @@ export async function listPlanTasks(planId: string): Promise<Task[]> {
   const rows = unwrap(await getSupabase().from("tasks").select("*").eq("plan_id", planId)) as TaskRow[];
   const tasks = await attachPlanKind(rows.map(mapTask));
   return tasks.sort((a, b) => (a.sequenceOrder ?? 0) - (b.sequenceOrder ?? 0));
-}
-
-// ---------- Clientes e link mágico (consumidos pelo vizantu-planos) ----------
-
-function randomToken(): string {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  return Buffer.from(bytes).toString("base64url");
-}
-
-// Link de acesso do cliente — pendura no PROJETO (o projeto já É a conta do
-// cliente; não existe entidade "cliente" separada).
-type ClientLinkRow = {
-  id: string;
-  project_id: string;
-  token: string;
-  expires_at: string | null;
-  revoked_at: string | null;
-  last_used_at: string | null;
-  created_at: string;
-};
-
-function mapClientLink(row: ClientLinkRow): ClientLink {
-  return {
-    id: row.id,
-    projectId: row.project_id,
-    token: row.token,
-    expiresAt: row.expires_at ?? undefined,
-    revokedAt: row.revoked_at ?? undefined,
-    lastUsedAt: row.last_used_at ?? undefined,
-    createdAt: row.created_at,
-  };
-}
-
-export async function listClientLinks(projectId: string): Promise<ClientLink[]> {
-  const rows = unwrap(await getSupabase().from("client_links").select("*").eq("project_id", projectId).order("created_at", { ascending: false }));
-  return (rows as ClientLinkRow[]).map(mapClientLink);
-}
-
-// O link do cliente é PERSISTENTE: o mesmo endereço fica com o cliente por
-// meses. Gerar um token novo a cada clique em "gerar link" deixava vários
-// tokens válidos por projeto e ninguém sabia qual tinha sido enviado — então o
-// caminho normal é reaproveitar o link ativo mais recente. Rotacionar (revogar
-// o antigo e emitir outro) é uma ação explícita, ver rotateClientLink.
-export async function getOrCreateClientLink(projectId: string): Promise<ClientLink> {
-  const active = (await listClientLinks(projectId)).find(
-    (link) => !link.revokedAt && (!link.expiresAt || new Date(link.expiresAt).getTime() > Date.now()),
-  );
-  return active ?? createClientLink(projectId);
-}
-
-// Invalida o link atual e emite outro — pra quando o endereço vazou. A revogação
-// do anterior mora dentro de createClientLink, então aqui é só o novo endereço.
-export async function rotateClientLink(projectId: string): Promise<ClientLink> {
-  return createClientLink(projectId);
-}
-
-// Emitir um endereço novo revoga o anterior: é um link por projeto, e o banco
-// cobra isso (índice client_links_one_active_per_project). A identidade de quem
-// aprova não vem do link — o cliente se identifica na hora da aprovação —, então
-// dois endereços vivos só servem pra ninguém saber qual foi o enviado.
-export async function createClientLink(projectId: string, expiresAt?: string): Promise<ClientLink> {
-  const db = getSupabase();
-  unwrap(await db.from("client_links").update({ revoked_at: nowIso() }).eq("project_id", projectId).is("revoked_at", null));
-  const row = unwrap(
-    await db
-      .from("client_links")
-      .insert({ id: newId(), project_id: projectId, token: randomToken(), expires_at: expiresAt || null, created_at: nowIso() })
-      .select()
-      .single(),
-  );
-  return mapClientLink(row as ClientLinkRow);
-}
-
-export async function revokeClientLink(id: string): Promise<void> {
-  unwrap(await getSupabase().from("client_links").update({ revoked_at: nowIso() }).eq("id", id));
-}
-
-// Resolve o token pro PROJETO dono dele, validando revogação/expiração —
-// usado pela rota pública /c/[token].
-export async function resolveClientLink(token: string): Promise<Project | undefined> {
-  const row = unwrap(await getSupabase().from("client_links").select("*").eq("token", token).maybeSingle()) as ClientLinkRow | null;
-  if (!row) return undefined;
-  if (row.revoked_at) return undefined;
-  if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) return undefined;
-  unwrap(await getSupabase().from("client_links").update({ last_used_at: nowIso() }).eq("id", row.id));
-  return getProject(row.project_id);
 }
 
 // Itens de plano de um projeto, enriquecidos com formato/categoria/captação
@@ -1581,13 +1503,6 @@ export async function listPlanItemApprovals(taskIds: string[]): Promise<PlanItem
 // Recalcula o status agregado do item a partir das respostas de todos os
 // revisores daquela versão — pior status vence: rejected > changes_requested
 // > approved (mesma regra que o vizantu-planos já usava em cima do blob).
-function aggregateResponses(responses: { status: PlanApprovalResponse["status"] }[]): PlanApprovalStatus {
-  if (responses.some((r) => r.status === "rejected")) return "rejected";
-  if (responses.some((r) => r.status === "changes_requested")) return "changes_requested";
-  if (responses.some((r) => r.status === "approved")) return "approved";
-  return "pending";
-}
-
 type PlanApprovalResponseRow = {
   id: string;
   task_id: string;
@@ -1663,42 +1578,29 @@ export async function submitPlanApprovalResponse(input: {
     throw new ApprovalResponseError("Este conteúdo ainda não está disponível para aprovação.");
   }
 
-  // Upsert da resposta deste revisor (por reviewer_name + task_id + versão) —
-  // reenviar substitui a resposta anterior da mesma pessoa na mesma versão.
-  const priorResponses = unwrap(
-    await db.from("plan_approval_responses").select("*").eq("task_id", input.taskId).eq("review_version", reviewVersion),
-  ) as PlanApprovalResponseRow[];
-  const ownPrior = priorResponses.find((r) => r.reviewer_name === input.reviewerName);
-  if (ownPrior) {
-    unwrap(
-      await db
-        .from("plan_approval_responses")
-        .update({ status: input.status, comment: input.comment?.trim() || null })
-        .eq("id", ownPrior.id),
-    );
-  } else {
-    unwrap(
-      await db.from("plan_approval_responses").insert({
-        id: newId(),
-        task_id: input.taskId,
-        reviewer_name: input.reviewerName,
-        status: input.status,
-        comment: input.comment?.trim() || null,
-        review_version: reviewVersion,
-        created_at: nowIso(),
-      }),
-    );
-  }
-
-  const allResponses = unwrap(
-    await db.from("plan_approval_responses").select("status").eq("task_id", input.taskId).eq("review_version", reviewVersion),
-  ) as { status: PlanApprovalResponse["status"] }[];
-  const aggregated = aggregateResponses(allResponses);
-
-  unwrap(
+  // A decisão toma a rodada antes de qualquer outra gravação: só a requisição
+  // que ainda a encontra pendente segue. Dois cliques, ou duas pessoas do
+  // cliente ao mesmo tempo, viram uma resposta só; a outra recebe o aviso.
+  const claimed = unwrap(
     await db
       .from("plan_item_approvals")
-      .upsert({ task_id: input.taskId, status: aggregated, review_version: reviewVersion, updated_at: nowIso() }),
+      .update({ status: input.status, updated_at: nowIso() })
+      .eq("task_id", input.taskId)
+      .eq("status", "pending")
+      .eq("review_version", reviewVersion)
+      .select("task_id"),
+  ) as { task_id: string }[];
+  if (!claimed.length) throw new ApprovalResponseError("Este conteúdo já foi revisado nesta rodada.");
+  unwrap(
+    await db.from("plan_approval_responses").insert({
+      id: newId(),
+      task_id: input.taskId,
+      reviewer_name: input.reviewerName,
+      status: input.status,
+      comment: input.comment?.trim() || null,
+      review_version: reviewVersion,
+      created_at: nowIso(),
+    }),
   );
 
   const isCreativeStage = reviewVersion >= 100;
@@ -1707,7 +1609,7 @@ export async function submitPlanApprovalResponse(input: {
     : [];
   const nextTaskStatus = taskStatusAfterClientDecision(
     isCreativeStage ? "creative" : "copy",
-    aggregated,
+    input.status,
     formatRequiresCapture(formatRows.map((format) => format.label)),
   );
   await updateTask(task.id, { status: nextTaskStatus });
@@ -1721,7 +1623,7 @@ export async function submitPlanApprovalResponse(input: {
       id: newId(),
       task_id: input.taskId,
       action: input.status,
-      status: aggregated,
+      status: input.status,
       previous_status: previousStatus,
       comment: input.comment?.trim() || null,
       reviewer_name: input.reviewerName,
@@ -1730,7 +1632,7 @@ export async function submitPlanApprovalResponse(input: {
     }),
   );
 
-  return { taskId: input.taskId, status: aggregated, reviewVersion, taskStatus: nextTaskStatus, updatedAt: nowIso() };
+  return { taskId: input.taskId, status: input.status, reviewVersion, taskStatus: nextTaskStatus, updatedAt: nowIso() };
 }
 
 /** Encerra rodadas que passaram do prazo do cliente. Esta regra não depende
@@ -1832,12 +1734,6 @@ export async function listClientApprovalActivity(): Promise<PlanApprovalEvent[]>
     events.push(...page.map(mapPlanApprovalEvent));
     if (page.length < 1000) return events;
   }
-}
-
-/** Quando o link de cada cliente foi aberto pela última vez. */
-export async function listClientLinkAccess(): Promise<{ projectId: string; lastUsedAt?: string }[]> {
-  const rows = unwrap(await getSupabase().from("client_links").select("project_id,last_used_at")) as Pick<ClientLinkRow, "project_id" | "last_used_at">[];
-  return rows.map((row) => ({ projectId: row.project_id, lastUsedAt: row.last_used_at ?? undefined }));
 }
 
 // ---------- Dashboard do cliente ----------
@@ -2054,50 +1950,52 @@ function mapConversation(row: ConversationRow): AssistantConversation {
   return { id: row.id, title: row.title, messages: row.messages ?? [], createdAt: row.created_at, updatedAt: row.updated_at };
 }
 
-export async function listAssistantConversations(): Promise<AssistantConversation[]> {
-  const rows = unwrap(await getSupabase().from("assistant_conversations").select("*").order("updated_at", { ascending: false }));
+// Conversa é de quem a abriu: toda leitura e escrita filtra pela pessoa.
+export async function listAssistantConversations(memberId: string): Promise<AssistantConversation[]> {
+  const rows = unwrap(await getSupabase().from("assistant_conversations").select("*").eq("member_id", memberId).order("updated_at", { ascending: false }));
   return (rows as ConversationRow[]).map(mapConversation);
 }
 
-export async function getAssistantConversation(id: string): Promise<AssistantConversation | undefined> {
-  const row = unwrap(await getSupabase().from("assistant_conversations").select("*").eq("id", id).maybeSingle());
+export async function getAssistantConversation(memberId: string, id: string): Promise<AssistantConversation | undefined> {
+  const row = unwrap(await getSupabase().from("assistant_conversations").select("*").eq("id", id).eq("member_id", memberId).maybeSingle());
   return row ? mapConversation(row as ConversationRow) : undefined;
 }
 
-export async function createAssistantConversation(): Promise<AssistantConversation> {
+export async function createAssistantConversation(memberId: string): Promise<AssistantConversation> {
   const now = nowIso();
   const row = unwrap(
     await getSupabase()
       .from("assistant_conversations")
-      .insert({ id: newId(), title: DEFAULT_CONVERSATION_TITLE, messages: [], created_at: now, updated_at: now })
+      .insert({ id: newId(), member_id: memberId, title: DEFAULT_CONVERSATION_TITLE, messages: [], created_at: now, updated_at: now })
       .select()
       .single(),
   );
   return mapConversation(row as ConversationRow);
 }
 
-export async function renameAssistantConversation(id: string, title: string): Promise<AssistantConversation | undefined> {
+export async function renameAssistantConversation(memberId: string, id: string, title: string): Promise<AssistantConversation | undefined> {
   const row = unwrap(
     await getSupabase()
       .from("assistant_conversations")
       .update({ title: title.trim() || DEFAULT_CONVERSATION_TITLE, updated_at: nowIso() })
       .eq("id", id)
+      .eq("member_id", memberId)
       .select()
       .maybeSingle(),
   );
   return row ? mapConversation(row as ConversationRow) : undefined;
 }
 
-export async function deleteAssistantConversation(id: string): Promise<boolean> {
-  const rows = unwrap(await getSupabase().from("assistant_conversations").delete().eq("id", id).select("id"));
+export async function deleteAssistantConversation(memberId: string, id: string): Promise<boolean> {
+  const rows = unwrap(await getSupabase().from("assistant_conversations").delete().eq("id", id).eq("member_id", memberId).select("id"));
   return (rows as unknown[]).length > 0;
 }
 
 // Título automático (estilo ChatGPT): a primeira mensagem do usuário vira o
 // nome da conversa, enquanto ela ainda estiver com o título padrão — assim o
 // usuário só precisa renomear manualmente se quiser algo diferente disso.
-export async function appendAssistantMessages(id: string, newMessages: AssistantMessage[]): Promise<AssistantConversation | undefined> {
-  const current = await getAssistantConversation(id);
+export async function appendAssistantMessages(memberId: string, id: string, newMessages: AssistantMessage[]): Promise<AssistantConversation | undefined> {
+  const current = await getAssistantConversation(memberId, id);
   if (!current) return undefined;
 
   const messages = [...current.messages, ...newMessages];
@@ -2495,8 +2393,8 @@ export async function createProjectSource(input: {
   return mapSource(row as SourceRow);
 }
 
-export async function deleteProjectSource(id: string): Promise<void> {
-  unwrap(await getSupabase().from("project_sources").delete().eq("id", id));
+export async function deleteProjectSource(projectId: string, id: string): Promise<void> {
+  unwrap(await getSupabase().from("project_sources").delete().eq("id", id).eq("project_id", projectId));
 }
 
 type CredentialRow = {

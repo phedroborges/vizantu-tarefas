@@ -11,9 +11,10 @@ import { requireClientAccess } from "../src/lib/client-access";
 import { rolesQueVeem } from "../src/lib/permissions";
 const post = (body: object) => POST(new NextRequest("http://localhost/api/financeiro", { method: "POST", body: JSON.stringify(body) }));
 beforeEach(() => {
-  vi.clearAllMocks(); auth.mockResolvedValue({ id:"owner",role:"dono" }); session.mockReturnValue("project");
+  vi.clearAllMocks(); auth.mockResolvedValue({ id:"owner",role:"dono" }); session.mockReturnValue("link");
   blocked.mockResolvedValue({ data: null, error: null });
-  from.mockReturnValue({ select: () => ({ eq: () => ({ maybeSingle: blocked }) }) });
+  const activeLink = async () => ({ data: { project_id: "project", revoked_at: null, expires_at: null }, error: null });
+  from.mockImplementation((table: string) => ({ select: () => ({ eq: () => ({ maybeSingle: table === "client_links" ? activeLink : blocked }) }) }));
 });
 describe("financeiro exclusivo do dono", () => {
   it("somente dono tem acesso no menu e guarda de página", () => { expect(rolesQueVeem("financeiro")).toEqual(["dono"]); });

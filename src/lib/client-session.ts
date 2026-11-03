@@ -17,11 +17,12 @@ function secret(): string {
 
 // Sessão própria pro link mágico do cliente — deliberadamente NÃO é o
 // Supabase Auth interno do time (ver plano de implementação, decisão #3).
-// Formato: "<clientId>.<hmac>", assinatura HMAC-SHA256 evita que alguém
-// forje um clientId sem conhecer CLIENT_SESSION_SECRET.
-export function signClientSession(clientId: string): string {
-  const hmac = crypto.createHmac("sha256", secret()).update(clientId).digest("base64url");
-  return `${clientId}.${hmac}`;
+// Formato: "<linkId>.<hmac>", assinatura HMAC-SHA256 evita que alguém
+// forje um linkId sem conhecer CLIENT_SESSION_SECRET. Guarda o LINK, não o
+// projeto: revogar ou vencer o link encerra as sessões abertas com ele.
+export function signClientSession(linkId: string): string {
+  const hmac = crypto.createHmac("sha256", secret()).update(linkId).digest("base64url");
+  return `${linkId}.${hmac}`;
 }
 
 export function verifyClientSession(cookieValue: string | undefined): string | null {

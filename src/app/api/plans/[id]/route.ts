@@ -1,22 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isResponse, requireUser } from "@/lib/authz";
+import { filterTasksByListAccess, isResponse, requirePlanAccess, requireUser } from "@/lib/authz";
 import { ROLES_QUE_PLANEJAM } from "@/lib/permissions";
-import { deletePlan, getPlan, listPlanCaptacoes, listPlanTasks, updatePlan } from "@/lib/storage";
+import { deletePlan, listPlanCaptacoes, listPlanTasks, updatePlan } from "@/lib/storage";
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireUser();
   if (isResponse(auth)) return auth;
   const { id } = await params;
-  const plan = await getPlan(id);
-  if (!plan) return NextResponse.json({ error: "Plano não encontrado." }, { status: 404 });
+  const plan = await requirePlanAccess(auth, id);
+  if (isResponse(plan)) return plan;
   const [captacoes, tasks] = await Promise.all([listPlanCaptacoes(id), listPlanTasks(id)]);
-  return NextResponse.json({ plan, captacoes, tasks });
+  return NextResponse.json({ plan, captacoes, tasks: filterTasksByListAccess(tasks, auth.accessibleListKinds) });
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireUser(ROLES_QUE_PLANEJAM);
   if (isResponse(auth)) return auth;
   const { id } = await params;
+  const visible = await requirePlanAccess(auth, id);
+  if (isResponse(visible)) return visible;
   const body = await request.json();
   const plan = await updatePlan(id, {
     title: body.title,
@@ -32,6 +34,8 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
   const auth = await requireUser(ROLES_QUE_PLANEJAM);
   if (isResponse(auth)) return auth;
   const { id } = await params;
+  const visible = await requirePlanAccess(auth, id);
+  if (isResponse(visible)) return visible;
   const removed = await deletePlan(id);
   if (!removed) return NextResponse.json({ error: "Plano não encontrado." }, { status: 404 });
   return NextResponse.json({ ok: true });

@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { NextRequest, NextResponse } from "next/server";
 const { auth, task, activity } = vi.hoisted(() => ({ auth: vi.fn(), task: vi.fn(), activity: vi.fn() }));
-vi.mock("@/lib/authz", () => ({ requireUser: auth, isResponse: (value: unknown) => value instanceof NextResponse }));
+vi.mock("@/lib/authz", async (original) => ({ ...await original<typeof import("@/lib/authz")>(), requireUser: auth }));
 vi.mock("@/lib/storage", () => ({ getTask: task, listTaskActivity: activity }));
 import { GET } from "@/app/api/tasks/[id]/route";
 const read = () => GET(new NextRequest("http://localhost/api/tasks/t1?detail=1"), { params: Promise.resolve({ id: "t1" }) });

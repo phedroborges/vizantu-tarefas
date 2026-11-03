@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser, type CurrentUser } from "./current-user";
-import type { TaskListKind, UserRole } from "./types";
+import { getPlan } from "./storage";
+import type { Plan, TaskListKind, UserRole } from "./types";
 
 // Devolve o usuário atual (autenticado e, se `roles` foi passado, autorizado)
 // ou já devolve a NextResponse de erro certa. Cada rota faz uma chamada,
@@ -24,6 +25,23 @@ export function isResponse(value: unknown): value is NextResponse {
 // faz parte.
 export function podeAbrirProjeto(user: CurrentUser, projectId: string): boolean {
   return user.accessibleProjectIds === "all" || user.accessibleProjectIds.includes(projectId);
+}
+
+export function semAcesso(): NextResponse {
+  return NextResponse.json({ error: "Sem acesso." }, { status: 403 });
+}
+
+// Toda rota que recebe o id de uma tarefa passa por aqui: o cliente e a lista
+// dela precisam estar entre os que a pessoa enxerga.
+export function podeAbrirTarefa(user: CurrentUser, task: { projectId: string; lists: TaskListKind[] }): boolean {
+  return podeAbrirProjeto(user, task.projectId) && filterTasksByListAccess([task], user.accessibleListKinds).length > 0;
+}
+
+// O plano é de um cliente: quem não enxerga o cliente não abre nem mexe nele.
+export async function requirePlanAccess(user: CurrentUser, planId: string): Promise<Plan | NextResponse> {
+  const plan = await getPlan(planId);
+  if (!plan) return NextResponse.json({ error: "Plano não encontrado." }, { status: 404 });
+  return podeAbrirProjeto(user, plan.projectId) ? plan : semAcesso();
 }
 
 // Usado pelas rotas de listagem (tasks/projects) — filtra pelos clientes de

@@ -1,7 +1,7 @@
 import { isClientBlocked } from "@/lib/client-access";
 import { NextRequest, NextResponse } from "next/server";
 import { CLIENT_SESSION_COOKIE, signClientSession } from "@/lib/client-session";
-import { resolveClientLink } from "@/lib/storage";
+import { resolveClientLink } from "@/lib/client-links";
 
 // Atrás do proxy do EasyPanel, request.url chega como http://localhost:3000
 // — montar o destino a partir dele mandava o cliente pra localhost. O
@@ -22,10 +22,10 @@ function absoluteUrl(request: NextRequest, path: string): string {
 export async function GET(request: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
 
-  let project;
+  let link;
   try {
-    project = await resolveClientLink(token);
-    if (project && await isClientBlocked(project.id)) return NextResponse.redirect(absoluteUrl(request, "/c/bloqueado"));
+    link = await resolveClientLink(token);
+    if (link && await isClientBlocked(link.project.id)) return NextResponse.redirect(absoluteUrl(request, "/c/bloqueado"));
   } catch (err) {
     // Falha de configuração/infra (ex.: credenciais do Supabase inválidas)
     // não pode virar um 500 cru na cara do cliente — manda pra tela de erro
@@ -34,7 +34,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.redirect(absoluteUrl(request, "/c/invalido?motivo=config"));
   }
 
-  if (!project) return NextResponse.redirect(absoluteUrl(request, "/c/invalido"));
+  if (!link) return NextResponse.redirect(absoluteUrl(request, "/c/invalido"));
 
   // O aviso de um conteúdo específico traz ?item=<id>: o portal já abre nele,
   // em vez de deixar o cliente procurar na lista.
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (plan && /^[0-9a-f-]{36}$/i.test(plan)) query.set("plan", plan);
   const destination = `/c/dashboard${query.size ? `?${query}` : ""}`;
   const response = NextResponse.redirect(absoluteUrl(request, destination));
-  response.cookies.set(CLIENT_SESSION_COOKIE, signClientSession(project.id), {
+  response.cookies.set(CLIENT_SESSION_COOKIE, signClientSession(link.linkId), {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",

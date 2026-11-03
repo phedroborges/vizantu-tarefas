@@ -7,6 +7,7 @@ import { IconButton } from "@/components/vz";
 import type { CommentAttachment, Member } from "@/lib/types";
 import { uploadAudioBlob } from "@/lib/upload-audio";
 import { imagesFromTransfer, isUploadableImage, uploadImageFile } from "@/lib/upload-image";
+import { MAX_COMMENT_LENGTH } from "@/lib/types";
 
 const MAX_ATTACHMENTS = 6;
 
@@ -141,7 +142,7 @@ export function MentionCommentForm({ value, onChange, members, disabled, onSubmi
       placeholder="Escreva um comentário ou use @ para mencionar"
       aria-label="Adicionar comentário"
       rows={3}
-      maxLength={600}
+      maxLength={MAX_COMMENT_LENGTH}
     />
     <IconButton bare type="submit" disabled={!canSend} aria-label="Enviar comentário"><Send size={15} /></IconButton>
     {attachments.length || uploading ? <div className="comment-attachments is-draft">

@@ -18,6 +18,12 @@ beforeEach(() => {
   };
   getDb.mockReturnValue(createClient("https://database.example", "test", { auth: { persistSession: false, autoRefreshToken: false }, global: { fetch: async (input, init) => {
     const url = new URL(String(input)); const table = url.pathname.split("/").at(-1)!;
+    if (table === "append_task_comments") {
+      const { p_task_id, p_comments } = JSON.parse(String(init?.body));
+      const target = tables.tasks.find((row) => row.id === p_task_id);
+      if (target) target.comments = [...(target.comments as unknown[]), ...p_comments];
+      return Response.json(target ? [target] : []);
+    }
     const rows = tables[table] ||= [];
     const matches = (row: Row) => [...url.searchParams].every(([key, value]) => {
       if (value.startsWith("eq.")) return String(row[key]) === value.slice(3);
@@ -87,5 +93,18 @@ describe("planos na persistência e no portal", () => {
     expect(tables.tasks.find(row => row.id === "expired")?.status).toBe("pronto_para_criacao");
     expect(tables.plan_item_approvals[0].status).toBe("approved");
     expect(tables.plan_approval_events).toEqual(expect.arrayContaining([expect.objectContaining({ reviewer_name: "Aprovação automática (prazo)" })]));
+  });
+
+  it("duas respostas ao mesmo tempo viram uma só; a outra recebe o aviso", async () => {
+    tables.tasks.push({ ...task("twice", "october"), status: "aprovacao_copy", status_history: [{ status: "aprovacao_copy", enteredAt: "2026-10-14T12:00:00Z", exitedAt: null }] });
+    tables.plan_item_approvals = [{ task_id: "twice", status: "pending", review_version: 1, updated_at: "2026-10-14T12:00:00Z" }];
+    tables.plan_approval_responses = [];
+    tables.plan_approval_events = [];
+    const answer = (status: "approved" | "rejected") => submitPlanApprovalResponse({ projectId: "client", taskId: "twice", status, reviewerName: "Maria", comment: "Ok", reviewVersion: 1 });
+    const results = await Promise.allSettled([answer("approved"), answer("rejected")]);
+    expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.find(result => result.status === "rejected")).toMatchObject({ reason: { message: "Este conteúdo já foi revisado nesta rodada." } });
+    expect(tables.plan_approval_responses).toHaveLength(1);
+    expect(tables.plan_approval_events.filter(event => event.action !== "reopened")).toHaveLength(1);
   });
 });

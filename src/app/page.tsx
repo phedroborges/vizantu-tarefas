@@ -5,7 +5,8 @@ import { DashboardView } from "@/components/dashboard-view";
 import { filterTasksByAccess, filterTasksByListAccess } from "@/lib/authz";
 import { todayIso } from "@/lib/dates";
 import { requirePageAccess } from "@/lib/page-guard";
-import { listClientApprovalActivity, listClientLinkAccess, listMembers, listProjects, listTags, listTasks } from "@/lib/storage";
+import { listClientLinkAccess } from "@/lib/client-links";
+import { listClientApprovalActivity, listMembers, listProjects, listTags, listTasks } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
