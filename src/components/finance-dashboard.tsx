@@ -350,11 +350,11 @@ function Production({ data, month, busy, error, onBook, onMutate, onCompensation
           const profile = data.members.find((member) => member.id === person.memberId);
           return <tr key={person.memberId}>
             <td><strong>{person.name}</strong><small>{person.paymentMode === "salary" ? "Salário fixo" : "Por demanda"}</small></td>
-            <td><strong>{brl(closed ? closed.total : person.total)}</strong>{closed ? null : <small>Ainda em aberto</small>}</td>
+            <td><strong>{brl(closed ? closed.total : person.total)}</strong>{closed ? closed.paidOn || !person.pending ? null : <small>{brl(person.pending)} do mês ficou pronto depois</small> : <small>Ainda em aberto</small>}</td>
             <td>{closed ? <span className="fin-badge is-ok">Fechado · nº {String(closed.number).padStart(5, "0")}</span> : <span className="fin-badge">{monthEnded ? "Falta fechar" : "Mês em andamento"}</span>}</td>
             <td>{closed?.paidOn ? <span className="fin-badge is-ok">Pago em {dateLabel(closed.paidOn)}</span> : closed ? <Button size="sm" variant="secondary" disabled={busy} onClick={() => setDialog({ kind: "paid", closing: closed })}>Marcar como pago</Button> : "—"}</td>
             <td>{closed ? <InvoiceStatus closing={closed} /> : "—"}</td>
-            <td>{closed ? <span className="fin-creative-actions"><ReceiptButton closing={closed} person={{ name: person.name, role: profile?.role }} />{closed.paidOn ? null : <Button size="sm" variant="secondary" disabled={busy} onClick={() => setDialog({ kind: "adjust", closing: closed })}>Ajustar</Button>}</span>
+            <td>{closed ? <span className="fin-creative-actions"><ReceiptButton closing={closed} person={{ name: person.name, role: profile?.role }} />{closed.paidOn ? null : <Button size="sm" variant={person.pending ? "primary" : "secondary"} disabled={busy} onClick={() => setDialog({ kind: "adjust", closing: closed })}>{person.pending ? `Incluir ${brl(person.pending)}` : "Ajustar"}</Button>}</span>
               : monthEnded ? <Button size="sm" disabled={busy} onClick={() => setDialog({ kind: "close", memberId: person.memberId })}><Check size={14} /> Fechar agora</Button> : <small>Fecha sozinho no fim do mês</small>}</td>
           </tr>;
         })}</tbody></table></div>;
@@ -398,7 +398,7 @@ function Production({ data, month, busy, error, onBook, onMutate, onCompensation
     <section className="fin-panel"><div className="fin-panel-title"><div><span className="fin-eyebrow">Valores da produção</span><h2>Tabela da equipe</h2></div><BadgeDollarSign size={20} /></div><div className="fin-table-scroll"><table className="fin-table"><thead><tr><th>Entrega</th><th>Unidade</th><th>Pacote de 5</th></tr></thead><tbody>{Object.entries(data.settings.rates).map(([key, rate]) => <tr key={key}><td>{RATE_LABELS[key as RateKey]}</td><td>{brl(rate.unit)}</td><td>{rate.pack === null ? "—" : brl(rate.pack)}</td></tr>)}</tbody></table></div><p className="fin-footnote">Na modalidade por demanda, o valor é calculado automaticamente pelo formato da tarefa. Grupos de cinco no mesmo pacote, formato e responsável atual recebem preço de pacote; excedentes usam preço unitário.</p></section>
     {selected ? <FinanceTaskDialog selected={selected} data={data} onClose={() => setSelected(null)} /> : null}
     {dialog?.kind === "close" ? <CloseMonthDialog key={dialog.memberId} name={data.members.find((member) => member.id === dialog.memberId)?.name || "Equipe"} memberId={dialog.memberId} closing={closings.find((item) => item.producerId === dialog.memberId)} month={month} busy={busy} error={error} onClose={() => setDialog(null)} onSave={async (payload) => { if (await onMutate(payload)) setDialog(null); }} /> : null}
-    {dialog?.kind === "adjust" ? <CloseMonthDialog key={dialog.closing.id} name={data.members.find((member) => member.id === dialog.closing.memberId)?.name || "Equipe"} memberId={dialog.closing.memberId} closed={dialog.closing} month={dialog.closing.competence} busy={busy} error={error} onClose={() => setDialog(null)} onSave={async (payload) => { if (await onMutate(payload)) setDialog(null); }} /> : null}
+    {dialog?.kind === "adjust" ? <CloseMonthDialog key={dialog.closing.id} name={data.members.find((member) => member.id === dialog.closing.memberId)?.name || "Equipe"} memberId={dialog.closing.memberId} closed={dialog.closing} closing={closings.find((item) => item.producerId === dialog.closing.memberId)} month={dialog.closing.competence} busy={busy} error={error} onClose={() => setDialog(null)} onSave={async (payload) => { if (await onMutate(payload)) setDialog(null); }} /> : null}
     {dialog?.kind === "paid" ? <PaidDialog closing={dialog.closing} name={data.members.find((member) => member.id === dialog.closing.memberId)?.name || "Equipe"} busy={busy} error={error} onClose={() => setDialog(null)} onSave={async (payload) => { if (await onMutate(payload)) setDialog(null); }} /> : null}
   </>;
 }
@@ -412,7 +412,9 @@ function CloseMonthDialog({ name, memberId, closing, closed, month, busy, error,
   const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
   const parsed = adjustments.map((item) => ({ description: item.description.trim(), amount: item.sign * money(item.amount) }));
   const invalid = parsed.some((item) => !item.description || !Number.isSafeInteger(item.amount) || item.amount === 0);
-  const base = closed?.total ?? closing?.total ?? 0;
+  // Num mês fechado e não pago, o que ficou pronto depois entra junto do ajuste.
+  const late = closed ? closing?.pending ?? 0 : 0;
+  const base = (closed?.total ?? closing?.total ?? 0) + late;
   const total = base + parsed.reduce((sum, item) => sum + (Number.isSafeInteger(item.amount) ? item.amount : 0), 0);
   const change = (index: number, patch: Partial<Adjustment>) => setAdjustments(adjustments.map((item, position) => position === index ? { ...item, ...patch } : item));
   return <FormShell title={`${closed ? "Ajustar" : "Fechar"} ${monthLabel(month)} · ${name}`} busy={busy} error={error} onClose={onClose}><form onSubmit={(event) => {
@@ -420,7 +422,7 @@ function CloseMonthDialog({ name, memberId, closing, closed, month, busy, error,
     if (invalid) return;
     onSave(closed ? { action: "adjustClosing", closingId: closed.id, requestId, adjustments: parsed } : { action: "closeMonth", memberId, competence: month, requestId, adjustments: parsed });
   }}>
-    <p className="fin-footnote">{closed ? `Fechado em ${brl(closed.total)}. O ajuste entra no mesmo comprovante, que pode mudar até você marcar o pagamento.` : <>{closing?.paymentMode === "salary" ? `Salário fixo de ${brl(closing.salary || 0)}.` : `${closing?.pieces ?? 0} demanda(s) computada(s): ${brl(base)}${closing?.unpriced ? `. ${closing.unpriced} sem valor ficam de fora e seguem para o próximo mês quando forem corrigidas` : ""}.`} Depois de fechado o mês não muda: tarefa aprovada depois entra no mês seguinte.</>}</p>
+    <p className="fin-footnote">{closed ? `Fechado em ${brl(closed.total)}.${late ? ` Entram também ${brl(late)} de peças do mês que ficaram prontas depois do fechamento.` : ""} O ajuste entra no mesmo comprovante, que pode mudar até você marcar o pagamento.` : <>{closing?.paymentMode === "salary" ? `Salário fixo de ${brl(closing.salary || 0)}.` : `${closing?.pieces ?? 0} demanda(s) computada(s): ${brl(base)}${closing?.unpriced ? `. ${closing.unpriced} sem valor ficam de fora e seguem para o próximo mês quando forem corrigidas` : ""}.`} Depois de fechado o mês não muda: tarefa aprovada depois entra no mês seguinte.</>}</p>
     {adjustments.map((item, index) => <div className="fin-form-grid" key={index}>
       <Field label="Motivo do ajuste"><input value={item.description} maxLength={200} required onChange={(event) => change(index, { description: event.target.value })} placeholder="Ex.: combinado de captação extra" /></Field>
       <Field label="Tipo"><select value={item.sign} onChange={(event) => change(index, { sign: event.target.value === "-1" ? -1 : 1 })}><option value={1}>Acréscimo</option><option value={-1}>Desconto</option></select></Field>
@@ -429,7 +431,7 @@ function CloseMonthDialog({ name, memberId, closing, closed, month, busy, error,
     </div>)}
     <Button type="button" variant="secondary" size="sm" disabled={adjustments.length >= 20} onClick={() => setAdjustments([...adjustments, { description: "", amount: "", sign: 1 }])}><Plus size={14} /> Adicionar ajuste</Button>
     <p className="fin-footnote"><strong>Total do comprovante: {brl(total)}</strong></p>
-    <footer><Button type="button" variant="secondary" disabled={busy} onClick={onClose}>Cancelar</Button><Button type="submit" disabled={busy || invalid || (Boolean(closed) && !adjustments.length)}>{closed ? "Salvar ajuste" : "Fechar o mês"}</Button></footer>
+    <footer><Button type="button" variant="secondary" disabled={busy} onClick={onClose}>Cancelar</Button><Button type="submit" disabled={busy || invalid || (Boolean(closed) && !adjustments.length && !late)}>{closed ? "Atualizar comprovante" : "Fechar o mês"}</Button></footer>
   </form></FormShell>;
 }
 

@@ -268,6 +268,7 @@ export async function closeFinishedMonth(today: string): Promise<{ name: string;
   const lines = productionLines(data.tasks, data.tags, data.settings, data.members, data.closings);
   const open = teamClosingsFromLines(lines, data.entries, data.members, data.settings, competence)
     .filter((closing) => closing.total > 0 && !data.closings.some((item) => item.memberId === closing.producerId && item.competence === competence));
+  // Fechamento já existente e não pago só é tocado quando alguém ajusta.
   const closed: { name: string; total: number }[] = [];
   for (const closing of open) {
     try {
@@ -294,7 +295,8 @@ async function closeMonth(body: Record<string, unknown>, actor: string | null): 
   const data = await loadFinanceProduction();
   const person = data.members.find((member) => member.id === memberId);
   if (!person) throw new FinanceInputError("Pessoa não encontrada.");
-  if (data.closings.some((closing) => closing.memberId === memberId && closing.competence === competence)) throw new FinanceInputError(`O mês de ${person.name} já foi fechado.`);
+  const existing = data.closings.find((closing) => closing.memberId === memberId && closing.competence === competence);
+  if (existing?.paidOn) throw new FinanceInputError(`O mês de ${person.name} já foi pago. O comprovante não muda mais.`);
   const lines = productionLines(data.tasks, data.tags, data.settings, data.members, data.closings);
   const closing = teamClosingsFromLines(lines, data.entries, data.members, data.settings, competence).find((item) => item.producerId === memberId);
   const rows: ReturnType<typeof toRow>[] = [];
@@ -315,6 +317,11 @@ async function closeMonth(body: Record<string, unknown>, actor: string | null): 
   // Peça sem valor fica de fora e segue para o próximo mês quando for corrigida.
   const taskIds = closing?.paymentMode === "salary" ? closing.lines.map((line) => line.taskId) : items.flatMap((item) => item.taskId ? [item.taskId] : []);
   const total = items.reduce((sum, item) => sum + item.amount, 0);
+  if (existing) {
+    const updated = checked(await db.from("finance_closings").update({ lines: items, task_ids: taskIds, total }).eq("id", existing.id).is("paid_on", null).select("id"));
+    if (!updated?.length) throw new FinanceInputError(`O mês de ${person.name} foi pago enquanto você ajustava. Atualize a página.`);
+    return total;
+  }
   const inserted = await db.from("finance_closings").insert({ member_id: memberId, competence, total, lines: items, task_ids: taskIds, closed_by: actor }).select("*");
   if (inserted.error?.code === "23505") throw new FinanceInputError(`O mês de ${person.name} já foi fechado.`);
   const [row] = checked(inserted) ?? [];
@@ -324,21 +331,13 @@ async function closeMonth(body: Record<string, unknown>, actor: string | null): 
   return total;
 }
 
-// Combinado depois do fechamento: acréscimo ou desconto entra no mesmo
-// comprovante até o pagamento ser registrado. Depois de pago, não muda mais.
+// Mês fechado e não pago: entram os ajustes combinados e as peças do mês que
+// ficaram prontas depois (formato corrigido, por exemplo). Depois de pago, não
+// muda mais.
 async function adjustClosing(body: Record<string, unknown>, actor: string) {
-  const db = getSupabase();
   const closing = await getClosing(uuid(body.closingId));
   if (!closing) throw new FinanceInputError("Fechamento não encontrado.");
-  if (closing.paidOn) throw new FinanceInputError("Este mês já foi pago. O comprovante não muda mais.");
-  const adjustments = adjustmentsOf(body.adjustments);
-  if (!adjustments.length) throw new FinanceInputError("Adicione pelo menos um ajuste.");
-  checked(await db.from("finance_entries").upsert(adjustmentRows(adjustments, closing.memberId, closing.competence, uuid(body.requestId), actor), { onConflict: "source_key", ignoreDuplicates: true }));
-  const data = await loadFinanceProduction();
-  const items = closingItems(await bookedFor(closing.memberId, closing.competence), productionLines(data.tasks, data.tags, data.settings, data.members, data.closings), data);
-  const total = items.reduce((sum, item) => sum + item.amount, 0);
-  const updated = checked(await db.from("finance_closings").update({ lines: items, total }).eq("id", closing.id).is("paid_on", null).select("id"));
-  if (!updated?.length) throw new FinanceInputError("Este mês foi pago enquanto você ajustava. Atualize a página.");
+  await closeMonth({ ...body, memberId: closing.memberId, competence: closing.competence }, actor);
 }
 
 // ---------- Nota fiscal do fechamento ----------

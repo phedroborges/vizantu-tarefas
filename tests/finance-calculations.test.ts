@@ -353,10 +353,19 @@ it("aprovada sem data é sinalizada sem inventar competência", () => {
   expect(productionRoster(lines, [], equipe, "2026-09").find(r => r.memberId === "b")).toMatchObject({ delivered: 0, inProgress: 0 });
 });
 
-it("peça aprovada depois do fechamento entra no próximo mês aberto, sem mexer no fechado", () => {
+it("Stories é estático", () => {
+  expect(productionLines([task(1, { name: "Horário do feriado", formatTagIds: ["stories"], captacaoId: undefined })], [{ id: "stories", label: "Stories" } as never], DEFAULT_SETTINGS, equipe)[0]).toMatchObject({ rateKey: "estatico", total: 5000 });
+});
+
+it("mês fechado e ainda não pago continua recebendo as peças dele", () => {
+  const lines = productionLines([task(1, { assigneeId: "b", captacaoId: undefined }), task(2, { assigneeId: "b", captacaoId: undefined })], [], DEFAULT_SETTINGS, equipe, [{ memberId: "b", competence: "2026-09", taskIds: ["t1"], paidOn: null }]);
+  expect(lines.map((line) => line.competence)).toEqual(["2026-09", "2026-09"]);
+});
+
+it("peça aprovada depois do pagamento entra no próximo mês aberto, sem mexer no pago", () => {
   const paga = task(1, { assigneeId: "b", captacaoId: undefined });
   const atrasada = task(2, { assigneeId: "b", captacaoId: undefined });
-  const fechamentos = [{ memberId: "b", competence: "2026-09", taskIds: ["t1"] }, { memberId: "b", competence: "2026-10", taskIds: [] }];
+  const fechamentos = [{ memberId: "b", competence: "2026-09", taskIds: ["t1"], paidOn: "2026-10-05" }, { memberId: "b", competence: "2026-10", taskIds: [], paidOn: "2026-11-05" }];
   const lines = productionLines([paga, atrasada], [], DEFAULT_SETTINGS, equipe, fechamentos);
   expect(lines.map((line) => [line.taskId, line.deliveredDate, line.competence])).toEqual([["t1", "2026-09-04", "2026-09"], ["t2", "2026-09-04", "2026-11"]]);
   expect(productionRoster(lines, [], equipe, "2026-09", DEFAULT_SETTINGS).find(r => r.memberId === "b")?.delivered).toBe(1);

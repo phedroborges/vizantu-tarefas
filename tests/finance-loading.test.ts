@@ -12,9 +12,10 @@ let stored: Record<string, unknown>[];
 let settings: Settings;
 let settingsTimestamp: string | undefined;
 let staleWrite: boolean;
+let closingRows: Record<string, unknown>[];
 const entry = { direction: "income", category: "servicos", description: "Parcela", amount: 10000, competence: "2026-09", projectId: "project", memberId: null, recurring: true, seriesId: "contract", sourceKey: "contract:contract:1", notes: "" };
 beforeEach(() => {
-  vi.clearAllMocks(); writes = []; stored = []; settingsTimestamp = undefined; staleWrite = false;
+  vi.clearAllMocks(); writes = []; stored = []; closingRows = []; settingsTimestamp = undefined; staleWrite = false;
   settings = { ...DEFAULT_SETTINGS, importedContractIds: ["contract"] };
   mocks.contracts.mockResolvedValue([{ id: "contract", status: "assinado" }]);
   mocks.members.mockResolvedValue([{ id: "owner", role: "dono", active: true }]);
@@ -31,10 +32,11 @@ beforeEach(() => {
         settings = row.data; settingsTimestamp = row.updated_at; return Response.json([{ id: true }]);
       }
       if (table === "finance_entries") stored = stored.map((entry) => ({ ...entry, ...row }));
+      if (table === "finance_closings") return Response.json(closingRows.map((closing) => ({ id: closing.id })));
       return new Response(null, { status: 204 });
     }
     if (init?.method === "POST") { const rows = JSON.parse(String(init.body)); writes.push(rows); if (table === "finance_settings") settings = rows.data; else if (table?.startsWith("finance_cancel")) { stored = stored.map((row) => ({ ...row, cancelled: true })); return Response.json(1); } else stored = (Array.isArray(rows) ? rows : [rows]).map((row: object) => ({ id: "entry", cancelled: false, ...row })); return new Response(null, { status: 201 }); }
-    return new Response(JSON.stringify(table === "finance_settings" ? { data: settings, updated_at: settingsTimestamp } : table === "finance_entries" ? stored : table === "finance_audit" && writes.length ? [{ id: "audit-new", entity_id: "entry", action: "insert", actor_id: "owner", created_at: "2026-09-16" }] : []), { headers: { "Content-Type": "application/json" } });
+    return new Response(JSON.stringify(table === "finance_settings" ? { data: settings, updated_at: settingsTimestamp } : table === "finance_entries" ? stored : table === "finance_closings" ? closingRows : table === "finance_audit" && writes.length ? [{ id: "audit-new", entity_id: "entry", action: "insert", actor_id: "owner", created_at: "2026-09-16" }] : []), { headers: { "Content-Type": "application/json" } });
   } } }));
 });
 describe("carregamento financeiro", () => {
@@ -178,4 +180,17 @@ it("o mês que terminou fecha sozinho para quem tem valor, sem ninguém clicar",
   expect(closed).toEqual([{ name: "Luís", total: 7000 }]);
   expect(writes[1]).toMatchObject({ member_id: luis, competence: "2026-10", total: 7000, closed_by: null });
   expect(writes).toHaveLength(2);
+});
+
+it("mês fechado e não pago recebe a peça corrigida depois, sem criar outro fechamento", async () => {
+  const josiano = "55555555-5555-4555-8555-555555555555";
+  mocks.members.mockResolvedValue([{ id: josiano, name: "Josiano", role: "diretor_criativo" }]);
+  mocks.tags.mockResolvedValue([{ id: "stories", label: "Stories" }]);
+  mocks.tasks.mockResolvedValue([{ id: "stories-task", name: "Horário do feriado", projectId: "project", assigneeId: josiano, createdAt: "2026-10-01T12:00:00Z", formatTagIds: ["stories"], status: "finalizado", statusHistory: [{ status: "finalizado", enteredAt: "2026-10-10T20:29:33Z", exitedAt: null }], comments: [] }]);
+  closingRows = [{ id: "66666666-6666-4666-8666-666666666666", number: 4, member_id: josiano, competence: "2026-10", total: 69000, lines: [], task_ids: [], closed_at: "2026-11-03T12:44:55Z", paid_on: null }];
+  await mutateFinance({ action: "adjustClosing", closingId: closingRows[0].id, requestId: "77777777-7777-4777-8777-777777777777" }, "owner");
+  expect(writes[0]).toEqual([expect.objectContaining({ member_id: josiano, source_key: "production:stories-task", amount: 5000, competence: "2026-10" })]);
+  expect(writes[1]).toMatchObject({ total: 5000, task_ids: ["stories-task"] });
+  closingRows[0].paid_on = "2026-11-05";
+  await expect(mutateFinance({ action: "adjustClosing", closingId: closingRows[0].id, requestId: "77777777-7777-4777-8777-777777777777" }, "owner")).rejects.toThrow("já foi pago");
 });

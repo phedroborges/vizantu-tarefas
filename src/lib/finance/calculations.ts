@@ -181,11 +181,12 @@ export type ProductionLine = { taskStatus?: Task["status"]; taskId: string; name
 // peça foi aprovada depois de o mês da pessoa ser fechado.
 export const competenceOf = (line: Pick<ProductionLine, "competence" | "deliveredDate">) => line.competence ?? line.deliveredDate?.slice(0, 7) ?? null;
 
-export function productionLines(tasks: Task[], tags: Tag[], settings: Settings, members: Member[], closings: Pick<Closing, "memberId" | "competence" | "taskIds">[] = []): ProductionLine[] {
+export function productionLines(tasks: Task[], tags: Tag[], settings: Settings, members: Member[], closings: Pick<Closing, "memberId" | "competence" | "taskIds" | "paidOn">[] = []): ProductionLine[] {
   const labels = new Map(tags.map((tag) => [tag.id, tag.label]));
-  // Peça aprovada depois do fechamento entra no próximo mês aberto da pessoa:
-  // o mês fechado não muda, e a peça também não se perde.
-  const closed = new Map(closings.map((closing) => [`${closing.memberId}:${closing.competence}`, new Set(closing.taskIds)]));
+  // Enquanto o mês não foi pago, ele continua recebendo as peças dele (uma peça
+  // corrigida depois do fechamento, por exemplo). Depois de pago, peça nova
+  // daquele mês entra no próximo mês aberto: o pago não muda e nada se perde.
+  const closed = new Map(closings.filter((closing) => closing.paidOn).map((closing) => [`${closing.memberId}:${closing.competence}`, new Set(closing.taskIds)]));
   const competenceFor = (month: string, producerId: string | null, taskId: string) => {
     let current = month;
     for (let paid = producerId ? closed.get(`${producerId}:${current}`) : undefined; paid && !paid.has(taskId); paid = closed.get(`${producerId}:${current}`)) current = monthAdd(`${current}-01`, 1).slice(0, 7);
@@ -194,7 +195,7 @@ export function productionLines(tasks: Task[], tags: Tag[], settings: Settings, 
   const produzem = new Map(members.filter((member) => ["diretor_criativo", "social_media"].includes(member.role)).map((member) => [member.id, member]));
   const rows = tasks.map((task) => {
     const format = [...task.formatTagIds.map((id) => labels.get(id) || ""), task.name].join(" ").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-    const rateKey: RateKey | null = /manual.*marca/.test(format) ? "manual" : /canva|apresentacao/.test(format) ? "canva" : /carross/.test(format) ? "carrossel" : /reels?|video/.test(format) ? "reels" : /estatico|feed|story/.test(format) ? "estatico" : null;
+    const rateKey: RateKey | null = /manual.*marca/.test(format) ? "manual" : /canva|apresentacao/.test(format) ? "canva" : /carross/.test(format) ? "carrossel" : /reels?|video/.test(format) ? "reels" : /estatico|feed|stor(y|ies)/.test(format) ? "estatico" : null;
     const payable = PAYABLE_STATUSES.has(task.status);
     const deliveredAt = payableEnteredAt(task);
     const delivered = payable && deliveredAt ? localDate(deliveredAt) : null;

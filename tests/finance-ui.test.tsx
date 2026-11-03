@@ -107,14 +107,18 @@ describe("painel financeiro",()=>{
   });
   it("mês fechado mostra o comprovante e registra o pagamento",async()=>{
     const data=structuredClone(financeFixture);
-    data.closings=[{id:"33333333-3333-4333-8333-333333333333",number:7,memberId:data.members[0].id,competence:"2026-09",total:28000,lines:[],taskIds:data.tasks.map((task)=>task.id),closedAt:"2026-09-30T20:00:00Z",closedBy:null,paidOn:null,invoiceName:null,invoiceUploadedAt:null}];
+    data.closings=[{id:"33333333-3333-4333-8333-333333333333",number:7,memberId:data.members[0].id,competence:"2026-09",total:28000,lines:[],taskIds:data.tasks.slice(0,4).map((task)=>task.id),closedAt:"2026-09-30T20:00:00Z",closedBy:null,paidOn:null,invoiceName:null,invoiceUploadedAt:null}];
+    // Quatro peças entraram no fechamento; a quinta ficou pronta depois e ainda cabe no mês, que não foi pago.
+    data.entries.push(...data.tasks.slice(0,4).map((task)=>({...data.entries[0],id:`production-${task.id}`,direction:"expense" as const,category:"producao" as const,amount:7000,competence:"2026-09",memberId:data.members[0].id,recurring:false,seriesId:null,sourceKey:`production:${task.id}`})));
     await mount(data); await change(container.querySelector('[aria-label="Mês de análise"]')!,"2026-09"); await click(button("Produção da equipe"));
     expect(container.textContent).toContain("Fechado · nº 00007");
     expect(container.textContent).toContain("Aguardando nota");
     expect(button("Fechar agora")).toBeUndefined();
-    await click(button("Ajustar"));
+    const include=[...document.querySelectorAll("button")].find((item)=>item.textContent?.startsWith("Incluir R$"));
+    await click(include);
     await click(button("Adicionar ajuste"));
     const adjust=document.querySelector('.fin-modal form') as HTMLFormElement;
+    expect(adjust.textContent).toContain("ficaram prontas depois do fechamento");
     await change(adjust.querySelector('input[placeholder^="Ex."]')!,"Captação extra");
     await change(adjust.querySelector('input[inputmode="decimal"]')!,"100,00");
     fetchMock.mockResolvedValueOnce(Response.json({ok:true})).mockResolvedValueOnce(Response.json(data));
