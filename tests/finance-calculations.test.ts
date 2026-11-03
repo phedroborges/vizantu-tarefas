@@ -352,3 +352,13 @@ it("aprovada sem data é sinalizada sem inventar competência", () => {
   expect(lines[0].pendencia).toContain("não tem data registrada");
   expect(productionRoster(lines, [], equipe, "2026-09").find(r => r.memberId === "b")).toMatchObject({ delivered: 0, inProgress: 0 });
 });
+
+it("peça aprovada depois do fechamento entra no próximo mês aberto, sem mexer no fechado", () => {
+  const paga = task(1, { assigneeId: "b", captacaoId: undefined });
+  const atrasada = task(2, { assigneeId: "b", captacaoId: undefined });
+  const fechamentos = [{ memberId: "b", competence: "2026-09", taskIds: ["t1"] }, { memberId: "b", competence: "2026-10", taskIds: [] }];
+  const lines = productionLines([paga, atrasada], [], DEFAULT_SETTINGS, equipe, fechamentos);
+  expect(lines.map((line) => [line.taskId, line.deliveredDate, line.competence])).toEqual([["t1", "2026-09-04", "2026-09"], ["t2", "2026-09-04", "2026-11"]]);
+  expect(productionRoster(lines, [], equipe, "2026-09", DEFAULT_SETTINGS).find(r => r.memberId === "b")?.delivered).toBe(1);
+  expect(productionRoster(lines, [], equipe, "2026-11", DEFAULT_SETTINGS).find(r => r.memberId === "b")?.delivered).toBe(1);
+});

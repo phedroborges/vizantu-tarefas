@@ -1,6 +1,6 @@
 import { overdueDays } from "../dates";
 import { TASK_STATUSES, type Member, type Task, type TaskStatus, type UserRole } from "../types";
-import { compensationFor, monthAdd, productionLines, type ProductionLine } from "./calculations";
+import { compensationFor, competenceOf, monthAdd, productionLines, type ProductionLine } from "./calculations";
 import { RATE_LABELS, type CompensationRule, type FinanceData, type RateKey } from "./types";
 
 // O financeiro de UMA pessoa: o que ela produziu, quanto isso vale e o que
@@ -65,7 +65,7 @@ export type MemberFinanceProfile = {
 };
 
 type DayRange = { from: string; to: string };
-type Source = Pick<FinanceData, "tasks" | "tags" | "settings" | "members" | "entries" | "projects">;
+type Source = Pick<FinanceData, "tasks" | "tags" | "settings" | "members" | "entries" | "projects"> & Partial<Pick<FinanceData, "closings">>;
 
 const STATUS_LABEL = new Map(TASK_STATUSES.map(({ value, label }) => [value, label]));
 const UNRECOGNIZED = "Formato não reconhecido: corrija o formato da tarefa para ela gerar valor.";
@@ -84,7 +84,7 @@ export function buildMemberFinance({ data, memberId, range, previous, today }: {
   const projectName = (id: string) => projectNames.get(id) || "Projeto removido";
   // O preço de pacote depende do grupo inteiro, então as linhas são calculadas
   // com todas as tarefas e só depois recortadas para a pessoa.
-  const own = productionLines(data.tasks, data.tags, data.settings, data.members).filter((line) => line.memberId === memberId);
+  const own = productionLines(data.tasks, data.tags, data.settings, data.members, data.closings).filter((line) => line.memberId === memberId);
   const delivered = own.filter((line): line is ProductionLine & { deliveredDate: string } => line.counted && Boolean(line.deliveredDate));
   const entryByTask = new Map(data.entries.filter((entry) => entry.sourceKey?.startsWith("production:")).map((entry) => [entry.sourceKey!.slice("production:".length), entry]));
   const modeIn = (month: string) => compensationFor(data.settings, member, month);
@@ -127,7 +127,7 @@ export function buildMemberFinance({ data, memberId, range, previous, today }: {
   const pay = modeIn((range?.to ?? today).slice(0, 7));
   const history = Array.from({ length: 6 }, (_, index) => {
     const month = monthAdd(`${currentMonth}-01`, index - 5).slice(0, 7);
-    const ofMonth = totalsOf(delivered.filter((line) => line.deliveredDate.startsWith(month)).map(describe));
+    const ofMonth = totalsOf(delivered.filter((line) => competenceOf(line) === month).map(describe));
     const monthly = modeIn(month);
     return { month, earnings: ofMonth.earnings + (monthly.mode === "salary" ? monthly.salary : 0), deliveries: ofMonth.deliveries };
   });

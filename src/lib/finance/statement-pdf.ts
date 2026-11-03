@@ -1,6 +1,6 @@
 import { jsPDF } from "jspdf";
-import { brl, type ProducerClosing } from "./calculations";
-import { RATE_LABELS, type FinanceData } from "./types";
+import { brl, monthName, type ProducerClosing } from "./calculations";
+import { RATE_LABELS, type Closing, type ClosingLine, type FinanceData } from "./types";
 import { TASK_STATUSES, type Task } from "../types";
 import type { StatementAssets } from "./statement-assets";
 
@@ -23,16 +23,13 @@ export function creationTime(task: Task): string {
 // Print palette mirrors src/styles/vizantu.css (the light theme).
 const C = { brand: "#9147ff", strong: "#6435e7", deep: "#4b23b8", soft: "#f2ecff", bg: "#f6f6fa", line: "#ebecf2", text: "#14151c", muted: "#6d7183", white: "#ffffff", green: "#1c7a3f", amber: "#92561a" };
 
-export function buildStatementPdf(data: FinanceData, closing: ProducerClosing, tasks: Task[], month: string, origin: string, assets: StatementAssets) {
-  const person = data.members.find((member) => member.id === closing.producerId);
-  const name = person?.name || "Equipe";
-  const pdf = new jsPDF({ putOnlyUsedFonts: true, compress: true });
+// Fonte, texto, quebra de linha e caixa no padrão visual dos PDFs financeiros.
+function pdfKit(pdf: jsPDF, assets: StatementAssets) {
   // Static instances of the system's Mona Sans; renamed per its font license.
   pdf.addFileToVFS("VizantuPDF-Regular.ttf", assets.regular);
   pdf.addFont("VizantuPDF-Regular.ttf", "VizantuPDF", "normal");
   pdf.addFileToVFS("VizantuPDF-Semibold.ttf", assets.semibold);
   pdf.addFont("VizantuPDF-Semibold.ttf", "VizantuPDF", "bold");
-  pdf.setProperties({ title: `Extrato de produção - ${name} - ${month}`, author: "Vizantu" });
   const font = (size: number, bold = false, color = C.text) => {
     pdf.setFont("VizantuPDF", bold ? "bold" : "normal"); pdf.setFontSize(size); pdf.setTextColor(color);
   };
@@ -45,6 +42,15 @@ export function buildStatementPdf(data: FinanceData, closing: ProducerClosing, t
   const box = (x: number, y: number, width: number, height: number, fill: string, stroke = fill) => {
     pdf.setFillColor(fill); pdf.setDrawColor(stroke); pdf.setLineWidth(0.25); pdf.roundedRect(x, y, width, height, 2.5, 2.5, "FD");
   };
+  return { font, text, wrap, box };
+}
+
+export function buildStatementPdf(data: FinanceData, closing: ProducerClosing, tasks: Task[], month: string, origin: string, assets: StatementAssets) {
+  const person = data.members.find((member) => member.id === closing.producerId);
+  const name = person?.name || "Equipe";
+  const pdf = new jsPDF({ putOnlyUsedFonts: true, compress: true });
+  const { font, text, wrap, box } = pdfKit(pdf, assets);
+  pdf.setProperties({ title: `Extrato de produção - ${name} - ${month}`, author: "Vizantu" });
   const period = month.split("-").reverse().join("/");
   const header = (continuation = false) => {
     pdf.setFillColor(C.brand); pdf.rect(0, 0, 210, 2, "F");
@@ -177,4 +183,79 @@ export function buildStatementPdf(data: FinanceData, closing: ProducerClosing, t
   }
   const slug = name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase();
   return { pdf, filename: `vizantu-extrato-${slug}-${month}.pdf` };
+}
+
+const KIND_LABEL: Record<ClosingLine["kind"], string> = { peca: "Peças entregues", salario: "Salário fixo", outro: "Outros lançamentos", ajuste: "Ajustes combinados" };
+
+// Comprovante do pagamento de um fechamento. Sai do que foi gravado no dia do
+// fechamento, então é o mesmo PDF para o dono e para a pessoa, hoje ou daqui a
+// um ano.
+export function buildReceiptPdf(closing: Closing, person: { name: string; role?: string }, assets: StatementAssets) {
+  const pdf = new jsPDF({ putOnlyUsedFonts: true, compress: true });
+  const { text, wrap, box } = pdfKit(pdf, assets);
+  const number = String(closing.number).padStart(5, "0");
+  const period = closing.competence.split("-").reverse().join("/");
+  pdf.setProperties({ title: `Comprovante de pagamento ${number} - ${person.name} - ${closing.competence}`, author: "Vizantu" });
+  const header = () => {
+    pdf.setFillColor(C.brand); pdf.rect(0, 0, 210, 2, "F");
+    pdf.addImage(assets.logo, "PNG", 16, 13, 40, 40 * 295.55 / 1518.08, "vizantu-logo");
+    text(`COMPROVANTE Nº ${number}`, 194, 18.5, 8, true, C.muted, "right");
+  };
+  header();
+  box(16, 31, 178, 50, C.soft);
+  text("PAGAMENTO DA EQUIPE", 23, 41, 8, true, C.strong);
+  text("Comprovante de pagamento", 23, 53, 21, true);
+  text(wrap(person.name, 116, 12, true)[0], 23, 65, 12, true);
+  text(`${person.role === "social_media" ? "Social media" : person.role === "diretor_criativo" ? "Diretor criativo" : "Equipe"} · ${monthName(closing.competence)}`, 23, 72, 8.5, false, C.muted);
+  box(148, 39, 39, 34, C.strong);
+  text("TOTAL", 152, 48, 6.8, true, C.white);
+  const total = brl(closing.total);
+  text(total, 152, 60, total.length > 12 ? 10 : 13, true, C.white);
+  text(`Competência ${period}`, 152, 67, 7, false, C.white);
+
+  let y = 92;
+  const page = () => { pdf.addPage(); header(); y = 32; };
+  for (const kind of ["peca", "salario", "outro", "ajuste"] as const) {
+    const items = closing.lines.filter((line) => line.kind === kind);
+    if (!items.length) continue;
+    if (y > 250) page();
+    text(KIND_LABEL[kind], 16, y, 11, true);
+    text(brl(items.reduce((sum, item) => sum + item.amount, 0)), 194, y, 9, true, C.strong, "right");
+    y += 6;
+    for (const item of items) {
+      const lines = wrap(item.description, 120, 9, false);
+      const meta = [item.projectName, item.deliveredDate ? date(item.deliveredDate) : undefined].filter(Boolean).join(" · ");
+      const height = 4.6 * lines.length + (meta ? 4.5 : 0) + 4;
+      if (y + height > 272) page();
+      pdf.setDrawColor(C.line); pdf.line(16, y, 194, y);
+      lines.forEach((line, row) => text(line, 18, y + 5 + row * 4.6, 9));
+      if (meta) text(meta, 18, y + 4.6 * lines.length + 4.5, 7.5, false, C.muted);
+      const value = brl(item.amount);
+      text(value, 192, y + 5, 9, true, item.amount < 0 ? C.amber : C.text, "right");
+      y += height + 1;
+    }
+    y += 6;
+  }
+
+  if (y > 238) page();
+  box(16, y, 178, 30, C.bg);
+  text("Total a pagar", 23, y + 10, 10, true);
+  text(total, 187, y + 11, 14, true, C.deep, "right");
+  text(closing.paidOn ? `Pago em ${date(closing.paidOn)}` : "Pagamento ainda não registrado", 23, y + 18, 8.5, false, closing.paidOn ? C.green : C.amber);
+  text(`Fechado em ${date(closing.closedAt)}`, 23, y + 24, 7.5, false, C.muted);
+  y += 38;
+  const note = wrap("Emita a nota fiscal no valor total deste comprovante e envie pelo sistema, em Meu financeiro. Os itens refletem o fechamento do mês: tarefa aprovada depois dele entra no mês seguinte.", 170, 7.5);
+  if (y + note.length * 3.7 > 276) page();
+  note.forEach((line, row) => text(line, 16, y + row * 3.7, 7.5, false, C.muted));
+
+  const count = pdf.getNumberOfPages();
+  for (let i = 1; i <= count; i++) {
+    pdf.setPage(i);
+    pdf.setDrawColor(C.line); pdf.line(16, 282, 194, 282);
+    text("VIZANTU", 16, 289, 7, true, C.strong);
+    text(`Comprovante nº ${number} · ${period}`, 39, 289, 7, false, C.muted);
+    text(`${i} / ${count}`, 194, 289, 7, false, C.muted, "right");
+  }
+  const slug = person.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase();
+  return { pdf, filename: `vizantu-comprovante-${number}-${slug}-${closing.competence}.pdf` };
 }

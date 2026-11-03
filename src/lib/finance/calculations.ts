@@ -1,11 +1,12 @@
 import { derivedFields, parseFaixas } from "../contract-render";
 import type { Contract, Member, Tag, Task } from "../types";
-import { CARGOS_QUE_PRODUZEM, CATEGORIES, type ClientMargin, type ContractSummary, type Entry, type EntryInput, type FinanceData, type RateKey, type Settings } from "./types";
+import { CARGOS_QUE_PRODUZEM, CATEGORIES, type ClientMargin, type Closing, type ContractSummary, type Entry, type EntryInput, type FinanceData, type RateKey, type Settings } from "./types";
 
 const localDateFormatter = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" });
 function localDate(timestamp: string): string {
   return localDateFormatter.format(new Date(timestamp));
 }
+export const monthName = (month: string) => new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${month}-15T12:00:00Z`));
 export const brl = (cents: number) => (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 export function money(value: string): number {
   const raw = value.trim().replace(/R\$|\s/g, "");
@@ -66,7 +67,7 @@ export function contractEntries(contract: Contract, settings?: Pick<Settings, "a
   })) };
 }
 
-type CostData = Pick<FinanceData, "entries" | "settings"> & Partial<Pick<FinanceData, "tasks" | "tags" | "members">>;
+type CostData = Pick<FinanceData, "entries" | "settings"> & Partial<Pick<FinanceData, "tasks" | "tags" | "members" | "closings">>;
 export function metrics(data: CostData, month: string) {
   const { settings } = data;
   const entries = data.entries.filter((entry) => !entry.cancelled);
@@ -174,10 +175,22 @@ function payableEnteredAt(task: Task): string | undefined {
 // `rule` guarda por que a peça custa o que custa, para o extrato explicar o
 // valor sem depender de cálculo manual.
 export type PriceRule = { pack: boolean; packSize: number; unit: number; extraCards: number; extraCardValue: number };
-export type ProductionLine = { taskStatus?: Task["status"]; taskId: string; name: string; projectId: string; memberId?: string; producerId: string | null; rateKey: RateKey | null; package: boolean; cards: number; dueDate: string; deliveredDate: string | null; late: boolean; deliveredLate: boolean; qualityProblem: boolean; base: number; total: number; penalty: boolean; counted: boolean; ready: boolean; pendencia: string | null; rule: PriceRule | null };
+export type ProductionLine = { taskStatus?: Task["status"]; taskId: string; name: string; projectId: string; memberId?: string; producerId: string | null; rateKey: RateKey | null; package: boolean; cards: number; dueDate: string; deliveredDate: string | null; competence?: string | null; late: boolean; deliveredLate: boolean; qualityProblem: boolean; base: number; total: number; penalty: boolean; counted: boolean; ready: boolean; pendencia: string | null; rule: PriceRule | null };
 
-export function productionLines(tasks: Task[], tags: Tag[], settings: Settings, members: Member[]): ProductionLine[] {
+// O mês em que a peça é paga. Normalmente é o da aprovação; muda só quando a
+// peça foi aprovada depois de o mês da pessoa ser fechado.
+export const competenceOf = (line: Pick<ProductionLine, "competence" | "deliveredDate">) => line.competence ?? line.deliveredDate?.slice(0, 7) ?? null;
+
+export function productionLines(tasks: Task[], tags: Tag[], settings: Settings, members: Member[], closings: Pick<Closing, "memberId" | "competence" | "taskIds">[] = []): ProductionLine[] {
   const labels = new Map(tags.map((tag) => [tag.id, tag.label]));
+  // Peça aprovada depois do fechamento entra no próximo mês aberto da pessoa:
+  // o mês fechado não muda, e a peça também não se perde.
+  const closed = new Map(closings.map((closing) => [`${closing.memberId}:${closing.competence}`, new Set(closing.taskIds)]));
+  const competenceFor = (month: string, producerId: string | null, taskId: string) => {
+    let current = month;
+    for (let paid = producerId ? closed.get(`${producerId}:${current}`) : undefined; paid && !paid.has(taskId); paid = closed.get(`${producerId}:${current}`)) current = monthAdd(`${current}-01`, 1).slice(0, 7);
+    return current;
+  };
   const produzem = new Map(members.filter((member) => ["diretor_criativo", "social_media"].includes(member.role)).map((member) => [member.id, member]));
   const rows = tasks.map((task) => {
     const format = [...task.formatTagIds.map((id) => labels.get(id) || ""), task.name].join(" ").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -199,7 +212,7 @@ export function productionLines(tasks: Task[], tags: Tag[], settings: Settings, 
       : pay?.mode === "salary" ? "Incluído no salário fixo mensal."
       : !rateKey ? "A tarefa não tem um formato financeiro reconhecido."
       : null;
-    return { taskStatus: task.status, taskId: task.id, name: task.name, projectId: task.projectId, memberId: task.assigneeId, producerId, rateKey, package: Boolean(task.captacaoId), cards: 8, dueDate, deliveredDate: delivered,
+    return { taskStatus: task.status, taskId: task.id, name: task.name, projectId: task.projectId, memberId: task.assigneeId, producerId, rateKey, package: Boolean(task.captacaoId), cards: 8, dueDate, deliveredDate: delivered, competence: delivered ? competenceFor(delivered.slice(0, 7), producerId, task.id) : null,
       late, deliveredLate, qualityProblem, base: 0, total: 0, penalty: settings.penaltyMode === "both" ? deliveredLate && qualityProblem : deliveredLate || qualityProblem, counted, ready: counted && !pendencia, pendencia, rule: null as PriceRule | null,
       group: `${task.projectId}:${task.captacaoId || task.id}:${producerId}:${rateKey}` };
   });
@@ -242,7 +255,7 @@ export function clientMargins(data: CostData & Pick<FinanceData, "projects">, mo
   const live = data.entries.filter((entry) => !entry.cancelled && entry.competence === month);
   const receitaTotal = sum(live.filter((entry) => entry.direction === "income" && entry.projectId));
   const ferramentas = sum(live.filter((entry) => entry.direction === "expense" && entry.category === "ferramentas"));
-  const lines = productionLines(data.tasks ?? [], data.tags ?? [], data.settings, data.members ?? []);
+  const lines = productionLines(data.tasks ?? [], data.tags ?? [], data.settings, data.members ?? [], data.closings);
   const pendingClosings = teamClosingsFromLines(lines, data.entries, data.members ?? [], data.settings, month);
   const fixedPending = pendingClosings.filter((closing) => closing.paymentMode === "salary").reduce((total, closing) => total + closing.pending, 0);
   const unassignedTeam = sum(live.filter((entry) => entry.direction === "expense" && entry.category === "producao" && !entry.projectId));
@@ -372,7 +385,7 @@ export function producerClosing(lines: ProductionLine[], entries: Entry[]): Prod
 // Todos os diretores aparecem. A contagem do mês usa somente tarefas cujo
 // status atual é aprovado/finalizado e sempre atribui ao responsável atual.
 export function productionRoster(lines: ProductionLine[], entries: Entry[], members: Member[], month: string, settings?: Settings) {
-  const delivered = lines.filter((line) => line.counted && line.deliveredDate?.startsWith(month));
+  const delivered = lines.filter((line) => line.counted && competenceOf(line) === month);
   const closings = new Map((settings ? teamClosingsFromLines(lines, entries, members, settings, month) : producerClosing(delivered, entries)).map((closing) => [closing.producerId, closing]));
   return members.filter((member) => settings ? ["diretor_criativo", "social_media"].includes(member.role) : (CARGOS_QUE_PRODUZEM as readonly string[]).includes(member.role)).map((member) => {
     const own = lines.filter((line) => line.producerId === member.id);
@@ -395,7 +408,7 @@ export function compensationFor(settings: Settings, member: Pick<Member, "id" | 
 }
 
 export function teamClosingsFromLines(lines: ProductionLine[], entries: Entry[], members: Member[], settings: Settings, month: string): ProducerClosing[] {
-  const delivered = lines.filter((line) => line.counted && line.deliveredDate?.startsWith(month));
+  const delivered = lines.filter((line) => line.counted && competenceOf(line) === month);
   const closings = producerClosing(delivered, entries);
   for (const person of members.filter((member) => ["diretor_criativo", "social_media"].includes(member.role))) {
     const pay = compensationFor(settings, person, month);
@@ -413,6 +426,6 @@ export function teamClosingsFromLines(lines: ProductionLine[], entries: Entry[],
 }
 
 function pendingTeamCost(data: CostData, month: string): number {
-  const lines = productionLines(data.tasks ?? [], data.tags ?? [], data.settings, data.members ?? []);
+  const lines = productionLines(data.tasks ?? [], data.tags ?? [], data.settings, data.members ?? [], data.closings);
   return teamClosingsFromLines(lines, data.entries, data.members ?? [], data.settings, month).reduce((total, closing) => total + closing.pending, 0);
 }

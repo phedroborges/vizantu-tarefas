@@ -1,13 +1,15 @@
 "use client";
 
-import { ArrowLeft, BadgeDollarSign, CheckCircle2, Eye, TrendingUp, TriangleAlert, Wallet } from "lucide-react";
+import { ArrowLeft, BadgeDollarSign, CheckCircle2, Eye, Receipt, TrendingUp, TriangleAlert, Wallet } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Avatar } from "@/components/avatar";
+import { InvoiceStatus, InvoiceUpload, ReceiptButton } from "@/components/closing-actions";
 import { PeriodBar, PeriodDelta } from "@/components/period-bar";
 import type { DashboardPeriod } from "@/lib/dashboard-period";
 import { formatDueDate, formatDuration } from "@/lib/dates";
-import { brl } from "@/lib/finance/calculations";
+import { brl, monthName } from "@/lib/finance/calculations";
+import type { Closing } from "@/lib/finance/types";
 import type { MemberFinanceLine, MemberFinanceProfile } from "@/lib/finance/member-profile";
 import { TASK_STATUSES, USER_ROLES } from "@/lib/types";
 import "@/app/financeiro/finance.css";
@@ -29,6 +31,8 @@ type MemberFinanceViewProps = {
   compare: boolean;
   /** Só o dono recebe a lista: é ele quem troca de pessoa. */
   people?: { id: string; name: string }[];
+  /** Meses fechados da pessoa, do mais recente para o mais antigo. */
+  closings?: Closing[];
 };
 
 const PAYMENT_LABEL = { demand: "Por demanda", salary: "Salário fixo", none: "Sem remuneração configurada" } as const;
@@ -55,7 +59,8 @@ function MemberPicker({ people, selected }: { people: { id: string; name: string
   </label>;
 }
 
-export function MemberFinanceView({ profile, period, performance, compare, people }: MemberFinanceViewProps) {
+export function MemberFinanceView({ profile, period, performance, compare, people, closings = [] }: MemberFinanceViewProps) {
+  const router = useRouter();
   if (!profile) {
     return <main className="fin-page"><div className="fin-empty">{people ? "Nenhum diretor criativo ou social media ativo para mostrar." : "Seu perfil financeiro ainda não está disponível."}</div></main>;
   }
@@ -81,6 +86,18 @@ export function MemberFinanceView({ profile, period, performance, compare, peopl
     </header>
 
     <PeriodBar key={`${period.preset}:${period.range?.from}:${period.range?.to}`} period={period} pastNote="Os pontos de atenção e as tarefas em andamento são sempre os de agora." />
+
+    <section className="fin-panel">
+      <div className="fin-panel-title"><div><span className="fin-eyebrow">Fechamentos</span><h2>Pagamentos e notas fiscais</h2></div><Receipt size={20} /></div>
+      {closings.length ? <div className="fin-table-scroll"><table className="fin-table"><thead><tr><th>Mês</th><th>Valor</th><th>Pagamento</th><th>Nota fiscal</th><th>Ações</th></tr></thead><tbody>{closings.map((closing) => <tr key={closing.id}>
+        <td><strong>{monthName(closing.competence)}</strong><small>Comprovante nº {String(closing.number).padStart(5, "0")}</small></td>
+        <td><strong>{brl(closing.total)}</strong></td>
+        <td>{closing.paidOn ? <span className="fin-badge is-ok">Pago em {formatDueDate(closing.paidOn)}</span> : <span className="fin-badge">Fechado, a pagar</span>}</td>
+        <td><InvoiceStatus closing={closing} /></td>
+        <td><span className="fin-creative-actions"><ReceiptButton closing={closing} person={{ name: member.name, role: member.role }} /><InvoiceUpload closing={closing} onDone={() => router.refresh()} /></span></td>
+      </tr>)}</tbody></table></div> : <div className="fin-empty">Nenhum mês fechado ainda. No fim do mês o financeiro fecha o que você entregou, e o valor aparece aqui para você emitir a nota.</div>}
+      <p className="fin-footnote">Emita a nota fiscal no valor do mês fechado e envie aqui, em PDF, XML ou foto (até 10MB). Só você e o dono da Vizantu abrem o arquivo.</p>
+    </section>
 
     <section className="fin-metrics" aria-label="Resumo do período">
       {salaried

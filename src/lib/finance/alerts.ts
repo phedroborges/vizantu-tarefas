@@ -1,5 +1,6 @@
 import { createNotifications, listContracts, listProjects, listMembers, type NotificationInput } from "../storage";
-import { contractAlerts } from "./calculations";
+import { contractAlerts, daysAdd, monthName, productionLines, teamClosingsFromLines } from "./calculations";
+import { loadFinanceProduction } from "./storage";
 
 // ---------- Aviso de fim de contrato ----------
 //
@@ -24,6 +25,21 @@ export async function varrerAvisosFinanceiros(hoje: string): Promise<number> {
         title: alerta.days === 0 ? "Contrato termina hoje" : `Contrato termina em ${alerta.days} dia${alerta.days === 1 ? "" : "s"}`,
         body: `${cliente ? `${cliente} · ` : ""}${alerta.title} · vigência até ${alerta.endsOn}`,
         actionUrl: "/contratos", dedupeKey: `contract-ending:${alerta.contractId}:${alerta.endsOn}:${dono.id}` });
+    }
+  }
+
+  // No último dia do mês, quem ainda tem valor a receber e não foi fechado.
+  const mes = hoje.slice(0, 7);
+  if (daysAdd(hoje, 1).slice(0, 7) !== mes) {
+    const data = await loadFinanceProduction();
+    const linhas = productionLines(data.tasks, data.tags, data.settings, data.members, data.closings);
+    const abertos = teamClosingsFromLines(linhas, data.entries, data.members, data.settings, mes)
+      .filter((fechamento) => fechamento.total > 0 && !data.closings.some((closing) => closing.memberId === fechamento.producerId && closing.competence === mes));
+    const nomes = abertos.map((fechamento) => data.members.find((membro) => membro.id === fechamento.producerId)?.name).filter(Boolean);
+    if (nomes.length) for (const dono of donos) {
+      avisos.push({ recipientMemberId: dono.id, type: "finance_closing",
+        title: `Fechamento de ${monthName(mes)}: ${nomes.length} ${nomes.length === 1 ? "pessoa" : "pessoas"} para fechar`,
+        body: nomes.join(", "), actionUrl: "/financeiro", dedupeKey: `closing-reminder:${mes}:${dono.id}` });
     }
   }
 

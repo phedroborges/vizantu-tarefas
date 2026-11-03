@@ -151,3 +151,16 @@ it("atualiza preferências sem sobrescrever outra sessão", async () => {
   await expect(mutateFinance({ action: "settings", settings: { ...DEFAULT_SETTINGS, taxRate: 8 } }, "owner")).rejects.toThrow("outra sessão");
   expect(settings.taxRate).toBe(7);
 });
+
+it("fechar o mês grava peças, ajuste combinado e o comprovante com o total pago", async () => {
+  const luis = "22222222-2222-4222-8222-222222222222";
+  mocks.members.mockResolvedValue([{ id: luis, name: "Luís", role: "diretor_criativo" }]);
+  mocks.tasks.mockResolvedValue([{ id: "task", name: "Reels", projectId: "project", assigneeId: luis, createdAt: "2026-10-01T12:00:00Z", formatTagIds: [], status: "aprovado", statusHistory: [{ status: "aprovado", enteredAt: "2026-10-05T12:00:00Z", exitedAt: null }], comments: [] }]);
+  await mutateFinance({ action: "closeMonth", memberId: luis, competence: "2026-10", requestId: "33333333-3333-4333-8333-333333333333", adjustments: [{ description: "Peça refeita", amount: -2000 }] }, "owner");
+  expect(writes[0]).toEqual([
+    expect.objectContaining({ member_id: luis, source_key: "production:task", amount: 7000, competence: "2026-10" }),
+    expect.objectContaining({ member_id: luis, source_key: "ajuste:33333333-3333-4333-8333-333333333333:0", amount: -2000, description: "Ajuste · Peça refeita" }),
+  ]);
+  expect(writes[1]).toMatchObject({ member_id: luis, competence: "2026-10", total: 5000, task_ids: ["task"], lines: [{ kind: "peca", description: "Reels", amount: 7000, taskId: "task" }, { kind: "ajuste", description: "Peça refeita", amount: -2000 }] });
+  expect(mocks.notifications).toHaveBeenCalledWith([expect.objectContaining({ recipientMemberId: luis, type: "finance_closing" })]);
+});

@@ -85,10 +85,39 @@ describe("painel financeiro",()=>{
     data.settings.compensationRules=[{memberId:data.members[0].id,fromMonth:"2026-09",mode:"salary",salary:180000}];
     await mount(data); await change(container.querySelector('[aria-label="Mês de análise"]')!,"2026-09"); await click(button("Produção da equipe"));
     expect(container.textContent).toContain("Incluído no salário"); expect(button("Lançar a pagar")).toBeUndefined();
-    await click(button("Lançar salário do mês"));
+    await click(button("Fechar o mês"));
+    const form=document.querySelector('.fin-modal form') as HTMLFormElement;
+    expect(form.textContent).toMatch(/Salário fixo de R\$\s1\.800,00/);
     fetchMock.mockResolvedValueOnce(Response.json({ok:true})).mockResolvedValueOnce(Response.json(data));
-    await click(button("Lançar fechamento"));
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({action:"salary",memberId:data.members[0].id,competence:"2026-09"});
+    await act(async()=>form.dispatchEvent(new Event("submit",{bubbles:true,cancelable:true})));
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({action:"closeMonth",memberId:data.members[0].id,competence:"2026-09",adjustments:[]});
+  });
+  it("fecha o mês com desconto combinado e mostra o total do comprovante",async()=>{
+    await mount(); await change(container.querySelector('[aria-label="Mês de análise"]')!,"2026-09"); await click(button("Produção da equipe"));
+    await click(button("Fechar o mês"));
+    await click(button("Adicionar ajuste"));
+    const form=document.querySelector('.fin-modal form') as HTMLFormElement;
+    await change(form.querySelector('input[placeholder^="Ex."]')!,"Peça refeita");
+    await change(form.querySelector('select')!,"-1");
+    await change(form.querySelector('input[inputmode="decimal"]')!,"50,00");
+    expect(form.textContent).toMatch(/Total do comprovante: R\$\s230,00/);
+    fetchMock.mockResolvedValueOnce(Response.json({ok:true})).mockResolvedValueOnce(Response.json(financeFixture));
+    await act(async()=>form.dispatchEvent(new Event("submit",{bubbles:true,cancelable:true})));
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({action:"closeMonth",competence:"2026-09",adjustments:[{description:"Peça refeita",amount:-5000}]});
+  });
+  it("mês fechado mostra o comprovante e registra o pagamento",async()=>{
+    const data=structuredClone(financeFixture);
+    data.closings=[{id:"33333333-3333-4333-8333-333333333333",number:7,memberId:data.members[0].id,competence:"2026-09",total:28000,lines:[],taskIds:data.tasks.map((task)=>task.id),closedAt:"2026-09-30T20:00:00Z",closedBy:null,paidOn:null,invoiceName:null,invoiceUploadedAt:null}];
+    await mount(data); await change(container.querySelector('[aria-label="Mês de análise"]')!,"2026-09"); await click(button("Produção da equipe"));
+    expect(container.textContent).toContain("Fechado · nº 00007");
+    expect(container.textContent).toContain("Aguardando nota");
+    expect(button("Fechar o mês")).toBeUndefined();
+    await click(button("Marcar como pago"));
+    const form=document.querySelector('.fin-modal form') as HTMLFormElement;
+    await change(form.querySelector('input[type="date"]')!,"2026-10-05");
+    fetchMock.mockResolvedValueOnce(Response.json({ok:true})).mockResolvedValueOnce(Response.json(data));
+    await act(async()=>form.dispatchEvent(new Event("submit",{bubbles:true,cancelable:true})));
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({action:"markPaid",closingId:data.closings[0].id,paidOn:"2026-10-05"});
   });
   it("permite escolher contrato assinado e depois excluir do financeiro",async()=>{
     const data=structuredClone(financeFixture);

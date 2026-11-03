@@ -16,6 +16,7 @@ for (const [monthIndex, month] of ["2026-06", "2026-07", "2026-08", "2026-09", "
   for (const [i, category] of ["producao", "operacional", "ferramentas", "prolabore"].entries()) entries.push({ id: `expense-${month}-${i}`, direction:"expense",category: category as Entry["category"],description: ["Produção do mês", "Operação", "Licenças e ferramentas", "Pró-labore"][i],amount:[230000,90000,56000,200000][i],competence:month,projectId:null,memberId:null,recurring:false,seriesId:null,sourceKey:null,cancelled:false,notes:"",createdAt:iso });
 }
 export const financeFixture: FinanceData = {
+  closings: [],
   entries,
   settings: { ...DEFAULT_SETTINGS, taxRate:6,taxRegime:"Alíquota demonstrativa" },
   projects, members:[{id:"00000000-0000-4000-8000-000000000009",name:"Designer de exemplo",email:"demo@example.com",role:"diretor_criativo",active:true,aiEnabled:false,createdAt:iso,updatedAt:iso}],

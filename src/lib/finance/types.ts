@@ -52,7 +52,14 @@ export type ContractSummary = {
 export type ProductionReview = { taskId: string; rateKey: RateKey | null; cards: number; deliveredDate: string | null; qualityProblem: boolean; notes: string };
 export type Block = { projectId: string; blocked: boolean; reason: string; updatedAt: string };
 export type Audit = { id: string; action: string; actorId: string | null; createdAt: string; entityId: string };
+// Um item do comprovante, gravado como estava no dia do fechamento.
+export type ClosingLine = { kind: "peca" | "salario" | "ajuste" | "outro"; description: string; amount: number; taskId?: string; projectName?: string; deliveredDate?: string };
+export type Closing = {
+  id: string; number: number; memberId: string; competence: string; total: number; lines: ClosingLine[]; taskIds: string[];
+  closedAt: string; closedBy: string | null; paidOn: string | null; invoiceName: string | null; invoiceUploadedAt: string | null;
+};
 export type FinanceData = {
+  closings: Closing[];
   entries: Entry[]; settings: Settings; blocks: Block[]; reviews: ProductionReview[];
   projects: Project[]; members: Member[]; tasks: Task[]; tags: Tag[]; contracts: Contract[];
   scores: { projectId: string; score: number; createdAt: string }[]; audit: Audit[]; warnings: string[];

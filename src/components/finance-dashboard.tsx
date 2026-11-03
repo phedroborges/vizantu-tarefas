@@ -1,16 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BadgeDollarSign, CalendarDays, Check, ChevronLeft, ChevronRight, Download, Eye, FileSignature, Landmark, Link2, LockKeyhole, Plus, RefreshCw, Settings2, ShieldCheck, TrendingUp, Users, X } from "lucide-react";
+import { BadgeDollarSign, CalendarDays, Check, ChevronLeft, ChevronRight, Download, Eye, FileSignature, Landmark, Link2, LockKeyhole, Plus, Receipt, RefreshCw, Settings2, ShieldCheck, TrendingUp, Users, X } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/vz";
 import { VzLoading } from "@/components/vz/loading";
 import { Avatar } from "@/components/avatar";
+import { InvoiceStatus, ReceiptButton } from "@/components/closing-actions";
 import { renderMarkdownLite } from "@/components/markdown-lite";
 import { responseError } from "@/lib/request-error";
 import { useConfirm } from "@/components/confirm-dialog";
-import { brl, clientMargins, compensationFor, contractAlerts, contractEntries, contractSummaries, contractedByMonth, growthProjection, metrics, monthAdd, priceSuggestion, producerClosing, productionLines, productionRoster, teamClosingsFromLines, money, type ProductionLine } from "@/lib/finance/calculations";
-import { CATEGORIES, RATE_LABELS, type Entry, type FinanceData, type RateKey, type Settings } from "@/lib/finance/types";
+import { brl, clientMargins, compensationFor, contractAlerts, contractEntries, contractSummaries, contractedByMonth, growthProjection, metrics, monthAdd, priceSuggestion, producerClosing, productionLines, productionRoster, teamClosingsFromLines, competenceOf, money, type ProducerClosing, type ProductionLine } from "@/lib/finance/calculations";
+import { CATEGORIES, RATE_LABELS, type Closing, type Entry, type FinanceData, type RateKey, type Settings } from "@/lib/finance/types";
 import { TASK_STATUSES, type Task } from "@/lib/types";
 import "@/app/financeiro/finance.css";
 
@@ -108,9 +109,7 @@ export function FinanceDashboard({ initialData }: { initialData?: FinanceData })
       {tab === "oneoff" ? <OneOff data={data} month={month} busy={busy} onEdit={setEditEntry} onRevenue={() => { setEntryPreset({ direction: "income", category: "campanha", recurring: false }); setEntryProject(""); setEntryOpen(true); }} /> : null}
       {tab === "overview" ? <Overview data={data} month={month} stats={stats} /> : null}
       {tab === "costs" ? <Costs data={data} month={month} busy={busy} onAdd={createExpense} onTeam={() => setTab("production")} onEdit={setEditEntry} onCancelSeries={async (entry) => { if (await confirm({ title: "Encerrar próximas parcelas", message: `Cancelar as parcelas a partir de ${entry.competence}?`, confirmLabel: "Encerrar recorrência", danger: true })) await mutate({ action: "cancelSeries", entryId: entry.id }); }} onCancel={async (entry) => { if (await confirm({ title: "Cancelar lançamento", message: `Cancelar “${entry.description}”? O histórico será mantido.`, confirmLabel: "Cancelar lançamento", danger: true })) await mutate({ action: "cancel", entryId: entry.id }); }} /> : null}
-      {tab === "production" ? <Production data={data} month={month} busy={busy} onCompensation={(payload) => mutate({ action: "compensation", ...payload })} onClose={async (memberId, name, pending, pieces, mode) => {
-        if (await confirm({ title: `Fechar o mês de ${name}`, message: mode === "salary" ? `Lançar ${brl(pending)} de salário fixo na competência ${month}.` : `${pieces} peça(s), ${brl(pending)}. Cada uma vira uma despesa de produção na competência ${month}.`, confirmLabel: "Lançar fechamento" })) await mutate({ action: mode === "salary" ? "salary" : "productionClosing", memberId, competence: month });
-      }} onBook={async (line) => {
+      {tab === "production" ? <Production data={data} month={month} busy={busy} error={error} onCompensation={(payload) => mutate({ action: "compensation", ...payload })} onMutate={mutate} onBook={async (line) => {
         if (await confirm({ title: "Lançar produção a pagar", message: `${line.name}: ${brl(line.total)}. O valor e a regra aplicada serão registrados no financeiro.`, confirmLabel: "Lançar despesa" })) await mutate({ action: "production", taskId: line.taskId });
       }} /> : null}
       {tab === "settings" ? <SettingsPanel key={JSON.stringify(data.settings)} settings={data.settings} busy={busy} onSave={(settings) => mutate({ action: "settings", settings })} audit={data.audit} members={data.members} /> : null}
@@ -261,13 +260,17 @@ function Contracts({ data, month, busy, onRevenue, onBlock, onNew, onEdit, onImp
 
 type SelectedFinanceTask = { line: ProductionLine; task: Task; loading: boolean; error: string };
 
-function Production({ data, month, busy, onBook, onClose, onCompensation }: { data: FinanceData; month: string; busy: boolean; onBook: (line: ProductionLine) => void; onClose: (memberId: string, name: string, pending: number, pieces: number, mode?: "demand" | "salary") => void; onCompensation: (payload: Record<string, unknown>) => Promise<boolean> }) {
+type ClosingDialog = { kind: "close"; memberId: string } | { kind: "paid"; closing: Closing };
+
+function Production({ data, month, busy, error, onBook, onMutate, onCompensation }: { data: FinanceData; month: string; busy: boolean; error: string; onBook: (line: ProductionLine) => void; onMutate: (payload: Record<string, unknown>) => Promise<boolean>; onCompensation: (payload: Record<string, unknown>) => Promise<boolean> }) {
+  const [dialog, setDialog] = useState<ClosingDialog | null>(null);
   const [member, setMember] = useState("");
   const [exporting, setExporting] = useState<string | null>(null);
   const [exportError, setExportError] = useState("");
   const [selected, setSelected] = useState<SelectedFinanceTask | null>(null);
-  const allLines = useMemo(() => productionLines(data.tasks, data.tags, data.settings, data.members), [data]);
-  const monthLines = allLines.filter((line) => line.counted && line.deliveredDate?.startsWith(month));
+  const allLines = useMemo(() => productionLines(data.tasks, data.tags, data.settings, data.members, data.closings), [data]);
+  const monthLines = allLines.filter((line) => line.counted && competenceOf(line) === month);
+  const closedOf = (memberId: string) => data.closings.find((closing) => closing.memberId === memberId && closing.competence === month);
   const roster = productionRoster(allLines, data.entries, data.members, month, data.settings);
   const closings = teamClosingsFromLines(allLines, data.entries, data.members, data.settings, month);
   const visibleClosings = member ? closings.filter((closing) => closing.producerId === member) : closings;
@@ -334,6 +337,27 @@ function Production({ data, month, busy, onBook, onClose, onCompensation }: { da
       {!roster.length ? <Empty text="Nenhum diretor criativo ou social media cadastrado." /> : null}
     </section>
 
+    <section className="fin-panel" aria-labelledby="team-payments-title">
+      <div className="fin-panel-title"><div><span className="fin-eyebrow">Fechamento · {monthLabel(month)}</span><h2 id="team-payments-title">Pagamentos da equipe</h2><p>Feche o mês de cada pessoa, mande o comprovante com a transferência e acompanhe a nota fiscal que ela devolve.</p></div><Receipt size={20} /></div>
+      {(() => {
+        const rows = roster.filter((person) => person.total > 0 || closedOf(person.memberId));
+        if (!rows.length) return <Empty text={`Ninguém com valor a pagar em ${monthLabel(month)}.`} />;
+        return <div className="fin-table-scroll"><table className="fin-table"><thead><tr><th>Pessoa</th><th>Valor</th><th>Fechamento</th><th>Pagamento</th><th>Nota fiscal</th><th>Ações</th></tr></thead><tbody>{rows.map((person) => {
+          const closed = closedOf(person.memberId);
+          const profile = data.members.find((member) => member.id === person.memberId);
+          return <tr key={person.memberId}>
+            <td><strong>{person.name}</strong><small>{person.paymentMode === "salary" ? "Salário fixo" : "Por demanda"}</small></td>
+            <td><strong>{brl(closed ? closed.total : person.total)}</strong>{closed ? null : <small>Ainda em aberto</small>}</td>
+            <td>{closed ? <span className="fin-badge is-ok">Fechado · nº {String(closed.number).padStart(5, "0")}</span> : <span className="fin-badge">Falta fechar</span>}</td>
+            <td>{closed?.paidOn ? <span className="fin-badge is-ok">Pago em {dateLabel(closed.paidOn)}</span> : closed ? <Button size="sm" variant="secondary" disabled={busy} onClick={() => setDialog({ kind: "paid", closing: closed })}>Marcar como pago</Button> : "—"}</td>
+            <td>{closed ? <InvoiceStatus closing={closed} /> : "—"}</td>
+            <td>{closed ? <span className="fin-creative-actions"><ReceiptButton closing={closed} person={{ name: person.name, role: profile?.role }} /></span> : <Button size="sm" disabled={busy} onClick={() => setDialog({ kind: "close", memberId: person.memberId })}><Check size={14} /> Fechar o mês</Button>}</td>
+          </tr>;
+        })}</tbody></table></div>;
+      })()}
+      <p className="fin-footnote">Fechar grava cada peça, o salário e os ajustes como estavam no dia: depois disso o mês não muda, e tarefa aprovada depois entra no mês seguinte. A pessoa recebe o aviso e vê o valor em Meu financeiro para emitir a nota.</p>
+    </section>
+
     <TeamCompensation key={`${month}:${JSON.stringify(data.settings.compensationRules)}`} data={data} month={month} busy={busy} onSave={onCompensation} />
     {withoutCreativeOwner.length ? <div className="fin-warning">{withoutCreativeOwner.length} tarefa(s) aprovada(s) ou finalizada(s) sem responsável elegível com remuneração configurada. Elas não geram pagamento por demanda.</div> : null}
     {withoutComputedDate.length ? <div className="fin-warning">{withoutComputedDate.length} tarefa(s) aprovada(s) ou finalizada(s) sem data registrada da mudança de status. Elas não foram atribuídas a nenhuma competência.</div> : null}
@@ -345,7 +369,7 @@ function Production({ data, month, busy, onBook, onClose, onCompensation }: { da
       return <section className="fin-panel" key={closing.producerId}>
         <div className="fin-panel-title"><div><span className="fin-eyebrow">Responsável atual</span><h2>{person?.name || "Sem diretor criativo"} · {closing.pieces} demanda(s)</h2></div>
           <Button variant="secondary" disabled={busy || exporting !== null} onClick={() => void exportStatement(closing)} aria-label={`Exportar extrato PDF de ${person?.name || "diretor criativo"}` }><Download size={15} /> {exporting === closing.producerId ? "Gerando PDF…" : "Exportar extrato PDF"}</Button>
-          {closing.pending ? <Button disabled={busy} onClick={() => onClose(closing.producerId, person?.name || "", closing.pending, closing.pendingTaskIds.length, closing.paymentMode)}><Check size={15} /> {closing.paymentMode === "salary" ? "Lançar salário do mês" : `Lançar ${closing.pendingTaskIds.length} pendente(s)`}</Button> : <span className="fin-badge is-ok">Sem valor pendente</span>}
+          {closedOf(closing.producerId) ? <span className="fin-badge is-ok">Mês fechado</span> : <Button disabled={busy} onClick={() => setDialog({ kind: "close", memberId: closing.producerId })}><Check size={15} /> Fechar o mês</Button>}
         </div>
         {closing.paymentMode === "salary" ? <p className="fin-footnote">Salário fixo mensal: {brl(closing.salary || 0)}. As tarefas abaixo estão incluídas nesta remuneração e não geram cobrança por peça.</p> : null}
         <div className="fin-mini-grid"><Metric label="Valor computado" value={brl(closing.total)} detail={`${closing.pieces} tarefa(s) aprovada(s) ou finalizada(s)`} /><Metric label="Já lançado" value={brl(closing.launched)} detail="Valor gravado como despesa" /><Metric label="Falta lançar" value={brl(closing.pending)} detail={closing.paymentMode === "salary" ? "Salário fixo ainda a registrar" : "Estimativa pela tabela atual"} /><Metric label="Sem valor calculado" value={String(closing.unpriced)} detail="Formato não reconhecido" /></div>
@@ -369,7 +393,48 @@ function Production({ data, month, busy, onBook, onClose, onCompensation }: { da
 
     <section className="fin-panel"><div className="fin-panel-title"><div><span className="fin-eyebrow">Valores da produção</span><h2>Tabela da equipe</h2></div><BadgeDollarSign size={20} /></div><div className="fin-table-scroll"><table className="fin-table"><thead><tr><th>Entrega</th><th>Unidade</th><th>Pacote de 5</th></tr></thead><tbody>{Object.entries(data.settings.rates).map(([key, rate]) => <tr key={key}><td>{RATE_LABELS[key as RateKey]}</td><td>{brl(rate.unit)}</td><td>{rate.pack === null ? "—" : brl(rate.pack)}</td></tr>)}</tbody></table></div><p className="fin-footnote">Na modalidade por demanda, o valor é calculado automaticamente pelo formato da tarefa. Grupos de cinco no mesmo pacote, formato e responsável atual recebem preço de pacote; excedentes usam preço unitário.</p></section>
     {selected ? <FinanceTaskDialog selected={selected} data={data} onClose={() => setSelected(null)} /> : null}
+    {dialog?.kind === "close" ? <CloseMonthDialog key={dialog.memberId} name={data.members.find((member) => member.id === dialog.memberId)?.name || "Equipe"} memberId={dialog.memberId} closing={closings.find((item) => item.producerId === dialog.memberId)} month={month} busy={busy} error={error} onClose={() => setDialog(null)} onSave={async (payload) => { if (await onMutate(payload)) setDialog(null); }} /> : null}
+    {dialog?.kind === "paid" ? <PaidDialog closing={dialog.closing} name={data.members.find((member) => member.id === dialog.closing.memberId)?.name || "Equipe"} busy={busy} error={error} onClose={() => setDialog(null)} onSave={async (payload) => { if (await onMutate(payload)) setDialog(null); }} /> : null}
   </>;
+}
+
+type Adjustment = { description: string; amount: string; sign: 1 | -1 };
+
+function CloseMonthDialog({ name, memberId, closing, month, busy, error, onClose, onSave }: { name: string; memberId: string; closing?: ProducerClosing; month: string; busy: boolean; error: string; onClose: () => void; onSave: (payload: Record<string, unknown>) => void }) {
+  const [requestId] = useState(() => crypto.randomUUID());
+  const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
+  const parsed = adjustments.map((item) => ({ description: item.description.trim(), amount: item.sign * money(item.amount) }));
+  const invalid = parsed.some((item) => !item.description || !Number.isSafeInteger(item.amount) || item.amount === 0);
+  const base = closing?.total ?? 0;
+  const total = base + parsed.reduce((sum, item) => sum + (Number.isSafeInteger(item.amount) ? item.amount : 0), 0);
+  const change = (index: number, patch: Partial<Adjustment>) => setAdjustments(adjustments.map((item, position) => position === index ? { ...item, ...patch } : item));
+  return <FormShell title={`Fechar ${monthLabel(month)} · ${name}`} busy={busy} error={error} onClose={onClose}><form onSubmit={(event) => {
+    event.preventDefault();
+    if (!invalid) onSave({ action: "closeMonth", memberId, competence: month, requestId, adjustments: parsed });
+  }}>
+    <p className="fin-footnote">{closing?.paymentMode === "salary" ? `Salário fixo de ${brl(closing.salary || 0)}.` : `${closing?.pieces ?? 0} demanda(s) computada(s): ${brl(base)}${closing?.unpriced ? `. ${closing.unpriced} sem valor ficam de fora e seguem para o próximo mês quando forem corrigidas` : ""}.`} Depois de fechado o mês não muda: tarefa aprovada depois entra no mês seguinte.</p>
+    {adjustments.map((item, index) => <div className="fin-form-grid" key={index}>
+      <Field label="Motivo do ajuste"><input value={item.description} maxLength={200} required onChange={(event) => change(index, { description: event.target.value })} placeholder="Ex.: combinado de captação extra" /></Field>
+      <Field label="Tipo"><select value={item.sign} onChange={(event) => change(index, { sign: event.target.value === "-1" ? -1 : 1 })}><option value={1}>Acréscimo</option><option value={-1}>Desconto</option></select></Field>
+      <Field label="Valor (R$)"><input value={item.amount} inputMode="decimal" required onChange={(event) => change(index, { amount: event.target.value })} /></Field>
+      <Button type="button" variant="ghost" size="sm" onClick={() => setAdjustments(adjustments.filter((_, position) => position !== index))} aria-label={`Remover ajuste ${index + 1}`}><X size={14} /> Remover</Button>
+    </div>)}
+    <Button type="button" variant="secondary" size="sm" disabled={adjustments.length >= 20} onClick={() => setAdjustments([...adjustments, { description: "", amount: "", sign: 1 }])}><Plus size={14} /> Adicionar ajuste</Button>
+    <p className="fin-footnote"><strong>Total do comprovante: {brl(total)}</strong></p>
+    <footer><Button type="button" variant="secondary" disabled={busy} onClick={onClose}>Cancelar</Button><Button type="submit" disabled={busy || invalid}>Fechar o mês</Button></footer>
+  </form></FormShell>;
+}
+
+function PaidDialog({ closing, name, busy, error, onClose, onSave }: { closing: Closing; name: string; busy: boolean; error: string; onClose: () => void; onSave: (payload: Record<string, unknown>) => void }) {
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+  return <FormShell title={`Pagamento de ${name}`} busy={busy} error={error} onClose={onClose}><form onSubmit={(event) => {
+    event.preventDefault();
+    onSave({ action: "markPaid", closingId: closing.id, paidOn: String(new FormData(event.currentTarget).get("paidOn")) });
+  }}>
+    <p className="fin-footnote">{monthLabel(closing.competence)} · {brl(closing.total)}. A pessoa recebe o aviso para enviar a nota fiscal.</p>
+    <Field label="Data da transferência"><input name="paidOn" type="date" defaultValue={today} max={today} required /></Field>
+    <footer><Button type="button" variant="secondary" disabled={busy} onClick={onClose}>Cancelar</Button><Button type="submit" disabled={busy}>Marcar como pago</Button></footer>
+  </form></FormShell>;
 }
 
 function FinanceTaskDialog({ selected, data, onClose }: { selected: SelectedFinanceTask; data: FinanceData; onClose: () => void }) {

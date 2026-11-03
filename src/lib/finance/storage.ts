@@ -1,7 +1,7 @@
 import { getSupabase } from "../supabase-client";
-import { listContracts, listMembers, listProjects, listTags, listTasks } from "../storage";
-import { contractEntries, productionLines, recurringEntries, teamClosingsFromLines, validDate } from "./calculations";
-import { CATEGORIES, DEFAULT_SETTINGS, type Entry, type EntryInput, type FinanceData, type Settings } from "./types";
+import { createNotifications, listContracts, listMembers, listProjects, listTags, listTasks } from "../storage";
+import { brl, competenceOf, contractEntries, monthName, productionLines, recurringEntries, teamClosingsFromLines, validDate } from "./calculations";
+import { CATEGORIES, DEFAULT_SETTINGS, type Closing, type ClosingLine, type Entry, type EntryInput, type FinanceData, type Settings } from "./types";
 
 function checked<T>(result: { data: T; error: { message: string } | null }): T {
   if (result.error) throw new Error(result.error.message);
@@ -21,15 +21,17 @@ async function allRows(table: string, order = "id", category?: string) {
   }
 }
 const mapEntry = (r: Record<string, unknown>): Entry => ({ id: String(r.id), direction: r.direction as Entry["direction"], category: r.category as Entry["category"], description: String(r.description), amount: Number(r.amount), competence: String(r.competence), projectId: r.project_id as string | null, memberId: r.member_id as string | null, recurring: Boolean(r.recurring), seriesId: r.series_id as string | null, sourceKey: r.source_key as string | null, cancelled: Boolean(r.cancelled), notes: String(r.notes || ""), createdAt: String(r.created_at) });
+const mapClosing = (r: Record<string, unknown>): Closing => ({ id: String(r.id), number: Number(r.number), memberId: String(r.member_id), competence: String(r.competence), total: Number(r.total), lines: (r.lines ?? []) as ClosingLine[], taskIds: (r.task_ids ?? []) as string[], closedAt: String(r.closed_at), closedBy: (r.closed_by as string | null) ?? null, paidOn: (r.paid_on as string | null) ?? null, invoiceName: (r.invoice_name as string | null) ?? null, invoiceUploadedAt: (r.invoice_uploaded_at as string | null) ?? null });
 const toRow = (e: EntryInput, actor: string) => ({ direction: e.direction, category: e.category, description: e.description, amount: e.amount, due_date: `${e.competence}-01`, competence: e.competence, project_id: e.projectId, member_id: e.memberId, recurring: e.recurring, series_id: e.seriesId, source_key: e.sourceKey, notes: e.notes, updated_by: actor });
 
 export async function loadFinance(actor: string, options: { includeProduction?: boolean } = {}): Promise<FinanceData> {
   const includeProduction = options.includeProduction !== false;
   const db = getSupabase();
-  const [contracts, projects, members, tasks, tags, settingsRow, storedEntries, blockRows, scoreRows, auditRows] = await Promise.all([
+  const [contracts, projects, members, tasks, tags, settingsRow, storedEntries, blockRows, scoreRows, auditRows, closingRows] = await Promise.all([
     listContracts(), listProjects(), listMembers(), includeProduction ? listTasks({ all: true, projection: "production", includeArchivedPlans: true }) : Promise.resolve([]), includeProduction ? listTags() : Promise.resolve([]), db.from("finance_settings").select("data").eq("id", true).maybeSingle().then(checked),
     allRows("finance_entries"), allRows("finance_project_blocks", "project_id"), allRows("client_satisfaction_scores"),
     db.from("finance_audit").select("id,entity_id,action,actor_id,created_at").order("created_at", { ascending: false }).limit(100).then(checked),
+    allRows("finance_closings", "competence"),
   ]);
   const settings: Settings = { ...DEFAULT_SETTINGS, ...settingsRow?.data, rates: { ...DEFAULT_SETTINGS.rates, ...settingsRow?.data?.rates } };
   const warnings: string[] = [];
@@ -66,7 +68,7 @@ export async function loadFinance(actor: string, options: { includeProduction?: 
     if (id && contractById.get(id)?.status !== "assinado") warnings.push(`Contrato ${contractById.get(id)?.title || id} encerrado ou removido: confira e cancele as parcelas que não serão devidas.`);
   }
   return {
-    entries, settings, contracts, projects, members, tasks, tags, warnings,
+    entries, settings, contracts, projects, members, tasks, tags, warnings, closings: closingRows.map(mapClosing),
     blocks: blockRows.map((r) => ({ projectId: String(r.project_id), blocked: Boolean(r.blocked), reason: String(r.reason), updatedAt: String(r.updated_at) })),
     reviews: [],
     scores: scoreRows.map((r) => ({ projectId: String(r.project_id), score: Number(r.score), createdAt: String(r.created_at) })),
@@ -77,13 +79,13 @@ export async function loadFinance(actor: string, options: { includeProduction?: 
 // Produção não depende de contratos, NPS, bloqueios ou auditoria. Falha em uma
 // dessas integrações não impede consultar a equipe e fechar suas entregas.
 export async function loadFinanceProduction(): Promise<FinanceData> {
-  const [projects, members, tasks, tags, settingsRow, entryRows] = await Promise.all([
+  const [projects, members, tasks, tags, settingsRow, entryRows, closingRows] = await Promise.all([
     listProjects(), listMembers(), listTasks({ all: true, projection: "production", includeArchivedPlans: true }), listTags(),
     getSupabase().from("finance_settings").select("data").eq("id", true).maybeSingle().then(checked),
-    allRows("finance_entries", "id", "producao"),
+    allRows("finance_entries", "id", "producao"), allRows("finance_closings", "competence"),
   ]);
   const settings: Settings = { ...DEFAULT_SETTINGS, ...settingsRow?.data, rates: { ...DEFAULT_SETTINGS.rates, ...settingsRow?.data?.rates } };
-  return { projects, members, tasks, tags, settings, entries: entryRows.map(mapEntry), reviews: [],
+  return { projects, members, tasks, tags, settings, entries: entryRows.map(mapEntry), closings: closingRows.map(mapClosing), reviews: [],
     contracts: [], blocks: [], scores: [], audit: [], warnings: [] };
 }
 
@@ -157,7 +159,7 @@ export async function mutateFinance(body: Record<string, unknown>, actor: string
     const memberId = uuid(body.memberId);
     const competence = String(body.competence || ""); date(`${competence}-01`);
     const data = await loadFinanceProduction();
-    const closing = teamClosingsFromLines(productionLines(data.tasks, data.tags, data.settings, data.members), data.entries, data.members, data.settings, competence).find((item) => item.producerId === memberId && item.paymentMode === "salary");
+    const closing = teamClosingsFromLines(productionLines(data.tasks, data.tags, data.settings, data.members, data.closings), data.entries, data.members, data.settings, competence).find((item) => item.producerId === memberId && item.paymentMode === "salary");
     if (!closing?.pending) throw new FinanceInputError("Nenhum salário pendente nesta competência.");
     const name = data.members.find((person) => person.id === memberId)?.name || "Equipe";
     checked(await db.from("finance_entries").upsert(toRow({ direction: "expense", category: "producao", description: `Salário fixo · ${name}`, amount: closing.pending, competence, projectId: null, memberId, recurring: false, seriesId: null, sourceKey: `salary:${memberId}:${competence}`, notes: `Salário mensal configurado: ${closing.salary} centavos. Complemento após despesas já registradas para esta pessoa na competência.` }, actor), { onConflict: "source_key", ignoreDuplicates: true }));
@@ -191,7 +193,7 @@ export async function mutateFinance(body: Record<string, unknown>, actor: string
     checked(await db.from("finance_project_blocks").upsert({ project_id: projectId, blocked: body.blocked, reason, updated_by: actor, updated_at: new Date().toISOString() }));
   } else if (body.action === "production" || body.action === "productionClosing") {
     const data = await loadFinanceProduction();
-    const todas = productionLines(data.tasks, data.tags, data.settings, data.members);
+    const todas = productionLines(data.tasks, data.tags, data.settings, data.members, data.closings);
     let alvo: typeof todas;
     if (body.action === "production") {
       const taskId = uuid(body.taskId);
@@ -204,14 +206,129 @@ export async function mutateFinance(body: Record<string, unknown>, actor: string
       // ele mandasse, inclusive peça de outro diretor ou de outro mês.
       const producerId = uuid(body.memberId);
       const competence = String(body.competence || ""); date(`${competence}-01`);
-      alvo = todas.filter((line) => line.ready && line.producerId === producerId && line.deliveredDate!.startsWith(competence));
+      alvo = todas.filter((line) => line.ready && line.producerId === producerId && competenceOf(line) === competence);
       if (!alvo.length) throw new FinanceInputError("Nenhuma tarefa aprovada ou finalizada e pendente para esta pessoa nesta competência.");
     }
     // source_key por tarefa: reenviar o fechamento não paga a mesma peça duas vezes.
-    checked(await db.from("finance_entries").upsert(alvo.map((line) => toRow({ direction: "expense", category: "producao", description: `Produção · ${line.name}`, amount: line.total, competence: line.deliveredDate!.slice(0, 7), projectId: line.projectId, memberId: line.producerId!, recurring: false, seriesId: null, sourceKey: `production:${line.taskId}`, notes: `Base ${line.base} centavos; ${line.penalty ? "50% por atraso/problema conforme regra configurada" : "integral"}. Prazo ${line.dueDate}.` }, actor)), { onConflict: "source_key", ignoreDuplicates: true }));
+    checked(await db.from("finance_entries").upsert(alvo.map((line) => toRow({ direction: "expense", category: "producao", description: `Produção · ${line.name}`, amount: line.total, competence: competenceOf(line)!, projectId: line.projectId, memberId: line.producerId!, recurring: false, seriesId: null, sourceKey: `production:${line.taskId}`, notes: `Base ${line.base} centavos; ${line.penalty ? "50% por atraso/problema conforme regra configurada" : "integral"}. Prazo ${line.dueDate}.` }, actor)), { onConflict: "source_key", ignoreDuplicates: true }));
+  } else if (body.action === "closeMonth") {
+    await closeMonth(body, actor);
+  } else if (body.action === "markPaid") {
+    const closingId = uuid(body.closingId);
+    const paidOn = String(body.paidOn || ""); date(paidOn);
+    const [row] = checked(await db.from("finance_closings").update({ paid_on: paidOn, paid_by: actor }).eq("id", closingId).select("*")) ?? [];
+    if (!row) throw new FinanceInputError("Fechamento não encontrado.");
+    const closing = mapClosing(row);
+    await createNotifications([{ recipientMemberId: closing.memberId, actorMemberId: actor, type: "finance_closing",
+      title: `Pagamento de ${monthName(closing.competence)} feito`,
+      body: `${brl(closing.total)}${closing.invoiceName ? "" : ". Emita a nota fiscal neste valor e envie em Meu financeiro."}`,
+      actionUrl: "/meu-financeiro", dedupeKey: `closing-paid:${closing.id}:${paidOn}` }]);
   } else {
     throw new FinanceInputError("Ação financeira inválida.");
   }
+}
+
+function adjustmentsOf(value: unknown): { description: string; amount: number }[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > 20) throw new FinanceInputError("Ajustes inválidos.");
+  return value.map((item) => {
+    const amount = Number(item?.amount);
+    if (!Number.isSafeInteger(amount) || amount === 0 || Math.abs(amount) > 100000000000) throw new FinanceInputError("Informe o valor de cada ajuste.");
+    return { description: requireText(item?.description, "o motivo de cada ajuste", 200), amount };
+  });
+}
+
+const KIND_ORDER: ClosingLine["kind"][] = ["peca", "salario", "outro", "ajuste"];
+
+// Fechar o mês de uma pessoa: lança o que faltava (peças ou salário), grava os
+// ajustes combinados e congela o comprovante com tudo que ficou lançado para
+// ela no mês. Depois disso o mês não muda: peça aprovada atrasada vai para o
+// próximo mês aberto.
+async function closeMonth(body: Record<string, unknown>, actor: string) {
+  const db = getSupabase();
+  const memberId = uuid(body.memberId);
+  const competence = String(body.competence || ""); date(`${competence}-01`);
+  const requestId = uuid(body.requestId);
+  const adjustments = adjustmentsOf(body.adjustments);
+  const data = await loadFinanceProduction();
+  const person = data.members.find((member) => member.id === memberId);
+  if (!person) throw new FinanceInputError("Pessoa não encontrada.");
+  if (data.closings.some((closing) => closing.memberId === memberId && closing.competence === competence)) throw new FinanceInputError(`O mês de ${person.name} já foi fechado.`);
+  const lines = productionLines(data.tasks, data.tags, data.settings, data.members, data.closings);
+  const closing = teamClosingsFromLines(lines, data.entries, data.members, data.settings, competence).find((item) => item.producerId === memberId);
+  const rows: ReturnType<typeof toRow>[] = [];
+  if (closing?.paymentMode === "salary") {
+    if (closing.pending) rows.push(toRow({ direction: "expense", category: "producao", description: `Salário fixo · ${person.name}`, amount: closing.pending, competence, projectId: null, memberId, recurring: false, seriesId: null, sourceKey: `salary:${memberId}:${competence}`, notes: `Salário mensal configurado: ${closing.salary} centavos. Complemento após despesas já registradas para esta pessoa na competência.` }, actor));
+  } else if (closing) {
+    for (const line of closing.lines.filter((item) => closing.pendingTaskIds.includes(item.taskId))) {
+      rows.push(toRow({ direction: "expense", category: "producao", description: `Produção · ${line.name}`, amount: line.total, competence, projectId: line.projectId, memberId, recurring: false, seriesId: null, sourceKey: `production:${line.taskId}`, notes: `Base ${line.base} centavos; ${line.penalty ? "50% por atraso/problema conforme regra configurada" : "integral"}. Prazo ${line.dueDate}.` }, actor));
+    }
+  }
+  adjustments.forEach((adjustment, index) => rows.push(toRow({ direction: "expense", category: "producao", description: `Ajuste · ${adjustment.description}`, amount: adjustment.amount, competence, projectId: null, memberId, recurring: false, seriesId: null, sourceKey: `ajuste:${requestId}:${index}`, notes: `Combinado no fechamento de ${competence}.` }, actor)));
+  if (rows.length) checked(await db.from("finance_entries").upsert(rows, { onConflict: "source_key", ignoreDuplicates: true }));
+
+  // O comprovante é o que ficou lançado, e não a estimativa: relê do banco.
+  const booked = (await allRows("finance_entries", "id", "producao")).map(mapEntry).filter((entry) => !entry.cancelled && entry.memberId === memberId && entry.competence === competence);
+  if (!booked.length) throw new FinanceInputError(`Nada a fechar para ${person.name} em ${monthName(competence)}.`);
+  const projectName = new Map(data.projects.map((project) => [project.id, project.name]));
+  const lineByTask = new Map(lines.map((line) => [line.taskId, line]));
+  const items: ClosingLine[] = booked.map((entry): ClosingLine => {
+    const taskId = entry.sourceKey?.startsWith("production:") ? entry.sourceKey.slice("production:".length) : undefined;
+    const line = taskId ? lineByTask.get(taskId) : undefined;
+    const kind = taskId ? "peca" : entry.sourceKey?.startsWith("salary:") ? "salario" : entry.sourceKey?.startsWith("ajuste:") ? "ajuste" : "outro";
+    return { kind, description: line?.name ?? entry.description.replace(/^(Produção|Ajuste) · /, ""), amount: entry.amount, taskId, projectName: entry.projectId ? projectName.get(entry.projectId) : undefined, deliveredDate: line?.deliveredDate ?? undefined };
+  }).sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || (a.deliveredDate ?? "").localeCompare(b.deliveredDate ?? "") || a.description.localeCompare(b.description, "pt-BR"));
+  // No salário as peças estão incluídas; por demanda, só as que foram pagas.
+  // Peça sem valor fica de fora e segue para o próximo mês quando for corrigida.
+  const taskIds = closing?.paymentMode === "salary" ? closing.lines.map((line) => line.taskId) : items.flatMap((item) => item.taskId ? [item.taskId] : []);
+  const total = items.reduce((sum, item) => sum + item.amount, 0);
+  const inserted = await db.from("finance_closings").insert({ member_id: memberId, competence, total, lines: items, task_ids: taskIds, closed_by: actor }).select("*");
+  if (inserted.error?.code === "23505") throw new FinanceInputError(`O mês de ${person.name} já foi fechado.`);
+  const [row] = checked(inserted) ?? [];
+  await createNotifications([{ recipientMemberId: memberId, actorMemberId: actor, type: "finance_closing",
+    title: `Seu fechamento de ${monthName(competence)} está pronto`, body: `${brl(total)}. O comprovante está em Meu financeiro.`,
+    actionUrl: "/meu-financeiro", dedupeKey: `closing:${row?.id ?? `${memberId}:${competence}`}` }]);
+}
+
+// ---------- Nota fiscal do fechamento ----------
+// Área privada: o arquivo só abre por link temporário gerado aqui.
+const INVOICE_BUCKET = "notas-fiscais";
+const INVOICE_TYPES: Record<string, string> = { "application/pdf": "pdf", "application/xml": "xml", "text/xml": "xml", "image/png": "png", "image/jpeg": "jpg" };
+export const MAX_INVOICE_BYTES = 10 * 1024 * 1024;
+
+export async function getClosing(id: string): Promise<Closing | null> {
+  const row = checked(await getSupabase().from("finance_closings").select("*").eq("id", id).maybeSingle());
+  return row ? mapClosing(row) : null;
+}
+
+export async function attachInvoice(closing: Closing, file: File, actorId: string): Promise<void> {
+  const mime = file.type.split(";")[0].trim().toLowerCase();
+  const extension = INVOICE_TYPES[mime] ?? (/\.xml$/i.test(file.name) ? "xml" : undefined);
+  if (!extension) throw new FinanceInputError("Envie a nota em PDF, XML, PNG ou JPG.");
+  if (!file.size || file.size > MAX_INVOICE_BYTES) throw new FinanceInputError("A nota precisa ter até 10MB.");
+  const db = getSupabase();
+  const path = `${closing.memberId}/${closing.competence}-${closing.number}-${crypto.randomUUID()}.${extension}`;
+  const { error } = await db.storage.from(INVOICE_BUCKET).upload(path, file, { contentType: extension === "xml" ? "application/xml" : mime });
+  if (error) throw new Error(error.message);
+  const previous = checked(await db.from("finance_closings").select("invoice_path").eq("id", closing.id).maybeSingle()) as { invoice_path: string | null } | null;
+  checked(await db.from("finance_closings").update({ invoice_path: path, invoice_name: file.name.slice(0, 200) || `nota.${extension}`, invoice_uploaded_at: new Date().toISOString() }).eq("id", closing.id));
+  // Trocar a nota não deixa a antiga perdida na área privada.
+  if (previous?.invoice_path) await db.storage.from(INVOICE_BUCKET).remove([previous.invoice_path]);
+  const members = await listMembers();
+  const person = members.find((member) => member.id === closing.memberId);
+  await createNotifications(members.filter((member) => member.role === "dono" && member.active && member.id !== actorId).map((dono) => ({
+    recipientMemberId: dono.id, actorMemberId: actorId, type: "finance_closing" as const,
+    title: `Nota fiscal recebida · ${person?.name ?? "Equipe"}`, body: `${monthName(closing.competence)} · ${brl(closing.total)}`,
+    actionUrl: "/financeiro", dedupeKey: `invoice:${path}:${dono.id}`,
+  })));
+}
+
+export async function invoiceLink(closing: Closing): Promise<string | null> {
+  const row = checked(await getSupabase().from("finance_closings").select("invoice_path").eq("id", closing.id).maybeSingle()) as { invoice_path: string | null } | null;
+  if (!row?.invoice_path) return null;
+  const { data, error } = await getSupabase().storage.from(INVOICE_BUCKET).createSignedUrl(row.invoice_path, 300);
+  if (error) throw new Error(error.message);
+  return data.signedUrl;
 }
 
 // Preferences and numerical settings share the existing audited JSON row.

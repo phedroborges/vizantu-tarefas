@@ -58,6 +58,7 @@ export default async function MemberFinancePage({ searchParams }: PageProps) {
         period={period}
         performance={performance}
         compare={Boolean(period.previous)}
+        closings={data.closings.filter((closing) => closing.memberId === memberId).sort((a, b) => b.competence.localeCompare(a.competence))}
         people={isOwner ? people.map((person) => ({ id: person.id, name: person.name })) : undefined}
       />
     </AdminShell>
