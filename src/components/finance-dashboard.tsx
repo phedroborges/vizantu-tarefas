@@ -268,7 +268,7 @@ function Production({ data, month, busy, error, onBook, onMutate, onCompensation
   const [exporting, setExporting] = useState<string | null>(null);
   const [exportError, setExportError] = useState("");
   const [selected, setSelected] = useState<SelectedFinanceTask | null>(null);
-  const allLines = useMemo(() => productionLines(data.tasks, data.tags, data.settings, data.members, data.closings), [data]);
+  const allLines = useMemo(() => productionLines(data.tasks, data.tags, data.settings, data.members, data.closings, data.entries), [data]);
   const monthLines = allLines.filter((line) => line.counted && competenceOf(line) === month);
   const closedOf = (memberId: string) => data.closings.find((closing) => closing.memberId === memberId && closing.competence === month);
   // O mês fecha sozinho quando termina; fechar à mão só sobra para mês passado

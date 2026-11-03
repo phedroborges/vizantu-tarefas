@@ -84,7 +84,7 @@ export function buildMemberFinance({ data, memberId, range, previous, today }: {
   const projectName = (id: string) => projectNames.get(id) || "Projeto removido";
   // O preço de pacote depende do grupo inteiro, então as linhas são calculadas
   // com todas as tarefas e só depois recortadas para a pessoa.
-  const own = productionLines(data.tasks, data.tags, data.settings, data.members, data.closings).filter((line) => line.memberId === memberId);
+  const own = productionLines(data.tasks, data.tags, data.settings, data.members, data.closings, data.entries).filter((line) => line.memberId === memberId);
   const delivered = own.filter((line): line is ProductionLine & { deliveredDate: string } => line.counted && Boolean(line.deliveredDate));
   const entryByTask = new Map(data.entries.filter((entry) => entry.sourceKey?.startsWith("production:")).map((entry) => [entry.sourceKey!.slice("production:".length), entry]));
   const modeIn = (month: string) => compensationFor(data.settings, member, month);
@@ -94,7 +94,7 @@ export function buildMemberFinance({ data, memberId, range, previous, today }: {
       taskId: line.taskId, name: line.name, projectName: projectName(line.projectId),
       format: line.rateKey ? RATE_LABELS[line.rateKey] : null, status: line.taskStatus ?? "aprovado", deliveredDate: line.deliveredDate,
     };
-    const pay = modeIn(line.deliveredDate.slice(0, 7));
+    const pay = modeIn(competenceOf(line)!);
     if (pay.mode === "salary") return { ...base, amount: null, situation: "salario", note: "Incluída no salário fixo do mês." };
     if (!line.ready || line.producerId !== memberId) {
       return { ...base, amount: null, situation: "sem_valor", note: pay.mode === "none" ? "Sem remuneração por demanda configurada." : line.rateKey ? line.pendencia : UNRECOGNIZED };
@@ -105,7 +105,13 @@ export function buildMemberFinance({ data, memberId, range, previous, today }: {
     return { ...base, amount: line.total, situation: "a_lancar", note: line.penalty ? "50% pela regra de prazo." : null };
   };
 
-  const within = (range?: DayRange) => (range ? delivered.filter((line) => line.deliveredDate >= range.from && line.deliveredDate <= range.to) : delivered).map(describe);
+  // O período conta pelo mês em que a peça é paga, o mesmo do fechamento:
+  // peça paga em setembro e aprovada de novo em outubro continua em setembro.
+  const countedOn = (line: ProductionLine & { deliveredDate: string }) => {
+    const month = competenceOf(line)!;
+    return line.deliveredDate.startsWith(month) ? line.deliveredDate : `${month}-01`;
+  };
+  const within = (range?: DayRange) => (range ? delivered.filter((line) => countedOn(line) >= range.from && countedOn(line) <= range.to) : delivered).map(describe);
   const totalsOf = (lines: MemberFinanceLine[]): MemberFinanceTotals => {
     const launched = lines.filter((line) => line.situation === "lancada").reduce((sum, line) => sum + (line.amount ?? 0), 0);
     const pending = lines.filter((line) => line.situation === "a_lancar").reduce((sum, line) => sum + (line.amount ?? 0), 0);

@@ -159,7 +159,7 @@ export async function mutateFinance(body: Record<string, unknown>, actor: string
     const memberId = uuid(body.memberId);
     const competence = String(body.competence || ""); date(`${competence}-01`);
     const data = await loadFinanceProduction();
-    const closing = teamClosingsFromLines(productionLines(data.tasks, data.tags, data.settings, data.members, data.closings), data.entries, data.members, data.settings, competence).find((item) => item.producerId === memberId && item.paymentMode === "salary");
+    const closing = teamClosingsFromLines(productionLines(data.tasks, data.tags, data.settings, data.members, data.closings, data.entries), data.entries, data.members, data.settings, competence).find((item) => item.producerId === memberId && item.paymentMode === "salary");
     if (!closing?.pending) throw new FinanceInputError("Nenhum salário pendente nesta competência.");
     const name = data.members.find((person) => person.id === memberId)?.name || "Equipe";
     checked(await db.from("finance_entries").upsert(toRow({ direction: "expense", category: "producao", description: `Salário fixo · ${name}`, amount: closing.pending, competence, projectId: null, memberId, recurring: false, seriesId: null, sourceKey: `salary:${memberId}:${competence}`, notes: `Salário mensal configurado: ${closing.salary} centavos. Complemento após despesas já registradas para esta pessoa na competência.` }, actor), { onConflict: "source_key", ignoreDuplicates: true }));
@@ -193,7 +193,7 @@ export async function mutateFinance(body: Record<string, unknown>, actor: string
     checked(await db.from("finance_project_blocks").upsert({ project_id: projectId, blocked: body.blocked, reason, updated_by: actor, updated_at: new Date().toISOString() }));
   } else if (body.action === "production" || body.action === "productionClosing") {
     const data = await loadFinanceProduction();
-    const todas = productionLines(data.tasks, data.tags, data.settings, data.members, data.closings);
+    const todas = productionLines(data.tasks, data.tags, data.settings, data.members, data.closings, data.entries);
     let alvo: typeof todas;
     if (body.action === "production") {
       const taskId = uuid(body.taskId);
@@ -265,7 +265,7 @@ const adjustmentRows = (adjustments: { description: string; amount: number }[], 
 export async function closeFinishedMonth(today: string): Promise<{ name: string; total: number }[]> {
   const competence = monthAdd(`${today.slice(0, 7)}-01`, -1).slice(0, 7);
   const data = await loadFinanceProduction();
-  const lines = productionLines(data.tasks, data.tags, data.settings, data.members, data.closings);
+  const lines = productionLines(data.tasks, data.tags, data.settings, data.members, data.closings, data.entries);
   const open = teamClosingsFromLines(lines, data.entries, data.members, data.settings, competence)
     .filter((closing) => closing.total > 0 && !data.closings.some((item) => item.memberId === closing.producerId && item.competence === competence));
   // Fechamento já existente e não pago só é tocado quando alguém ajusta.
@@ -297,7 +297,7 @@ async function closeMonth(body: Record<string, unknown>, actor: string | null): 
   if (!person) throw new FinanceInputError("Pessoa não encontrada.");
   const existing = data.closings.find((closing) => closing.memberId === memberId && closing.competence === competence);
   if (existing?.paidOn) throw new FinanceInputError(`O mês de ${person.name} já foi pago. O comprovante não muda mais.`);
-  const lines = productionLines(data.tasks, data.tags, data.settings, data.members, data.closings);
+  const lines = productionLines(data.tasks, data.tags, data.settings, data.members, data.closings, data.entries);
   const closing = teamClosingsFromLines(lines, data.entries, data.members, data.settings, competence).find((item) => item.producerId === memberId);
   const rows: ReturnType<typeof toRow>[] = [];
   if (closing?.paymentMode === "salary") {

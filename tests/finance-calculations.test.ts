@@ -371,3 +371,16 @@ it("peça aprovada depois do pagamento entra no próximo mês aberto, sem mexer 
   expect(productionRoster(lines, [], equipe, "2026-09", DEFAULT_SETTINGS).find(r => r.memberId === "b")?.delivered).toBe(1);
   expect(productionRoster(lines, [], equipe, "2026-11", DEFAULT_SETTINGS).find(r => r.memberId === "b")?.delivered).toBe(1);
 });
+
+it("peça paga num mês e aprovada de novo depois continua no mês em que foi paga", () => {
+  const refeita = task(1, { assigneeId: "b", captacaoId: undefined, statusHistory: [
+    { status: "aprovado", enteredAt: "2026-09-25T19:49:00Z", exitedAt: "2026-10-08T21:08:00Z" },
+    { status: "em_criacao", enteredAt: "2026-10-08T21:08:00Z", exitedAt: "2026-10-08T21:11:00Z" },
+    { status: "aprovado", enteredAt: "2026-10-08T21:11:00Z", exitedAt: null },
+  ] });
+  const paga = entry({ direction: "expense", category: "producao", amount: 5000, competence: "2026-09", memberId: "b", sourceKey: "production:t1", recurring: false });
+  const [line] = productionLines([refeita], [], DEFAULT_SETTINGS, equipe, [], [paga]);
+  expect(line).toMatchObject({ deliveredDate: "2026-10-08", competence: "2026-09" });
+  expect(productionRoster([line], [paga], equipe, "2026-10", DEFAULT_SETTINGS).find(r => r.memberId === "b")?.total).toBe(0);
+  expect(productionRoster([line], [paga], equipe, "2026-09", DEFAULT_SETTINGS).find(r => r.memberId === "b")?.total).toBe(5000);
+});

@@ -181,13 +181,18 @@ export type ProductionLine = { taskStatus?: Task["status"]; taskId: string; name
 // peça foi aprovada depois de o mês da pessoa ser fechado.
 export const competenceOf = (line: Pick<ProductionLine, "competence" | "deliveredDate">) => line.competence ?? line.deliveredDate?.slice(0, 7) ?? null;
 
-export function productionLines(tasks: Task[], tags: Tag[], settings: Settings, members: Member[], closings: Pick<Closing, "memberId" | "competence" | "taskIds" | "paidOn">[] = []): ProductionLine[] {
+export function productionLines(tasks: Task[], tags: Tag[], settings: Settings, members: Member[], closings: Pick<Closing, "memberId" | "competence" | "taskIds" | "paidOn">[] = [], entries: Pick<Entry, "sourceKey" | "competence" | "cancelled">[] = []): ProductionLine[] {
   const labels = new Map(tags.map((tag) => [tag.id, tag.label]));
   // Enquanto o mês não foi pago, ele continua recebendo as peças dele (uma peça
   // corrigida depois do fechamento, por exemplo). Depois de pago, peça nova
   // daquele mês entra no próximo mês aberto: o pago não muda e nada se perde.
   const closed = new Map(closings.filter((closing) => closing.paidOn).map((closing) => [`${closing.memberId}:${closing.competence}`, new Set(closing.taskIds)]));
+  // Peça já lançada fica no mês em que foi paga, mesmo que volte para ajuste
+  // e seja aprovada de novo depois: não é paga duas vezes nem muda de mês.
+  const paidIn = new Map(entries.filter((entry) => !entry.cancelled && entry.sourceKey?.startsWith("production:")).map((entry) => [entry.sourceKey!.slice("production:".length), entry.competence]));
   const competenceFor = (month: string, producerId: string | null, taskId: string) => {
+    const paid = paidIn.get(taskId);
+    if (paid) return paid;
     let current = month;
     for (let paid = producerId ? closed.get(`${producerId}:${current}`) : undefined; paid && !paid.has(taskId); paid = closed.get(`${producerId}:${current}`)) current = monthAdd(`${current}-01`, 1).slice(0, 7);
     return current;
@@ -256,7 +261,7 @@ export function clientMargins(data: CostData & Pick<FinanceData, "projects">, mo
   const live = data.entries.filter((entry) => !entry.cancelled && entry.competence === month);
   const receitaTotal = sum(live.filter((entry) => entry.direction === "income" && entry.projectId));
   const ferramentas = sum(live.filter((entry) => entry.direction === "expense" && entry.category === "ferramentas"));
-  const lines = productionLines(data.tasks ?? [], data.tags ?? [], data.settings, data.members ?? [], data.closings);
+  const lines = productionLines(data.tasks ?? [], data.tags ?? [], data.settings, data.members ?? [], data.closings, data.entries);
   const pendingClosings = teamClosingsFromLines(lines, data.entries, data.members ?? [], data.settings, month);
   const fixedPending = pendingClosings.filter((closing) => closing.paymentMode === "salary").reduce((total, closing) => total + closing.pending, 0);
   const unassignedTeam = sum(live.filter((entry) => entry.direction === "expense" && entry.category === "producao" && !entry.projectId));
@@ -427,6 +432,6 @@ export function teamClosingsFromLines(lines: ProductionLine[], entries: Entry[],
 }
 
 function pendingTeamCost(data: CostData, month: string): number {
-  const lines = productionLines(data.tasks ?? [], data.tags ?? [], data.settings, data.members ?? [], data.closings);
+  const lines = productionLines(data.tasks ?? [], data.tags ?? [], data.settings, data.members ?? [], data.closings, data.entries);
   return teamClosingsFromLines(lines, data.entries, data.members ?? [], data.settings, month).reduce((total, closing) => total + closing.pending, 0);
 }

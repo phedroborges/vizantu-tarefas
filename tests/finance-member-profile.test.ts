@@ -88,3 +88,12 @@ describe("financeiro de cada pessoa", () => {
     expect(podeVerFinanceiroDe("dono", "m0", "m3")).toBe(true);
   });
 });
+
+it("o período soma pelo mês do pagamento, igual ao fechamento", () => {
+  // Paga em setembro, voltou para ajuste e foi aprovada de novo em outubro.
+  const refeita = task({ id: "r", name: "Reels refeito", status: "aprovado" }, "2026-10-08T21:11:00.000Z");
+  const paga: Entry = { ...entries[0], id: "e2", description: "Reels refeito", amount: 7000, sourceKey: "production:r" };
+  const profile = (from: string, to: string) => buildMemberFinance({ data: { tasks: [refeita], tags: [], settings: DEFAULT_SETTINGS, members, entries: [paga], projects }, memberId: "m2", range: { from, to }, today: "2026-11-03" })!;
+  expect(profile("2026-10-01", "2026-10-31").totals).toMatchObject({ earnings: 0, deliveries: 0 });
+  expect(profile("2026-09-01", "2026-09-30").totals).toMatchObject({ earnings: 7000, launched: 7000, deliveries: 1 });
+});
