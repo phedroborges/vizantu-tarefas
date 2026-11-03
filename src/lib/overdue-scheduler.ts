@@ -1,4 +1,4 @@
-import { varrerAvisosFinanceiros } from "./finance/alerts";
+import { fecharMesQueTerminou, varrerAvisosFinanceiros } from "./finance/alerts";
 import { createDailyOverdueNotifications, maintainMonthlyPlans } from "./storage";
 
 // ---------- Varredura diária de tarefas atrasadas ----------
@@ -59,12 +59,13 @@ async function executarVarredura(agora: Date): Promise<number> {
   const hoje = hojeEmSaoPaulo(agora);
   // A aprovação por prazo não mora aqui: só acontece depois de o cliente ser
   // avisado do último dia, na rotina do WhatsApp (whatsapp/service.ts).
-  const [tarefas, financeiro, planos] = await Promise.all([
+  const [tarefas, financeiro, planos, fechamento] = await Promise.all([
     tentar("atrasos", () => createDailyOverdueNotifications(hoje)),
     tentar("financeiro", () => varrerAvisosFinanceiros(hoje)),
     tentar("planos mensais", () => maintainMonthlyPlans(hoje)),
+    tentar("fechamento do mês", () => fecharMesQueTerminou(hoje)),
   ]);
-  return tarefas + financeiro + planos;
+  return tarefas + financeiro + planos + fechamento;
 }
 
 // Cron manual e temporizador podem coincidir; compartilham o trabalho em curso.

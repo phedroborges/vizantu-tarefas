@@ -85,7 +85,7 @@ describe("painel financeiro",()=>{
     data.settings.compensationRules=[{memberId:data.members[0].id,fromMonth:"2026-09",mode:"salary",salary:180000}];
     await mount(data); await change(container.querySelector('[aria-label="Mês de análise"]')!,"2026-09"); await click(button("Produção da equipe"));
     expect(container.textContent).toContain("Incluído no salário"); expect(button("Lançar a pagar")).toBeUndefined();
-    await click(button("Fechar o mês"));
+    await click(button("Fechar agora"));
     const form=document.querySelector('.fin-modal form') as HTMLFormElement;
     expect(form.textContent).toMatch(/Salário fixo de R\$\s1\.800,00/);
     fetchMock.mockResolvedValueOnce(Response.json({ok:true})).mockResolvedValueOnce(Response.json(data));
@@ -94,7 +94,7 @@ describe("painel financeiro",()=>{
   });
   it("fecha o mês com desconto combinado e mostra o total do comprovante",async()=>{
     await mount(); await change(container.querySelector('[aria-label="Mês de análise"]')!,"2026-09"); await click(button("Produção da equipe"));
-    await click(button("Fechar o mês"));
+    await click(button("Fechar agora"));
     await click(button("Adicionar ajuste"));
     const form=document.querySelector('.fin-modal form') as HTMLFormElement;
     await change(form.querySelector('input[placeholder^="Ex."]')!,"Peça refeita");
@@ -111,7 +111,16 @@ describe("painel financeiro",()=>{
     await mount(data); await change(container.querySelector('[aria-label="Mês de análise"]')!,"2026-09"); await click(button("Produção da equipe"));
     expect(container.textContent).toContain("Fechado · nº 00007");
     expect(container.textContent).toContain("Aguardando nota");
-    expect(button("Fechar o mês")).toBeUndefined();
+    expect(button("Fechar agora")).toBeUndefined();
+    await click(button("Ajustar"));
+    await click(button("Adicionar ajuste"));
+    const adjust=document.querySelector('.fin-modal form') as HTMLFormElement;
+    await change(adjust.querySelector('input[placeholder^="Ex."]')!,"Captação extra");
+    await change(adjust.querySelector('input[inputmode="decimal"]')!,"100,00");
+    fetchMock.mockResolvedValueOnce(Response.json({ok:true})).mockResolvedValueOnce(Response.json(data));
+    await act(async()=>adjust.dispatchEvent(new Event("submit",{bubbles:true,cancelable:true})));
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({action:"adjustClosing",closingId:data.closings[0].id,adjustments:[{description:"Captação extra",amount:10000}]});
+    fetchMock.mockReset();
     await click(button("Marcar como pago"));
     const form=document.querySelector('.fin-modal form') as HTMLFormElement;
     await change(form.querySelector('input[type="date"]')!,"2026-10-05");

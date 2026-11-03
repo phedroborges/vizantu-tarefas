@@ -1,6 +1,6 @@
 import { getSupabase } from "../supabase-client";
 import { createNotifications, listContracts, listMembers, listProjects, listTags, listTasks } from "../storage";
-import { brl, competenceOf, contractEntries, monthName, productionLines, recurringEntries, teamClosingsFromLines, validDate } from "./calculations";
+import { brl, competenceOf, contractEntries, monthAdd, monthName, productionLines, recurringEntries, teamClosingsFromLines, validDate, type ProductionLine } from "./calculations";
 import { CATEGORIES, DEFAULT_SETTINGS, type Closing, type ClosingLine, type Entry, type EntryInput, type FinanceData, type Settings } from "./types";
 
 function checked<T>(result: { data: T; error: { message: string } | null }): T {
@@ -22,7 +22,7 @@ async function allRows(table: string, order = "id", category?: string) {
 }
 const mapEntry = (r: Record<string, unknown>): Entry => ({ id: String(r.id), direction: r.direction as Entry["direction"], category: r.category as Entry["category"], description: String(r.description), amount: Number(r.amount), competence: String(r.competence), projectId: r.project_id as string | null, memberId: r.member_id as string | null, recurring: Boolean(r.recurring), seriesId: r.series_id as string | null, sourceKey: r.source_key as string | null, cancelled: Boolean(r.cancelled), notes: String(r.notes || ""), createdAt: String(r.created_at) });
 const mapClosing = (r: Record<string, unknown>): Closing => ({ id: String(r.id), number: Number(r.number), memberId: String(r.member_id), competence: String(r.competence), total: Number(r.total), lines: (r.lines ?? []) as ClosingLine[], taskIds: (r.task_ids ?? []) as string[], closedAt: String(r.closed_at), closedBy: (r.closed_by as string | null) ?? null, paidOn: (r.paid_on as string | null) ?? null, invoiceName: (r.invoice_name as string | null) ?? null, invoiceUploadedAt: (r.invoice_uploaded_at as string | null) ?? null });
-const toRow = (e: EntryInput, actor: string) => ({ direction: e.direction, category: e.category, description: e.description, amount: e.amount, due_date: `${e.competence}-01`, competence: e.competence, project_id: e.projectId, member_id: e.memberId, recurring: e.recurring, series_id: e.seriesId, source_key: e.sourceKey, notes: e.notes, updated_by: actor });
+const toRow = (e: EntryInput, actor: string | null) => ({ direction: e.direction, category: e.category, description: e.description, amount: e.amount, due_date: `${e.competence}-01`, competence: e.competence, project_id: e.projectId, member_id: e.memberId, recurring: e.recurring, series_id: e.seriesId, source_key: e.sourceKey, notes: e.notes, updated_by: actor });
 
 export async function loadFinance(actor: string, options: { includeProduction?: boolean } = {}): Promise<FinanceData> {
   const includeProduction = options.includeProduction !== false;
@@ -213,6 +213,8 @@ export async function mutateFinance(body: Record<string, unknown>, actor: string
     checked(await db.from("finance_entries").upsert(alvo.map((line) => toRow({ direction: "expense", category: "producao", description: `Produção · ${line.name}`, amount: line.total, competence: competenceOf(line)!, projectId: line.projectId, memberId: line.producerId!, recurring: false, seriesId: null, sourceKey: `production:${line.taskId}`, notes: `Base ${line.base} centavos; ${line.penalty ? "50% por atraso/problema conforme regra configurada" : "integral"}. Prazo ${line.dueDate}.` }, actor)), { onConflict: "source_key", ignoreDuplicates: true }));
   } else if (body.action === "closeMonth") {
     await closeMonth(body, actor);
+  } else if (body.action === "adjustClosing") {
+    await adjustClosing(body, actor);
   } else if (body.action === "markPaid") {
     const closingId = uuid(body.closingId);
     const paidOn = String(body.paidOn || ""); date(paidOn);
@@ -240,11 +242,50 @@ function adjustmentsOf(value: unknown): { description: string; amount: number }[
 
 const KIND_ORDER: ClosingLine["kind"][] = ["peca", "salario", "outro", "ajuste"];
 
+// O comprovante é o que ficou lançado para a pessoa no mês, e não a estimativa.
+function closingItems(booked: Entry[], lines: ProductionLine[], data: FinanceData): ClosingLine[] {
+  const projectName = new Map(data.projects.map((project) => [project.id, project.name]));
+  const lineByTask = new Map(lines.map((line) => [line.taskId, line]));
+  return booked.map((entry): ClosingLine => {
+    const taskId = entry.sourceKey?.startsWith("production:") ? entry.sourceKey.slice("production:".length) : undefined;
+    const line = taskId ? lineByTask.get(taskId) : undefined;
+    const kind = taskId ? "peca" : entry.sourceKey?.startsWith("salary:") ? "salario" : entry.sourceKey?.startsWith("ajuste:") ? "ajuste" : "outro";
+    return { kind, description: line?.name ?? entry.description.replace(/^(Produção|Ajuste) · /, ""), amount: entry.amount, taskId, projectName: entry.projectId ? projectName.get(entry.projectId) : undefined, deliveredDate: line?.deliveredDate ?? undefined };
+  }).sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || (a.deliveredDate ?? "").localeCompare(b.deliveredDate ?? "") || a.description.localeCompare(b.description, "pt-BR"));
+}
+async function bookedFor(memberId: string, competence: string): Promise<Entry[]> {
+  return (await allRows("finance_entries", "id", "producao")).map(mapEntry).filter((entry) => !entry.cancelled && entry.memberId === memberId && entry.competence === competence);
+}
+const adjustmentRows = (adjustments: { description: string; amount: number }[], memberId: string, competence: string, requestId: string, actor: string | null) =>
+  adjustments.map((adjustment, index) => toRow({ direction: "expense", category: "producao", description: `Ajuste · ${adjustment.description}`, amount: adjustment.amount, competence, projectId: null, memberId, recurring: false, seriesId: null, sourceKey: `ajuste:${requestId}:${index}`, notes: `Combinado no fechamento de ${competence}.` }, actor));
+
+// O mês fecha sozinho quando termina: no primeiro dia do mês seguinte o
+// sistema fecha quem tem valor a receber no mês anterior. Se o servidor estiver
+// fora nesse dia, fecha na próxima varredura. Devolve quem foi fechado agora.
+export async function closeFinishedMonth(today: string): Promise<{ name: string; total: number }[]> {
+  const competence = monthAdd(`${today.slice(0, 7)}-01`, -1).slice(0, 7);
+  const data = await loadFinanceProduction();
+  const lines = productionLines(data.tasks, data.tags, data.settings, data.members, data.closings);
+  const open = teamClosingsFromLines(lines, data.entries, data.members, data.settings, competence)
+    .filter((closing) => closing.total > 0 && !data.closings.some((item) => item.memberId === closing.producerId && item.competence === competence));
+  const closed: { name: string; total: number }[] = [];
+  for (const closing of open) {
+    try {
+      const total = await closeMonth({ memberId: closing.producerId, competence, requestId: crypto.randomUUID() }, null);
+      closed.push({ name: data.members.find((member) => member.id === closing.producerId)?.name ?? "Equipe", total });
+    } catch (error) {
+      // Outra réplica já fechou, ou esta pessoa falhou: as outras seguem.
+      if (!(error instanceof FinanceInputError)) console.error(`[fechamento] ${closing.producerId} ${competence}:`, error);
+    }
+  }
+  return closed;
+}
+
 // Fechar o mês de uma pessoa: lança o que faltava (peças ou salário), grava os
 // ajustes combinados e congela o comprovante com tudo que ficou lançado para
 // ela no mês. Depois disso o mês não muda: peça aprovada atrasada vai para o
-// próximo mês aberto.
-async function closeMonth(body: Record<string, unknown>, actor: string) {
+// próximo mês aberto. Sem ator, foi o fechamento automático.
+async function closeMonth(body: Record<string, unknown>, actor: string | null): Promise<number> {
   const db = getSupabase();
   const memberId = uuid(body.memberId);
   const competence = String(body.competence || ""); date(`${competence}-01`);
@@ -264,20 +305,12 @@ async function closeMonth(body: Record<string, unknown>, actor: string) {
       rows.push(toRow({ direction: "expense", category: "producao", description: `Produção · ${line.name}`, amount: line.total, competence, projectId: line.projectId, memberId, recurring: false, seriesId: null, sourceKey: `production:${line.taskId}`, notes: `Base ${line.base} centavos; ${line.penalty ? "50% por atraso/problema conforme regra configurada" : "integral"}. Prazo ${line.dueDate}.` }, actor));
     }
   }
-  adjustments.forEach((adjustment, index) => rows.push(toRow({ direction: "expense", category: "producao", description: `Ajuste · ${adjustment.description}`, amount: adjustment.amount, competence, projectId: null, memberId, recurring: false, seriesId: null, sourceKey: `ajuste:${requestId}:${index}`, notes: `Combinado no fechamento de ${competence}.` }, actor)));
+  rows.push(...adjustmentRows(adjustments, memberId, competence, requestId, actor));
   if (rows.length) checked(await db.from("finance_entries").upsert(rows, { onConflict: "source_key", ignoreDuplicates: true }));
 
-  // O comprovante é o que ficou lançado, e não a estimativa: relê do banco.
-  const booked = (await allRows("finance_entries", "id", "producao")).map(mapEntry).filter((entry) => !entry.cancelled && entry.memberId === memberId && entry.competence === competence);
+  const booked = await bookedFor(memberId, competence);
   if (!booked.length) throw new FinanceInputError(`Nada a fechar para ${person.name} em ${monthName(competence)}.`);
-  const projectName = new Map(data.projects.map((project) => [project.id, project.name]));
-  const lineByTask = new Map(lines.map((line) => [line.taskId, line]));
-  const items: ClosingLine[] = booked.map((entry): ClosingLine => {
-    const taskId = entry.sourceKey?.startsWith("production:") ? entry.sourceKey.slice("production:".length) : undefined;
-    const line = taskId ? lineByTask.get(taskId) : undefined;
-    const kind = taskId ? "peca" : entry.sourceKey?.startsWith("salary:") ? "salario" : entry.sourceKey?.startsWith("ajuste:") ? "ajuste" : "outro";
-    return { kind, description: line?.name ?? entry.description.replace(/^(Produção|Ajuste) · /, ""), amount: entry.amount, taskId, projectName: entry.projectId ? projectName.get(entry.projectId) : undefined, deliveredDate: line?.deliveredDate ?? undefined };
-  }).sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || (a.deliveredDate ?? "").localeCompare(b.deliveredDate ?? "") || a.description.localeCompare(b.description, "pt-BR"));
+  const items = closingItems(booked, lines, data);
   // No salário as peças estão incluídas; por demanda, só as que foram pagas.
   // Peça sem valor fica de fora e segue para o próximo mês quando for corrigida.
   const taskIds = closing?.paymentMode === "salary" ? closing.lines.map((line) => line.taskId) : items.flatMap((item) => item.taskId ? [item.taskId] : []);
@@ -285,9 +318,27 @@ async function closeMonth(body: Record<string, unknown>, actor: string) {
   const inserted = await db.from("finance_closings").insert({ member_id: memberId, competence, total, lines: items, task_ids: taskIds, closed_by: actor }).select("*");
   if (inserted.error?.code === "23505") throw new FinanceInputError(`O mês de ${person.name} já foi fechado.`);
   const [row] = checked(inserted) ?? [];
-  await createNotifications([{ recipientMemberId: memberId, actorMemberId: actor, type: "finance_closing",
+  await createNotifications([{ recipientMemberId: memberId, actorMemberId: actor ?? undefined, type: "finance_closing",
     title: `Seu fechamento de ${monthName(competence)} está pronto`, body: `${brl(total)}. O comprovante está em Meu financeiro.`,
     actionUrl: "/meu-financeiro", dedupeKey: `closing:${row?.id ?? `${memberId}:${competence}`}` }]);
+  return total;
+}
+
+// Combinado depois do fechamento: acréscimo ou desconto entra no mesmo
+// comprovante até o pagamento ser registrado. Depois de pago, não muda mais.
+async function adjustClosing(body: Record<string, unknown>, actor: string) {
+  const db = getSupabase();
+  const closing = await getClosing(uuid(body.closingId));
+  if (!closing) throw new FinanceInputError("Fechamento não encontrado.");
+  if (closing.paidOn) throw new FinanceInputError("Este mês já foi pago. O comprovante não muda mais.");
+  const adjustments = adjustmentsOf(body.adjustments);
+  if (!adjustments.length) throw new FinanceInputError("Adicione pelo menos um ajuste.");
+  checked(await db.from("finance_entries").upsert(adjustmentRows(adjustments, closing.memberId, closing.competence, uuid(body.requestId), actor), { onConflict: "source_key", ignoreDuplicates: true }));
+  const data = await loadFinanceProduction();
+  const items = closingItems(await bookedFor(closing.memberId, closing.competence), productionLines(data.tasks, data.tags, data.settings, data.members, data.closings), data);
+  const total = items.reduce((sum, item) => sum + item.amount, 0);
+  const updated = checked(await db.from("finance_closings").update({ lines: items, total }).eq("id", closing.id).is("paid_on", null).select("id"));
+  if (!updated?.length) throw new FinanceInputError("Este mês foi pago enquanto você ajustava. Atualize a página.");
 }
 
 // ---------- Nota fiscal do fechamento ----------

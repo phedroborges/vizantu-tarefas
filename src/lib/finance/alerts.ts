@@ -1,6 +1,6 @@
 import { createNotifications, listContracts, listProjects, listMembers, type NotificationInput } from "../storage";
-import { contractAlerts, daysAdd, monthName, productionLines, teamClosingsFromLines } from "./calculations";
-import { loadFinanceProduction } from "./storage";
+import { brl, contractAlerts, monthAdd, monthName } from "./calculations";
+import { closeFinishedMonth } from "./storage";
 
 // ---------- Aviso de fim de contrato ----------
 //
@@ -28,21 +28,26 @@ export async function varrerAvisosFinanceiros(hoje: string): Promise<number> {
     }
   }
 
-  // No último dia do mês, quem ainda tem valor a receber e não foi fechado.
-  const mes = hoje.slice(0, 7);
-  if (daysAdd(hoje, 1).slice(0, 7) !== mes) {
-    const data = await loadFinanceProduction();
-    const linhas = productionLines(data.tasks, data.tags, data.settings, data.members, data.closings);
-    const abertos = teamClosingsFromLines(linhas, data.entries, data.members, data.settings, mes)
-      .filter((fechamento) => fechamento.total > 0 && !data.closings.some((closing) => closing.memberId === fechamento.producerId && closing.competence === mes));
-    const nomes = abertos.map((fechamento) => data.members.find((membro) => membro.id === fechamento.producerId)?.name).filter(Boolean);
-    if (nomes.length) for (const dono of donos) {
-      avisos.push({ recipientMemberId: dono.id, type: "finance_closing",
-        title: `Fechamento de ${monthName(mes)}: ${nomes.length} ${nomes.length === 1 ? "pessoa" : "pessoas"} para fechar`,
-        body: nomes.join(", "), actionUrl: "/financeiro", dedupeKey: `closing-reminder:${mes}:${dono.id}` });
-    }
-  }
-
   await createNotifications(avisos);
   return avisos.length;
+}
+
+// ---------- Fechamento automático do mês ----------
+// O mês fecha sozinho quando termina, e o dono recebe o resumo para pagar.
+// Depois que o mês anterior fechou neste processo, as próximas varreduras não
+// recarregam a produção inteira a cada meia hora.
+let mesJaFechado = "";
+export async function fecharMesQueTerminou(hoje: string): Promise<number> {
+  const mes = monthAdd(`${hoje.slice(0, 7)}-01`, -1).slice(0, 7);
+  if (mesJaFechado === mes) return 0;
+  const fechados = await closeFinishedMonth(hoje);
+  mesJaFechado = mes;
+  if (!fechados.length) return 0;
+  const donos = (await listMembers()).filter((membro) => membro.role === "dono" && membro.active);
+  const total = fechados.reduce((soma, item) => soma + item.total, 0);
+  await createNotifications(donos.map((dono) => ({ recipientMemberId: dono.id, type: "finance_closing" as const,
+    title: `${monthName(mes)} fechado: ${brl(total)} para pagar`,
+    body: `${fechados.map((item) => `${item.name} ${brl(item.total)}`).join(" · ")}. Ajustes combinados entram até você marcar o pagamento.`,
+    actionUrl: "/financeiro", dedupeKey: `closing-auto:${mes}:${dono.id}:${fechados.map((item) => item.name).join(",")}` })));
+  return fechados.length;
 }

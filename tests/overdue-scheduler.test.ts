@@ -27,7 +27,7 @@ describe("varredura de atrasos", () => {
 
 const { overdue, finance } = vi.hoisted(() => ({ overdue: vi.fn(), finance: vi.fn() }));
 vi.mock("../src/lib/storage", () => ({ createDailyOverdueNotifications: overdue, maintainMonthlyPlans: vi.fn(async () => 0) }));
-vi.mock("../src/lib/finance/alerts", () => ({ varrerAvisosFinanceiros: finance }));
+vi.mock("../src/lib/finance/alerts", () => ({ varrerAvisosFinanceiros: finance, fecharMesQueTerminou: vi.fn(async () => 0) }));
 
 it("cron e temporizador compartilham uma varredura em andamento e permitem a próxima", async () => {
   let release!: (count: number) => void;

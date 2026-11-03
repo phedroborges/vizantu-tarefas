@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({ db: vi.fn(), contracts: vi.fn(), projects: vi.
 vi.mock("@/lib/supabase-client", () => ({ getSupabase: mocks.db }));
 vi.mock("@/lib/storage", () => ({ listContracts: mocks.contracts, listProjects: mocks.projects, listMembers: mocks.members, listTasks: mocks.tasks, listTags: mocks.tags, createNotifications: mocks.notifications }));
 vi.mock("@/lib/finance/calculations", async (importOriginal) => ({ ...await importOriginal<object>(), contractEntries: mocks.generated }));
-import { loadFinance, loadFinanceProduction, mutateFinance } from "@/lib/finance/storage";
+import { closeFinishedMonth, loadFinance, loadFinanceProduction, mutateFinance } from "@/lib/finance/storage";
 import { varrerAvisosFinanceiros } from "@/lib/finance/alerts";
 import { DEFAULT_SETTINGS, type Settings } from "@/lib/finance/types";
 let writes: unknown[];
@@ -163,4 +163,19 @@ it("fechar o mês grava peças, ajuste combinado e o comprovante com o total pag
   ]);
   expect(writes[1]).toMatchObject({ member_id: luis, competence: "2026-10", total: 5000, task_ids: ["task"], lines: [{ kind: "peca", description: "Reels", amount: 7000, taskId: "task" }, { kind: "ajuste", description: "Peça refeita", amount: -2000 }] });
   expect(mocks.notifications).toHaveBeenCalledWith([expect.objectContaining({ recipientMemberId: luis, type: "finance_closing" })]);
+});
+
+it("o mês que terminou fecha sozinho para quem tem valor, sem ninguém clicar", async () => {
+  const luis = "22222222-2222-4222-8222-222222222222";
+  const camila = "44444444-4444-4444-8444-444444444444";
+  mocks.members.mockResolvedValue([{ id: luis, name: "Luís", role: "diretor_criativo" }, { id: camila, name: "Camila", role: "diretor_criativo" }]);
+  // Luís entregou em outubro; a peça da Camila foi aprovada já em novembro e fica para o mês dela.
+  mocks.tasks.mockResolvedValue([
+    { id: "outubro", name: "Reels", projectId: "project", assigneeId: luis, createdAt: "2026-10-01T12:00:00Z", formatTagIds: [], status: "aprovado", statusHistory: [{ status: "aprovado", enteredAt: "2026-10-31T23:30:00-03:00", exitedAt: null }], comments: [] },
+    { id: "novembro", name: "Reels", projectId: "project", assigneeId: camila, createdAt: "2026-10-20T12:00:00Z", formatTagIds: [], status: "aprovado", statusHistory: [{ status: "aprovado", enteredAt: "2026-11-01T00:10:00-03:00", exitedAt: null }], comments: [] },
+  ]);
+  const closed = await closeFinishedMonth("2026-11-01");
+  expect(closed).toEqual([{ name: "Luís", total: 7000 }]);
+  expect(writes[1]).toMatchObject({ member_id: luis, competence: "2026-10", total: 7000, closed_by: null });
+  expect(writes).toHaveLength(2);
 });
