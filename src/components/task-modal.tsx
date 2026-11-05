@@ -19,7 +19,7 @@ import type { CommentAttachment, Member, PlanCaptacao, Project, StatusColor, Tag
 import { celebrateFrom } from "@/lib/celebrate";
 import { MentionCommentForm } from "@/components/mention-comment-form";
 import { DatePicker } from "@/components/vz/date-picker";
-import { isUserComment } from "@/lib/task-activity";
+import { commentAuthor, isUserComment } from "@/lib/task-activity";
 import { buildTimeline } from "@/lib/task-timeline";
 import { TaskHistoryDialog } from "@/components/task-history-dialog";
 import { findTaskGaps } from "@/lib/task-readiness";
@@ -791,9 +791,9 @@ export function TaskModal({
                   </article>
                 ) : (
                   <article key={item.id} className="task-comment-event">
-                    <Avatar name={item.comment.author} imageUrl={members.find((member) => member.id === item.comment.authorMemberId)?.avatarUrl} size={27} />
+                    <Avatar name={commentAuthor(item.comment)} imageUrl={members.find((member) => member.id === item.comment.authorMemberId)?.avatarUrl} size={27} />
                     <div>
-                      <span><strong>{item.comment.author}</strong><small>{formatDateTime(item.comment.createdAt)}</small></span>
+                      <span><strong>{commentAuthor(item.comment)}</strong><small>{formatDateTime(item.comment.createdAt)}</small></span>
                       {item.comment.text ? <p>{renderCommentText(item.comment.text, members)}</p> : null}
                       {item.comment.attachments?.length ? <div className="comment-attachments">
                         {item.comment.attachments.map((attachment) => attachment.type === "image"

@@ -3,6 +3,12 @@ import type { Comment, TaskActivityEvent } from "./types";
 
 export type TaskActivityChange = [fieldKey: string, oldValue: unknown, newValue: unknown];
 
+// Notas antigas de automação usavam type: "activity" e não tinham author.
+// Preservamos essas notas visíveis, sem atribuí-las a uma pessoa inventada.
+export function commentAuthor(comment: { author?: string | null; type?: string; kind?: string }): string {
+  return comment.author?.trim() || (comment.type === "activity" || comment.kind === "activity" ? "Sistema" : "Autor não identificado");
+}
+
 export function isUserComment(comment: Comment): boolean {
   return comment.kind !== "activity";
 }

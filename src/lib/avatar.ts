@@ -16,8 +16,8 @@ export const AVATAR_COLORS = [
   "#3f6b46",
 ] as const;
 
-export function initialsOf(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
+export function initialsOf(name: string | null | undefined): string {
+  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return "?";
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   // Primeiro e ÚLTIMO nome — "Ana Paula Souza" vira AS, não AP.
@@ -26,9 +26,10 @@ export function initialsOf(name: string): string {
 
 // Hash estável (djb2). Precisa ser determinístico entre servidor e cliente,
 // senão o avatar troca de cor na hidratação.
-export function colorForName(name: string): string {
+export function colorForName(name: string | null | undefined): string {
+  const value = name ?? "";
   let hash = 5381;
-  for (let i = 0; i < name.length; i++) hash = ((hash << 5) + hash + name.charCodeAt(i)) >>> 0;
+  for (let i = 0; i < value.length; i++) hash = ((hash << 5) + hash + value.charCodeAt(i)) >>> 0;
   return AVATAR_COLORS[hash % AVATAR_COLORS.length];
 }
 

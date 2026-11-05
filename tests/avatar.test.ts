@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { AVATAR_COLORS, avatarColor, colorForName, initialsOf, isHexColor } from "../src/lib/avatar";
 
+it("handles missing names from legacy records", () => {
+  for (const name of [undefined, null]) {
+    expect(initialsOf(name)).toBe("?");
+    expect(colorForName(name)).toBe(colorForName(""));
+  }
+});
+
 describe("avatar de membros e clientes", () => {
   it("1. duas palavras viram primeira + última inicial", () => {
     expect(initialsOf("Franciele Costa")).toBe("FC");
