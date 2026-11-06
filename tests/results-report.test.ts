@@ -100,6 +100,16 @@ describe("PDF do relatório de resultados", () => {
     expect(pdf.getNumberOfPages()).toBe(1);
   });
 
+  it("desenha fluxogramas com até cinco etapas e ignora o vazio", () => {
+    const flow: ResultsReport = { period: "Outubro de 2026", sections: [{ title: "O que está rodando hoje", flows: [
+      { title: "Campanha de WhatsApp", tag: "R$ 25/dia · R$ 750/mês", steps: [{ label: "Anúncio", detail: "Stories e feed" }, { label: "WhatsApp" }, { label: "Consulta", detail: "Agendada pela secretária" }] },
+      { steps: Array.from({ length: 7 }, (_, index) => ({ label: `Etapa ${index + 1}` })) },
+      { title: "Vazio", steps: [] },
+    ] }] };
+    const { pdf } = buildResultsPdf({ clientName: "Cliente", title: "Relatório de resultados", report: flow, assets });
+    expect(pdf.getNumberOfPages()).toBe(1);
+  });
+
   it("ignora a imagem que não foi carregada em vez de quebrar", () => {
     const withImage: ResultsReport = { period: "Outubro de 2026", sections: [{ title: "Instagram", images: [{ url: "https://exemplo.com/print.png", caption: "Melhor post" }] }] };
     expect(() => buildResultsPdf({ clientName: "Cliente", title: "Relatório de resultados", report: withImage, assets })).not.toThrow();

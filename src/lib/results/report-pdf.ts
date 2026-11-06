@@ -178,6 +178,47 @@ export function buildResultsPdf(input: { clientName: string; title: string; repo
     y += 5;
   };
 
+  // Fluxograma: etapas em caixas da mesma altura, ligadas por setas desenhadas
+  // (a fonte do PDF não tem o caractere de seta).
+  const flows = (items: NonNullable<ResultsSection["flows"]>) => {
+    const arrow = 7;
+    for (const flow of items) {
+      const steps = flow.steps.slice(0, 5);
+      if (!steps.length) continue;
+      const width = (WIDTH - arrow * (steps.length - 1)) / steps.length;
+      const laid = steps.map((step) => ({
+        label: wrap(step.label, width - 6, 8.5, true).slice(0, 3),
+        detail: step.detail ? wrap(step.detail, width - 6, 7.5).slice(0, 4) : [],
+      }));
+      const height = Math.max(...laid.map((step) => 8 + step.label.length * 3.9 + (step.detail.length ? 1.2 + step.detail.length * 3.4 : 0)));
+      const head = flow.title || flow.tag ? 8 : 0;
+      ensure(head + height + 6);
+      if (flow.title) text(wrap(flow.title, WIDTH - 60, 9.5, true)[0], LEFT, y + 4, 9.5, true);
+      if (flow.tag) {
+        font(6.8, true);
+        const tagWidth = pdf.getTextWidth(flow.tag) + 5;
+        pdf.setFillColor(C.deep); pdf.roundedRect(RIGHT - tagWidth, y, tagWidth, 5.5, 1.5, 1.5, "F");
+        text(flow.tag, RIGHT - 2.5, y + 3.8, 6.8, true, C.white, "right");
+      }
+      y += head;
+      laid.forEach((step, index) => {
+        const x = LEFT + index * (width + arrow);
+        const first = index === 0;
+        box(x, y, width, height, first ? C.strong : C.soft);
+        step.label.forEach((line, row) => text(line, x + 3, y + 6.5 + row * 3.9, 8.5, true, first ? C.white : C.text));
+        const top = y + 6.5 + step.label.length * 3.9 + 1.2;
+        step.detail.forEach((line, row) => text(line, x + 3, top + row * 3.4, 7.5, false, first ? C.soft : C.muted));
+        if (index < laid.length - 1) {
+          const middle = y + height / 2;
+          pdf.setDrawColor(C.brand); pdf.setFillColor(C.brand); pdf.setLineWidth(0.5);
+          pdf.line(x + width + 1, middle, x + width + arrow - 2.6, middle);
+          pdf.triangle(x + width + arrow - 1, middle, x + width + arrow - 3, middle - 1.6, x + width + arrow - 3, middle + 1.6, "F");
+        }
+      });
+      y += height + 6;
+    }
+  };
+
   const bullets = (items: string[], heading: string) => {
     ensure(16);
     text(heading, LEFT, y + 3, 8, true, C.muted);
@@ -356,7 +397,7 @@ export function buildResultsPdf(input: { clientName: string; title: string; repo
   for (const section of report.sections) {
     // O título nunca fica sozinho no fim da página: precisa caber junto com o
     // começo do conteúdo da seção.
-    ensure(34 + (section.summary ? 8 : 0) + (section.metrics?.length ? 26 : section.callouts?.[0]?.editable ? 56 : section.callouts?.length || section.alerts?.length ? 30 : section.conversations?.length ? 60 : 14));
+    ensure(34 + (section.summary ? 8 : 0) + (section.metrics?.length ? 26 : section.callouts?.[0]?.editable ? 56 : section.callouts?.length || section.alerts?.length ? 30 : section.conversations?.length ? 60 : section.flows?.length ? 36 : 14));
     pdf.setDrawColor(C.line); pdf.setLineWidth(0.25); pdf.line(LEFT, y, RIGHT, y);
     y += 8;
     if (section.eyebrow) { text(section.eyebrow.toUpperCase(), LEFT, y, 6.8, true, C.strong); y += 6; }
@@ -366,6 +407,7 @@ export function buildResultsPdf(input: { clientName: string; title: string; repo
     if (section.metrics?.length) metricGrid(section.metrics);
     if (section.bars) barChart(section.bars);
     if (section.table) table(section.table);
+    if (section.flows?.length) flows(section.flows);
     if (section.callouts?.length) cards(section.callouts, "callout");
     if (section.highlights?.length) bullets(section.highlights, (section.highlightsTitle || "O que funcionou").toUpperCase());
     if (section.alerts?.length) cards(section.alerts, "alert");

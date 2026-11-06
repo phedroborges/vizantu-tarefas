@@ -32,6 +32,11 @@ export type ResultsSection = {
    * `highlight` marca a barra do cliente quando ele é comparado com outros. */
   bars?: { title?: string; items: { label: string; value: number; display?: string; highlight?: boolean }[] };
   table?: { columns: string[]; rows: string[][] };
+  /** Fluxogramas: cada um é uma linha de etapas ligadas por setas, da
+   * esquerda para a direita (anúncio > WhatsApp > consulta). A primeira etapa
+   * sai na cor da marca. `tag` vai à direita do título, como a verba
+   * ("R$ 25/dia · R$ 750/mês"). Até 5 etapas por linha. */
+  flows?: { title?: string; tag?: string; steps: { label: string; detail?: string }[] }[];
   /** Trechos para ler com atenção ou copiar: a mensagem pronta de um
    * tutorial, uma regra, uma definição. Saem em cartões lilás, no mesmo
    * formato dos alertas. O `title` aceita emoji. */
