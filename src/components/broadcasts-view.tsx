@@ -58,7 +58,7 @@ export function BroadcastsView({ clients, configured, initialBroadcasts, initial
   async function toggle(key: "paused" | "enabled" | "reminders") {
     const value = key === "paused" ? !paused : !switches[key];
     const ask = key === "paused" && !value ? { title: "Retomar os envios?", message: pending ? `Há ${pending} ${pending === 1 ? "mensagem" : "mensagens"} na fila. Elas voltam a sair uma por vez, respeitando o intervalo e a janela de envio.` : "Os avisos automáticos ligados e os comunicados voltam a funcionar.", confirmLabel: "Retomar envios" }
-      : key === "enabled" && value ? { title: "Ligar o aviso de material para aprovar?", message: "Os clientes com grupo configurado e material esperando aprovação recebem o aviso dentro da janela de envio, um por cliente por dia.", confirmLabel: "Ligar aviso" }
+      : key === "enabled" && value ? { title: "Ligar o aviso de material para aprovar?", message: "Cada tarefa completa que for para Para aprovação gera um aviso, com o link do material, no grupo do cliente, dentro da janela de envio.", confirmLabel: "Ligar aviso" }
       : key === "reminders" && value ? { title: "Ligar as cobranças?", message: "A partir do primeiro aviso de cada conteúdo correm o lembrete e o prazo. Sem resposta, o cliente recebe o aviso de último dia e, no dia seguinte, o conteúdo é dado como aprovado.", confirmLabel: "Ligar cobranças" }
       : null;
     if (ask && !(await confirm(ask))) return;
@@ -131,7 +131,7 @@ export function BroadcastsView({ clients, configured, initialBroadcasts, initial
       <div className={`broadcasts__stop${switches.enabled ? "" : " is-paused"}`} role="status">
         <div>
           <strong>Aviso de material para aprovar {switches.enabled ? "ligado" : "desligado"}</strong>
-          <span>{switches.enabled ? `Quando a equipe coloca um conteúdo em aprovação, o grupo do cliente recebe o aviso, no máximo um por dia.${paused ? " Só volta a sair quando você retomar os envios." : ""}` : "Nenhum aviso de aprovação sai sozinho. A equipe avisa o cliente por conta própria."}</span>
+          <span>{switches.enabled ? `Quando uma tarefa completa vai para Para aprovação, o grupo do cliente recebe o aviso com o link do material.${paused ? " Só volta a sair quando você retomar os envios." : ""}` : "Nenhum aviso de aprovação sai sozinho. A equipe avisa o cliente por conta própria."}</span>
         </div>
         <Button type="button" variant={switches.enabled ? "danger" : "primary"} onClick={() => toggle("enabled")} disabled={stopping !== ""}>{switches.enabled ? <><OctagonX size={14} /> Pausar aviso</> : <><Play size={14} /> Ligar aviso</>}</Button>
       </div>

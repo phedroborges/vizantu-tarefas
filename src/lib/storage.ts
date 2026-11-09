@@ -1,4 +1,5 @@
-import { queueApprovalNotice, queueStandaloneNotice } from "./whatsapp/queue";
+import { queueTaskNotice } from "./whatsapp/queue";
+import { missingForApproval } from "./task-readiness";
 import { buildApprovalHistory, type ApprovalHistoryEntry } from "./approval-history";
 import { organizeClientPackages, type ClientPackageAssignment } from "./client-packages";
 import { currentMonthKey, moveMonth, todayIso } from "./dates";
@@ -750,11 +751,19 @@ export async function updateTask(
     }
   }
 
-  // Conteúdo sem link do material não vai para "Para aprovação": é o link que
-  // o cliente abre para revisar, e sem ele o aviso no grupo nem sairia.
+  // Tarefa incompleta não vai para "Para aprovação": o status só muda quando o
+  // aviso do cliente puder sair com tudo (o link é o que o cliente abre).
   if (patch.status === "para_aprovacao" && current.status !== "para_aprovacao" && (current.planId || current.kind === "conteudo")) {
-    const link = patch.driveLink !== undefined ? patch.driveLink : current.driveLink;
-    if (!link?.trim()) throw new TaskRuleError("Cole o link do material antes de colocar em Para aprovação. É ele que o cliente abre para revisar.");
+    const missing = missingForApproval({
+      name: patch.name ?? current.name,
+      driveLink: patch.driveLink !== undefined ? patch.driveLink : current.driveLink,
+      dueDate: patch.dueDate !== undefined ? patch.dueDate : current.dueDate,
+      formatTagIds: patch.formatTagIds ?? current.formatTagIds,
+      description: patch.description !== undefined ? patch.description : current.description,
+      kind: patch.kind ?? current.kind,
+      planKind: current.planKind,
+    });
+    if (missing.length) throw new TaskRuleError(`Para colocar em Para aprovação, falta: ${missing.join(", ")}. A tarefa continua no status atual.`);
   }
 
   // A data de uma tarefa atrasada já foi travada aqui, pra ninguém "resolver"
@@ -832,15 +841,10 @@ export async function updateTask(
     if (activityRow) [updated] = await attachPlanKind([mapTask(activityRow as TaskRow)]);
   }
   await syncApprovalRoundFromTask(updated);
-  // Texto ou criativo ficou pronto para o cliente: o grupo dele é avisado
-  // (uma mensagem só para o que entrar em sequência, no máximo uma por dia).
-  if (updated.planId && updated.status !== current.status && (updated.status === "aprovacao_copy" || updated.status === "para_aprovacao")) {
-    void queueApprovalNotice(updated.projectId);
-  }
-  // Tarefa avulsa não aparece no portal, mas o cliente também precisa saber
-  // que há material para ver: o aviso leva o link do material.
-  if (!updated.planId && updated.status !== current.status && updated.status === "para_aprovacao" && updated.driveLink?.trim()) {
-    void queueStandaloneNotice(updated.projectId, updated.id);
+  // Tarefa completa em "Para aprovação": o grupo do cliente recebe o aviso com
+  // o link do material. É o único aviso automático de aprovação.
+  if (updated.status !== current.status && updated.status === "para_aprovacao" && !missingForApproval(updated).length) {
+    void queueTaskNotice(updated.projectId, updated.id);
   }
   return updated;
 }

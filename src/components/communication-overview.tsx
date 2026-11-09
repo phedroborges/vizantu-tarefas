@@ -43,7 +43,7 @@ export function CommunicationOverviewPanel({ overview, automationEnabled, paused
   const attention = clients.filter((client) => client.state === "falta_avisar" || client.state === "sem_link");
 
   return <div className="comm-overview">
-    {!automationEnabled && !paused ? <p className="form-message">O aviso de material para aprovar está desligado. Quem aparece como “Falta avisar” só recebe quando você ligar na aba Mensagens automáticas.</p> : null}
+    {!automationEnabled && !paused ? <p className="form-message">O aviso de material para aprovar está desligado: nenhuma tarefa em Para aprovação gera mensagem no grupo do cliente.</p> : null}
 
     <section className="dash-kpi-grid" aria-label="Indicadores da comunicação">
       <Kpi icon={<Send size={19} />} tone="violet" label="Enviadas hoje" value={totals.sentToday} detail={`${totals.sent7d} nos últimos 7 dias`} />

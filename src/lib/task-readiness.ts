@@ -1,4 +1,21 @@
-import { CLOSED_TASK_STATUSES, type TagKind, type TaskKind, type TaskStatus } from "./types";
+import { hasContentSections, parseDescription } from "./description-sections";
+import { CLOSED_TASK_STATUSES, type PlanKind, type TagKind, type TaskKind, type TaskStatus } from "./types";
+
+/** O que falta para a tarefa ir para "Para aprovação" e o aviso sair completo no
+ * grupo do cliente. Roteiro e legenda só valem para conteúdo. */
+export function missingForApproval(task: { name?: string; driveLink?: string | null; dueDate?: string | null; formatTagIds: string[]; description?: string | null; kind: TaskKind; planKind?: PlanKind }): string[] {
+  const sections = parseDescription(task.description ?? undefined);
+  const content = hasContentSections(task);
+  return [
+    ...(task.name?.trim() ? [] : ["nome"]),
+    ...(task.driveLink?.trim() ? [] : ["link do material"]),
+    ...(task.dueDate ? [] : ["data"]),
+    ...(task.formatTagIds.length ? [] : ["formato"]),
+    ...(sections.direcionamento ? [] : ["direcionamento"]),
+    ...(content && !sections.roteiro ? ["roteiro"] : []),
+    ...(content && !sections.legenda ? ["legenda"] : []),
+  ];
+}
 
 // A mesma regra precisa valer nos dois lugares: no aviso que o time vê dentro
 // da tarefa e na contagem que o gestor vê no dashboard. Duplicar a regra em

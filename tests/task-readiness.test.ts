@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findTaskGaps, type TaskReadinessInput } from "../src/lib/task-readiness";
+import { findTaskGaps, missingForApproval, type TaskReadinessInput } from "../src/lib/task-readiness";
 import type { Tag } from "../src/lib/types";
 
 const tags: Tag[] = [
@@ -54,5 +54,17 @@ describe("pendências da tarefa", () => {
   it("aceita a etiqueta marcada quando o catálogo não veio junto", () => {
     expect(findTaskGaps(input({ formatTagIds: ["x"], channelTagIds: ["y"] }))).toEqual([]);
     expect(findTaskGaps(input({ formatTagIds: [], channelTagIds: [] })).map((gap) => gap.type)).toEqual(["formato", "canal"]);
+  });
+});
+
+describe("missingForApproval", () => {
+  const full = { name: "Reels", driveLink: "https://drive.test/a", dueDate: "2026-11-20", formatTagIds: ["f"], kind: "conteudo" as const, description: "**Direcionamento**\nGravar\n\n**Roteiro**\nFala\n\n**Legenda**\nTexto" };
+  it("tarefa completa não tem pendência", () => expect(missingForApproval(full)).toEqual([]));
+  it("lista tudo o que falta, na ordem da tela", () => {
+    expect(missingForApproval({ ...full, name: " ", driveLink: "", dueDate: null, formatTagIds: [], description: "" })).toEqual(["nome", "link do material", "data", "formato", "direcionamento", "roteiro", "legenda"]);
+  });
+  it("roteiro e legenda só valem para conteúdo", () => {
+    expect(missingForApproval({ ...full, description: "**Direcionamento**\nMarca" , planKind: "brand" })).toEqual([]);
+    expect(missingForApproval({ ...full, description: "**Direcionamento**\nMarca" })).toEqual(["roteiro", "legenda"]);
   });
 });

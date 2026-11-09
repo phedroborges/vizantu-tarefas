@@ -18,7 +18,7 @@ import { getSupabase } from "../supabase-client";
 import type { PlanApprovalStatus, StatusHistoryEntry, TaskStatus } from "../types";
 import { composeMessage, insideSendWindow, isBusinessDay, nextGapMs, noticeFromKey, planBroadcast, reminderStep, shuffled, startDeadlineClockByStage, type SentNotice } from "./messages";
 import { sendWhatsappMedia, sendWhatsappText, whatsappConfigured, type WhatsappMedia } from "./provider";
-import { getAutomationSettings, listProjectCommunications, queueApprovalNotice, type ProjectCommunication } from "./queue";
+import { getAutomationSettings, listProjectCommunications, type ProjectCommunication } from "./queue";
 
 const DAY = 86_400_000;
 
@@ -237,7 +237,7 @@ let nextSendAt = 0;
 export async function processOutbox(): Promise<number> {
   if (!whatsappConfigured()) return 0;
   const automation = await getAutomationSettings();
-  // Com a pausa geral ligada, só a fila de tarefa avulsa continua andando.
+  if (automation.paused) return 0;
   const db = getSupabase();
   const now = Date.now();
   unwrap(await db.from("whatsapp_messages").update({ status: "skipped", error: "Ficou tempo demais na fila." }).eq("status", "pending").in("kind", ["reminder", "last_day", "auto_approved", "team"]).lt("scheduled_at", new Date(now - STALE_MS).toISOString()));
@@ -251,8 +251,7 @@ export async function processOutbox(): Promise<number> {
   // Comunicado é decisão de quem enviou e sai na hora combinada; aviso
   // automático respeita a janela do dia.
   const windowOpen = insideSendWindow(new Date(now), automation);
-  const pending = db.from("whatsapp_messages").select("id, kind, project_id, dedupe_key").eq("status", "pending").lte("scheduled_at", new Date(now).toISOString());
-  const due = unwrap<{ id: string; kind: string; project_id: string | null; dedupe_key: string | null }[]>(await (automation.paused ? pending.like("dedupe_key", "standalone:%") : pending).order("scheduled_at").limit(30));
+  const due = unwrap<{ id: string; kind: string; project_id: string | null; dedupe_key: string | null }[]>(await db.from("whatsapp_messages").select("id, kind, project_id, dedupe_key").eq("status", "pending").lte("scheduled_at", new Date(now).toISOString()).order("scheduled_at").limit(30));
   // Um aviso de plano por cliente por dia: o que entrou em aprovação depois
   // do aviso de hoje espera o de amanhã, junto com o resto.
   const noticed = windowOpen && due.some(isPlanNotice) ? await projectsNoticedToday(new Date(now)) : new Set<string>();
@@ -301,7 +300,7 @@ async function autoApprove(projectId: string, overdue: Waiting[]): Promise<numbe
 export async function runDailyApprovalRoutine(now = new Date()): Promise<void> {
   if (!whatsappConfigured()) return;
   const automation = await getAutomationSettings();
-  if (automation.paused || !(automation.enabled || automation.reminders) || (automation.weekdaysOnly && !isBusinessDay(now)) || horaEmSaoPaulo(now) < automation.sendHour) return;
+  if (automation.paused || !automation.reminders || (automation.weekdaysOnly && !isBusinessDay(now)) || horaEmSaoPaulo(now) < automation.sendHour) return;
   const today = isoDateInSaoPaulo(now);
   const pending = await pendingApprovalsByProject();
   const settingsByProject = new Map((await listProjectCommunications()).map((item): [string, ProjectCommunication] => [item.projectId, item]));
@@ -322,17 +321,10 @@ export async function runDailyApprovalRoutine(now = new Date()): Promise<void> {
     const deadlineDays = settings.approvalDeadlineDays;
     const deadlineMs = deadlineDays * DAY;
 
-    // O relógio do prazo é o do primeiro aviso recebido. O que nunca foi
-    // avisado gera o aviso de material novo e só começa a contar a partir dele.
-    const { notified, unnotified } = startDeadlineClockByStage(waiting, await sentNotices(projectId));
-    // Um aviso por dia. O que ainda não foi avisado vai no aviso de material
-    // (rede de segurança do que a troca de status agenda), e a cobrança do que
-    // já foi avisado fica para outro dia.
+    // O relógio do prazo é o do primeiro aviso recebido; o que nunca foi
+    // avisado não conta prazo. Uma cobrança por cliente por dia.
+    const { notified } = startDeadlineClockByStage(waiting, await sentNotices(projectId));
     if (chargedToday.has(projectId)) continue;
-    if (unnotified.length && automation.enabled) {
-      await queueApprovalNotice(projectId);
-      continue;
-    }
     // Sem as cobranças ligadas, nenhum prazo corre e nada é aprovado sozinho.
     if (!automation.reminders || !notified.length) continue;
     const name = await clientName(projectId);
@@ -435,7 +427,7 @@ async function tick(): Promise<void> {
   // os avisos ou mudar o horário vale sem reiniciar o servidor.
   if (lastDailyRun !== today) {
     const automation = await getAutomationSettings().catch(() => undefined);
-    if (automation && (automation.enabled || automation.reminders) && !automation.paused && (!automation.weekdaysOnly || isBusinessDay(now)) && horaEmSaoPaulo(now) >= automation.sendHour) {
+    if (automation && automation.reminders && !automation.paused && (!automation.weekdaysOnly || isBusinessDay(now)) && horaEmSaoPaulo(now) >= automation.sendHour) {
       lastDailyRun = today;
       await runDailyApprovalRoutine(now).catch((error) => console.error("[whatsapp] rotina diária falhou:", error));
     }

@@ -9,13 +9,9 @@ import { whatsappConfigured } from "./provider";
 
 export const DEFAULT_APPROVAL_DEADLINE_DAYS = 7;
 
-// Quando alguém coloca um conteúdo em aprovação, o grupo do cliente é avisado
-// depois de uma espera que recomeça a cada conteúdo novo. É o que faz a social
-// media colocar vários em sequência e o cliente receber uma mensagem só, e o
-// que deixa voltar atrás de um status errado (na hora de enviar, só entra o que
-// ainda está em aprovação). Cinco segundos não bastavam: ela coloca um por um,
-// e cada um saía numa mensagem.
-const DEBOUNCE_MS = 20 * 60_000;
+// Espera curta antes de enviar: se a tarefa sair de "Para aprovação" logo em
+// seguida (status errado), o aviso não chega ao cliente.
+const DEBOUNCE_MS = 2 * 60_000;
 
 export type ProjectCommunication = {
   projectId: string;
@@ -77,16 +73,17 @@ export async function saveAutomationSettings(input: Partial<AutomationSettings>)
 }
 
 
-/** Material esperando o cliente: agenda o aviso no grupo. Nunca lança — falha
- * de aviso não pode impedir a troca de status. A fila manda dentro da janela do
- * dia, e no máximo um aviso de plano por cliente por dia (ver processOutbox). */
+/** Aviso de aprovação de plano. Sem gatilho: está desativado até ser reformulado
+ * (um aviso por conteúdo, todos os dias, deixava o cliente perdido). */
 export async function queueApprovalNotice(projectId: string): Promise<void> {
   await queueNotice(projectId, `approval:${projectId}:pending`);
 }
 
-/** Tarefa avulsa (fora de plano) entrou em "Para aprovação". Ela não aparece no
- * portal do cliente, então tem o próprio aviso, com o link do material. */
-export async function queueStandaloneNotice(projectId: string, taskId: string): Promise<void> {
+/** Tarefa completa entrou em "Para aprovação": agenda o aviso, com o link do
+ * material, no grupo do cliente. Nunca lança — falha de aviso não pode impedir
+ * a troca de status. O prefixo "standalone:" vem do tempo das tarefas avulsas e
+ * vale para toda tarefa. */
+export async function queueTaskNotice(projectId: string, taskId: string): Promise<void> {
   await queueNotice(projectId, `standalone:${taskId}:pending`);
 }
 
@@ -94,9 +91,7 @@ async function queueNotice(projectId: string, key: string): Promise<void> {
   try {
     if (!whatsappConfigured()) return;
     const automation = await getAutomationSettings();
-    // A pausa geral segura os avisos do plano; o de tarefa avulsa é um envio
-    // pedido pela equipe ao mandar a tarefa para aprovação e segue saindo.
-    if ((automation.paused && !key.startsWith("standalone:")) || !automation.enabled) return;
+    if (automation.paused || !automation.enabled) return;
     const settings = await getProjectCommunication(projectId);
     if (!settings.whatsappGroupId || !settings.notifyEnabled) return;
     const db = getSupabase();
