@@ -3,7 +3,8 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const { getDb } = vi.hoisted(() => ({ getDb: vi.fn() }));
 vi.mock("@/lib/supabase-client", () => ({ getSupabase: getDb }));
 vi.mock("@/lib/whatsapp/provider", () => ({ whatsappConfigured: () => true, sendWhatsappText: vi.fn(), sendWhatsappMedia: vi.fn() }));
-import { queueApprovalNotice } from "@/lib/whatsapp/queue";
+import { queueApprovalNotice, queueStandaloneNotice } from "@/lib/whatsapp/queue";
+import { sendWhatsappText } from "@/lib/whatsapp/provider";
 import { pendingApprovalsByProject, processOutbox } from "@/lib/whatsapp/service";
 
 type Row = Record<string, unknown>;
@@ -31,6 +32,7 @@ beforeEach(() => {
       if (value.startsWith("lte.")) return String(row[key]) <= value.slice(4);
       if (value.startsWith("gte.")) return row[key] != null && new Date(String(row[key])) >= new Date(value.slice(4));
       if (value.startsWith("in.(")) return value.slice(4, -1).split(",").map((item) => item.replace(/"/g, "")).includes(String(row[key]));
+      if (value.startsWith("like.")) return String(row[key]).startsWith(value.slice(5).replace(/%$/, ""));
       if (value === "not.is.null") return row[key] != null;
       if (value === "is.null") return row[key] == null;
       return true;
@@ -88,4 +90,29 @@ it("a mensagem só lista o que o cliente consegue aprovar no portal", async () =
     { task_id: "ja-passou", status: "pending", review_version: 100 },
   ];
   expect((await pendingApprovalsByProject()).get("cliente")?.map((item) => item.taskId)).toEqual(["texto"]);
+});
+
+it("com a pausa geral ligada, só o aviso de tarefa avulsa entra na fila", async () => {
+  tables.whatsapp_settings[0].settings = { enabled: true, paused: true };
+  await queueApprovalNotice("cliente");
+  expect(tables.whatsapp_messages).toHaveLength(0);
+  await queueStandaloneNotice("cliente", "tarefa");
+  expect(tables.whatsapp_messages.map((row) => row.dedupe_key)).toEqual(["standalone:tarefa:pending"]);
+});
+
+it("com a pausa geral ligada, o aviso de tarefa avulsa sai e o do plano continua parado", async () => {
+  tables.whatsapp_settings[0].settings = { enabled: true, paused: true };
+  tables.projects = [{ id: "cliente", name: "Cliente", client: null }];
+  tables.tags = [];
+  tables.tasks = [{ id: "tarefa", name: "Peça avulsa", status: "para_aprovacao", drive_link: "https://drive.example/material", due_date: null, description: null, format_tag_ids: [] }];
+  const old = "2026-11-04T12:00:00Z";
+  tables.whatsapp_messages.push(
+    message({ project_id: "cliente", dedupe_key: "approval:cliente:pending", scheduled_at: old }),
+    message({ project_id: "cliente", dedupe_key: "standalone:tarefa:pending", scheduled_at: old }),
+  );
+  vi.mocked(sendWhatsappText).mockClear();
+  await processOutbox();
+  expect(sendWhatsappText).toHaveBeenCalledTimes(1);
+  expect(tables.whatsapp_messages.find((row) => String(row.dedupe_key).startsWith("standalone:"))?.status).toBe("sent");
+  expect(tables.whatsapp_messages.find((row) => row.dedupe_key === "approval:cliente:pending")?.status).toBe("pending");
 });

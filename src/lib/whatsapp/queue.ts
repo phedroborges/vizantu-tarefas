@@ -94,7 +94,9 @@ async function queueNotice(projectId: string, key: string): Promise<void> {
   try {
     if (!whatsappConfigured()) return;
     const automation = await getAutomationSettings();
-    if (automation.paused || !automation.enabled) return;
+    // A pausa geral segura os avisos do plano; o de tarefa avulsa é um envio
+    // pedido pela equipe ao mandar a tarefa para aprovação e segue saindo.
+    if ((automation.paused && !key.startsWith("standalone:")) || !automation.enabled) return;
     const settings = await getProjectCommunication(projectId);
     if (!settings.whatsappGroupId || !settings.notifyEnabled) return;
     const db = getSupabase();

@@ -237,7 +237,7 @@ let nextSendAt = 0;
 export async function processOutbox(): Promise<number> {
   if (!whatsappConfigured()) return 0;
   const automation = await getAutomationSettings();
-  if (automation.paused) return 0;
+  // Com a pausa geral ligada, só a fila de tarefa avulsa continua andando.
   const db = getSupabase();
   const now = Date.now();
   unwrap(await db.from("whatsapp_messages").update({ status: "skipped", error: "Ficou tempo demais na fila." }).eq("status", "pending").in("kind", ["reminder", "last_day", "auto_approved", "team"]).lt("scheduled_at", new Date(now - STALE_MS).toISOString()));
@@ -251,7 +251,8 @@ export async function processOutbox(): Promise<number> {
   // Comunicado é decisão de quem enviou e sai na hora combinada; aviso
   // automático respeita a janela do dia.
   const windowOpen = insideSendWindow(new Date(now), automation);
-  const due = unwrap<{ id: string; kind: string; project_id: string | null; dedupe_key: string | null }[]>(await db.from("whatsapp_messages").select("id, kind, project_id, dedupe_key").eq("status", "pending").lte("scheduled_at", new Date(now).toISOString()).order("scheduled_at").limit(30));
+  const pending = db.from("whatsapp_messages").select("id, kind, project_id, dedupe_key").eq("status", "pending").lte("scheduled_at", new Date(now).toISOString());
+  const due = unwrap<{ id: string; kind: string; project_id: string | null; dedupe_key: string | null }[]>(await (automation.paused ? pending.like("dedupe_key", "standalone:%") : pending).order("scheduled_at").limit(30));
   // Um aviso de plano por cliente por dia: o que entrou em aprovação depois
   // do aviso de hoje espera o de amanhã, junto com o resto.
   const noticed = windowOpen && due.some(isPlanNotice) ? await projectsNoticedToday(new Date(now)) : new Set<string>();
