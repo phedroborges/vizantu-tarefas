@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { timedSupabaseFetch } from "@/lib/supabase/timed-fetch";
 import { abrePorLinkPublico } from "@/lib/public-links";
+import { destinoDoLogin } from "@/lib/login-next";
 
 // O proxy renova a sessão das páginas. APIs autenticam no próprio handler.
 
@@ -52,9 +53,10 @@ export async function proxy(request: NextRequest) {
   }
 
   if (user && (pathname === "/login" || pathname === "/forgot-password")) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/";
-    return NextResponse.redirect(url);
+    // Quem já está logado e chega no /login por um link de tarefa segue para a
+    // tarefa, não para a tela inicial.
+    const destino = destinoDoLogin(request.nextUrl.searchParams.get("next"));
+    return NextResponse.redirect(new URL(destino, request.url));
   }
   // /reset-password fica de fora dessa segunda checagem de propósito: o link
   // de recuperação de senha autentica o usuário (sessão de recovery) antes de

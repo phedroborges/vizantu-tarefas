@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { AuthShell } from "@/components/auth-shell";
+import { destinoDoLogin } from "@/lib/login-next";
 import { createClient } from "@/lib/supabase/browser-client";
 
 function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -21,8 +21,10 @@ function LoginForm() {
     const { error: signInError } = await createClient().auth.signInWithPassword({ email, password });
     setIsSubmitting(false);
     if (signInError) return setError("E-mail ou senha incorretos.");
-    router.push(searchParams.get("next") || "/");
-    router.refresh();
+    // Navegação completa, não router.push + refresh: o refresh corria em cima do
+    // /login, o proxy via a pessoa logada e mandava para a tela inicial (/planos
+    // do social media), perdendo o link da tarefa.
+    window.location.assign(destinoDoLogin(searchParams.get("next")));
   }
 
   return (
