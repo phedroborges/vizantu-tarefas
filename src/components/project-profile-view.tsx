@@ -1,6 +1,7 @@
 "use client";
 
 import { ProjectCommunicationPanel } from "@/components/project-communication-panel";
+import { ProjectOnboardPanel } from "@/components/project-onboard-panel";
 import { ProjectResultsPanel } from "@/components/project-results-panel";
 import { ArrowLeft, AtSign, BarChart3, CheckCircle2, Clock3, Eye, EyeOff, KeyRound, Loader2, MapPin, Plus, ShieldAlert, Target, Trash2, UserRound } from "lucide-react";
 import { isOverdue } from "@/lib/dates";
@@ -22,7 +23,7 @@ import { Button, Card, EmptyState, Field, Input, Progress, Tag } from "@/compone
 const AUTOSAVE_MS = 700;
 
 const ROTULO_DA_ABA: Record<ProjectTab, string> = {
-  informacoes: "Informações", calendario: "Calendário", planos: "Planos", resultados: "Resultados",
+  informacoes: "Informações", onboard: "Onboard", calendario: "Calendário", planos: "Planos", resultados: "Resultados",
   pesquisas: "Pesquisas", documentos: "Documentos", acessos: "Acessos", equipe: "Equipe", comunicacao: "Comunicação",
 };
 
@@ -200,6 +201,7 @@ export function ProjectProfileView({
             </div>
           }
         /></> : null}
+        {tab === "onboard" ? <ProjectOnboardPanel projectId={project.id} projectName={project.client || project.name} canEdit={canEditProfile} /> : null}
         {tab === "calendario" ? <ProjectTaskHub tasks={initialTasks} formatTags={formatTags} channelTags={channelTags} members={members} canEdit={canEditTasks} initialView="calendario" /> : null}
         {tab === "planos" ? <Card><div className="project-section-head"><div><span className="vz-eyebrow">Planejamento</span><h2 className="vz-h2">Planos do cliente</h2><p>{initialPlans.length} plano{initialPlans.length === 1 ? "" : "s"}</p></div><Link className="vz-button vz-button--primary" href={`/planos?projectId=${project.id}`}><Plus size={14} /> Novo plano</Link></div><div className="project-plan-list">{initialPlans.map((plan) => <Link href={`/planos/${plan.id}`} key={plan.id}><strong>{plan.title}</strong><span>{plan.kind === "content" ? "Conteúdo" : plan.kind === "brand" ? "Marca" : plan.kind === "process" ? "Processo" : "Apresentação"} · {plan.status}</span></Link>)}</div>{!initialPlans.length ? <EmptyState icon={<BarChart3 size={24} />} title="Nenhum plano" description="Os planos criados para este cliente aparecerão aqui." /> : null}</Card> : null}
         {tab === "pesquisas" ? <ProjectSurveyResults surveys={initialSurveys} /> : null}

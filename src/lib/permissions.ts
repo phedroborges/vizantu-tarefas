@@ -134,11 +134,15 @@ export function telaInicial(role: UserRole): string {
 
 // Abas de dentro do cliente. "Documentos" são os contratos e "Acessos" são as
 // senhas — as duas seguem as mesmas regras do resto do app.
-export type ProjectTab = "informacoes" | "calendario" | "planos" | "resultados" | "pesquisas" | "documentos" | "acessos" | "equipe" | "comunicacao";
+export type ProjectTab = "informacoes" | "onboard" | "calendario" | "planos" | "resultados" | "pesquisas" | "documentos" | "acessos" | "equipe" | "comunicacao";
 
 export function abasDoProjeto(role: UserRole): ProjectTab[] {
+  const abas: ProjectTab[] = ["informacoes"];
+  // O onboard é o primeiro passo do cliente e é de quem monta o trabalho dele:
+  // quem só executa peça (diretor criativo) não abre contas nem pede acesso.
+  if (podePlanejar(role)) abas.push("onboard");
   // Resultados vêm logo depois dos planos: é o que o plano entregou.
-  const abas: ProjectTab[] = ["informacoes", "calendario", "planos", "resultados"];
+  abas.push("calendario", "planos", "resultados");
   if (podeVer(role, "pesquisas")) abas.push("pesquisas");
   if (podeVer(role, "contratos")) abas.push("documentos");
   if (podeVerCredenciais(role)) abas.push("acessos");
