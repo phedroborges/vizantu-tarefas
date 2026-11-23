@@ -113,6 +113,14 @@ export function podePlanejar(role: UserRole): boolean {
   return perfilDe(role).planeja;
 }
 
+/** Apagar é de quem planeja. O agente de IA também apaga, mas só o que ele mesmo
+ * criou: é como ele corrige uma demanda que abriu errado, sem desmontar o
+ * trabalho do time. */
+export function podeApagarTarefa(role: UserRole, memberId: string, task: { createdBy?: string }): boolean {
+  if (podePlanejar(role)) return true;
+  return role === "agente" && Boolean(task.createdBy) && task.createdBy === memberId;
+}
+
 export function podeGerenciarEquipe(role: UserRole): boolean {
   return perfilDe(role).gerenciaEquipe;
 }

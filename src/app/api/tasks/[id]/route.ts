@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiFailure } from "@/lib/api-error";
 import { isResponse, podeAbrirProjeto, podeAbrirTarefa, requireUser, semAcesso } from "@/lib/authz";
-import { ROLES_DO_TIME, ROLES_QUE_PLANEJAM } from "@/lib/permissions";
+import { ROLES_DO_TIME, ROLES_QUE_PLANEJAM, podeApagarTarefa } from "@/lib/permissions";
 import { TaskRuleError, deleteTask, getTask, listTaskActivity, notifyTaskAssigned, updateTask } from "@/lib/storage";
 import { TASK_KINDS, TASK_STATUSES } from "@/lib/types";
 
@@ -70,14 +70,18 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
 // Criar e finalizar é do time inteiro; apagar não. O diretor criativo produz
 // em cima do que o social media montou — desmontar é decisão de quem planejou.
+// O agente de IA apaga só o que ele mesmo criou (regra em podeApagarTarefa).
 export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireUser(ROLES_QUE_PLANEJAM);
+  const auth = await requireUser([...ROLES_QUE_PLANEJAM, "agente"]);
   if (isResponse(auth)) return auth;
   const { id } = await params;
   try {
     const task = await getTask(id);
     if (!task) return NextResponse.json({ error: "Tarefa não encontrada." }, { status: 404 });
     if (!podeAbrirTarefa(auth, task) || !podeAbrirProjeto(auth, task.projectId)) return semAcesso();
+    if (!podeApagarTarefa(auth.role, auth.id, task)) {
+      return NextResponse.json({ error: "O agente só apaga demanda que ele mesmo criou." }, { status: 403 });
+    }
     const removed = await deleteTask(id);
     if (!removed) return NextResponse.json({ error: "Tarefa não encontrada." }, { status: 404 });
     return NextResponse.json({ ok: true });

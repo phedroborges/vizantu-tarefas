@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ROLES_DE_GESTAO, ROLES_DO_TIME, ROLES_QUE_PLANEJAM,
-  abasDoProjeto, podePlanejar, podeVer, podeVerCredenciais, podeGerenciarCredenciais, podeGerenciarMembros,
+  abasDoProjeto, podeApagarTarefa, podePlanejar, podeVer, podeVerCredenciais, podeGerenciarCredenciais, podeGerenciarMembros,
   projetosDoMembro, rolesQueVeem, telaInicial, veTodosOsProjetos,
   type AppArea,
 } from "../src/lib/permissions";
@@ -84,6 +84,15 @@ describe("o que cada cargo enxerga", () => {
     expect(veTodosOsProjetos("agente")).toBe(true);
     expect(abasDoProjeto("agente")).not.toContain("acessos");
     expect(abasDoProjeto("agente")).not.toContain("documentos");
+  });
+
+  // O agente corrige o que abriu errado, mas não desmonta o trabalho do time.
+  it("o agente de IA só apaga a demanda que ele mesmo criou", () => {
+    expect(podeApagarTarefa("agente", "flocos", { createdBy: "flocos" })).toBe(true);
+    expect(podeApagarTarefa("agente", "flocos", { createdBy: "cyntthia" })).toBe(false);
+    expect(podeApagarTarefa("agente", "flocos", {})).toBe(false);
+    expect(podeApagarTarefa("social_media", "cyntthia", { createdBy: "outra" })).toBe(true);
+    expect(podeApagarTarefa("diretor_criativo", "josiano", { createdBy: "josiano" })).toBe(false);
   });
 
   it("marca é do diretor criativo, não do social media", () => {
