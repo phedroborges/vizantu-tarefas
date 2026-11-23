@@ -60,6 +60,14 @@ export const ROLE_PROFILES: Record<UserRole, RoleProfile> = {
     planeja: false, gerenciaEquipe: false, gerenciaMembros: false, veCredenciais: false,
     gerenciaCredenciais: false, veTodosOsProjetos: false, inicio: "/tarefas",
   },
+  // Login de uma IA (OpenBot). Lê tudo de todos os clientes para casar reunião com
+  // demanda e cria demanda/comentário, mas não planeja (não mexe em plano, projeto
+  // nem apaga tarefa) e nunca vê senha de cliente: ela lê transcrição de terceiros.
+  agente: {
+    areas: ["projetos", "tarefas", "notificacoes", "planos"],
+    planeja: false, gerenciaEquipe: false, gerenciaMembros: false, veCredenciais: false,
+    gerenciaCredenciais: false, veTodosOsProjetos: true, inicio: "/tarefas",
+  },
 };
 
 /** Quais clientes um cargo com escopo enxerga.

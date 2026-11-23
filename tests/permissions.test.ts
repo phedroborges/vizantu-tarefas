@@ -65,8 +65,25 @@ describe("o que cada cargo enxerga", () => {
     expect(ROLES_DE_GESTAO).toEqual(["dono", "gestor"]);
   });
 
-  it("o ranking é aberto para o time inteiro", () => {
-    expect(rolesQueVeem("ranking")).toEqual(CARGOS);
+  it("o ranking é aberto para o time inteiro (o agente de IA não é do ranking)", () => {
+    expect(rolesQueVeem("ranking")).toEqual(CARGOS.filter((cargo) => cargo !== "agente"));
+  });
+
+  // Login de uma IA que lê transcrição de reunião: enxerga o trabalho de todos os
+  // clientes, mas nunca senha, contrato, financeiro, painel ou membros.
+  it("o agente de IA lê o trabalho e não vê nada sensível", () => {
+    for (const area of ["projetos", "tarefas", "planos", "notificacoes"] as AppArea[]) {
+      expect(podeVer("agente", area), area).toBe(true);
+    }
+    for (const area of ["dashboard", "contratos", "financeiro", "meu_financeiro", "membros", "conhecimento", "assistente", "pesquisas", "comunicados"] as AppArea[]) {
+      expect(podeVer("agente", area), area).toBe(false);
+    }
+    expect(podeVerCredenciais("agente")).toBe(false);
+    expect(podeGerenciarCredenciais("agente")).toBe(false);
+    expect(podePlanejar("agente")).toBe(false);
+    expect(veTodosOsProjetos("agente")).toBe(true);
+    expect(abasDoProjeto("agente")).not.toContain("acessos");
+    expect(abasDoProjeto("agente")).not.toContain("documentos");
   });
 
   it("marca é do diretor criativo, não do social media", () => {
@@ -85,7 +102,7 @@ describe("o que cada cargo enxerga", () => {
 });
 
 describe("o que cada cargo pode fazer", () => {
-  it("só o diretor criativo fica de fora do planejamento", () => {
+  it("diretor criativo e agente de IA ficam de fora do planejamento", () => {
     expect(ROLES_QUE_PLANEJAM).toEqual(["dono", "gestor", "social_media"]);
     expect(podePlanejar("diretor_criativo")).toBe(false);
   });
@@ -153,8 +170,8 @@ describe("senha só sai para quem trabalha naquele cliente", () => {
 describe("equipe do cliente", () => {
   const projetos = ["p1", "p2", "p3"];
 
-  it("dono e gestor não dependem de equipe", () => {
-    expect(CARGOS.filter(veTodosOsProjetos)).toEqual(["dono", "gestor"]);
+  it("dono, gestor e o agente de IA não dependem de equipe", () => {
+    expect(CARGOS.filter(veTodosOsProjetos)).toEqual(["dono", "gestor", "agente"]);
   });
 
   // A regra que impede o pior acidente possível: ligar o escopo e todo mundo
