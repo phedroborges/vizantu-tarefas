@@ -45,6 +45,13 @@ it("mantém sequências independentes por plano/formato e dá prioridade ao form
   expect((await insert("Operacional", [], plan2)).name).toBe("T1 · Operacional");
 });
 
+it("placa de informações é impresso, não formato desconhecido", async () => {
+  const placa = "00000000-0000-4000-8000-000000000014";
+  await db.query("insert into tags values($1,'formato','Placa de Informações')", [placa]);
+  await db.exec(readFileSync("supabase/migrations/20261123140000_placa_de_informacoes_impresso.sql", "utf8"));
+  expect((await insert("Placa da loja", [placa], plan2)).name).toBe("I1 · Placa da loja");
+});
+
 it("corrige prefixos escritos à mão e conserva o número ao renomear e reagendar", async () => {
   const row = await insert("c99 - v88 · Assunto");
   expect(row.name).toMatch(/^V\d+ · Assunto$/);

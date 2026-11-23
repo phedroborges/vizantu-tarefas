@@ -10,7 +10,7 @@ A regra vale para todos os clientes, planos, status e criadores: equipe, IA, imp
 | Estático | E |
 | Stories | S |
 | Anúncios sem formato físico definido | A |
-| Impresso | I |
+| Impresso ou Placa de informações | I |
 | Apresentação | AP |
 | Contrato | CT |
 | Direcionamento | D |
