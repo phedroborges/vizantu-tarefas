@@ -21,6 +21,12 @@ describe("registros do sistema como fonte do guia", () => {
     expect(temMaterialDoSistema(systemSourcesForGuide({ ...base, tasks: [task("t1")] }))).toBe(true);
   });
 
+  it("a linha do tempo entra como fonte e já basta para montar o guia", () => {
+    const fontes = systemSourcesForGuide({ ...base, linhaDoTempo: "Agora:\n- Meta: 20 conversas por dia (nov/2026)" });
+    expect(texto(fontes, "Linha do tempo do cliente (o que vale agora e o que é para depois)")).toContain("20 conversas por dia");
+    expect(temMaterialDoSistema(fontes)).toBe(true);
+  });
+
   it("leva o escopo do contrato e deixa de fora documento, endereço, e-mail e as cláusulas", () => {
     const conteudo = texto(systemSourcesForGuide({ ...base, contracts: [contract({
       marca: "a carreira do Dr. Lourival", qtd_videos: "10", vigencia_meses: "6",

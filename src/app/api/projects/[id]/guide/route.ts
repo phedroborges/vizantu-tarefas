@@ -4,6 +4,9 @@ import { isResponse, requireUser } from "@/lib/authz";
 import { generateClientGuide } from "@/lib/guide-generation";
 import { systemSourcesForGuide, temMaterialDoSistema } from "@/lib/guide-system-sources";
 import { podeGerenciarEquipe, podeVer, ROLES_QUE_ALIMENTAM_O_GUIA } from "@/lib/permissions";
+import { linhaDoTempoEmTexto } from "@/lib/timeline/model";
+import { listTimeline } from "@/lib/timeline/store";
+import { todayInSaoPaulo } from "@/lib/onboarding/store";
 import { getProject, getProjectProfile, listContracts, listMembers, listPlans, listProjectSources, listProjectTeam, listSurveys, listTags, listTasks, saveGeneratedGuide } from "@/lib/storage";
 
 // Remonta o guia a partir de TODAS as fontes do projeto: as reuniões e
@@ -34,7 +37,7 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
   try {
     // O guia é lido por todo o time, então só entra nele o que quem está
     // montando pode ver: sem acesso a contratos, o contrato fica de fora.
-    const [project, reunioes, profile, contracts, plans, tasks, surveys, tags, members, teamIds] = await Promise.all([
+    const [project, reunioes, profile, contracts, plans, tasks, surveys, tags, members, teamIds, linhaDoTempo] = await Promise.all([
       getProject(id),
       listProjectSources(id),
       getProjectProfile(id),
@@ -45,6 +48,7 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
       listTags(),
       listMembers(),
       podeGerenciarEquipe(auth.role) ? listProjectTeam(id) : Promise.resolve([]),
+      listTimeline(id),
     ]);
     if (!project) return NextResponse.json({ error: "Projeto não encontrado." }, { status: 404 });
 
@@ -52,6 +56,7 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
       project, profile, contracts, plans, surveys, tags,
       tasks: tasks.filter((task) => task.projectId === id),
       team: members.filter((member) => teamIds.includes(member.id)),
+      linhaDoTempo: linhaDoTempoEmTexto(linhaDoTempo, todayInSaoPaulo()),
     });
     if (!reunioes.length && !temMaterialDoSistema(doSistema)) {
       return NextResponse.json({ error: "Ainda não há contrato, plano, tarefa, pesquisa nem reunião deste cliente para a IA ler. Adicione uma reunião ou anotação e monte de novo." }, { status: 400 });

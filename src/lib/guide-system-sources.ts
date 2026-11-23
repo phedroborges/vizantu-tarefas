@@ -41,6 +41,8 @@ export function systemSourcesForGuide(input: {
   surveys: Survey[];
   tags: Tag[];
   team: Member[];
+  /** A linha do tempo já em texto (linhaDoTempoEmTexto), com o horizonte de hoje. */
+  linhaDoTempo?: string;
 }): GuideSource[] {
   const { project, profile } = input;
   const fontes: GuideSource[] = [];
@@ -64,6 +66,10 @@ export function systemSourcesForGuide(input: {
     `Contrato "${contract.title}" (${CONTRACT_TEMPLATES.find((item) => item.id === contract.templateId)?.label || "modelo próprio"}, ${CONTRACT_STATUSES.find((item) => item.value === contract.status)?.label || contract.status})`,
     ...CAMPOS_DO_CONTRATO.map(([chave, rotulo]) => linha(rotulo, contract.fields[chave])),
   ])).join("\n\n"));
+
+  // O que o cliente busca e para quando. Vem antes dos planos porque é o que
+  // diz qual meta e qual objetivo valem hoje: o guia não pode contradizer.
+  fonte("Linha do tempo do cliente (o que vale agora e o que é para depois)", input.linhaDoTempo ?? "");
 
   fonte("Planos", input.plans.map((plan) => `- ${plan.title} (${PLAN_KINDS.find((item) => item.value === plan.kind)?.label || plan.kind}), criado em ${plan.createdAt.slice(0, 10)}`).join("\n"));
 
