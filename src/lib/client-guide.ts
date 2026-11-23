@@ -81,6 +81,19 @@ export const CLIENT_GUIDE_BLOCKS: GuideBlock[] = [
     ],
   },
   {
+    key: "numeros",
+    titulo: "Regras e números",
+    resumo: "O que o tráfego e a criação não podem errar: meta, verba, público, chamada e o que é proibido.",
+    campos: [
+      { key: "metas", pergunta: "Quais são as metas e como a gente mede?", ajuda: "Número e prazo. Ex.: 20 conversas por dia, custo por conversa até R$ 12. E de onde sai o número: Meta, Tintim, vendas.", kind: "longo" },
+      { key: "verbaAnuncio", pergunta: "Quanto ele investe em anúncio?", ajuda: "Verba do mês, como se divide entre semana e fim de semana, quem paga e quando muda.", kind: "longo" },
+      { key: "regiaoPublico", pergunta: "Para quem e onde a gente anuncia?", ajuda: "Cidades ou raio, idade, gênero. E o que já se provou ruim, como público 65+ ou Stories do Facebook.", kind: "longo" },
+      { key: "chamadaParaAcao", pergunta: "Qual é a chamada para ação?", ajuda: "O que o anúncio e o conteúdo pedem para a pessoa fazer, em cada canal. Ex.: botão Enviar mensagem, comentar, link.", kind: "longo" },
+      { key: "naoPodeFalar", pergunta: "O que não pode falar nem mostrar?", ajuda: "Assunto, promessa, palavra ou imagem proibida. Ex.: dieta, preço, concorrente.", kind: "longo" },
+      { key: "contasFerramentas", pergunta: "Quais contas e ferramentas usamos com ele?", ajuda: "Conta de anúncio, Tintim, Clarity, Analytics, site, WhatsApp. Só o nome e o código, nunca senha.", kind: "longo" },
+    ],
+  },
+  {
     key: "pessoal",
     titulo: "Pessoal",
     resumo: "Para lembrar dele em data importante. Custa pouco e o cliente nunca esquece.",
@@ -96,6 +109,7 @@ export type GuideFieldKey =
   | "desejo" | "porQueNosProcurou"
   | "perfilDoCliente" | "pontosDePrecisao" | "problemasAnteriores"
   | "estrategia" | "comoExecutar" | "temasSugeridos" | "formatosSugeridos" | "referencias"
+  | "metas" | "verbaAnuncio" | "regiaoPublico" | "chamadaParaAcao" | "naoPodeFalar" | "contasFerramentas"
   | "tamanhoCamiseta" | "gostosPessoais";
 
 export const CLIENT_GUIDE_FIELDS: GuideField[] = CLIENT_GUIDE_BLOCKS.flatMap((bloco) => bloco.campos);

@@ -530,6 +530,12 @@ export type ProjectProfile = {
   temasSugeridos?: string;
   formatosSugeridos?: string;
   referencias?: string;
+  metas?: string;
+  verbaAnuncio?: string;
+  regiaoPublico?: string;
+  chamadaParaAcao?: string;
+  naoPodeFalar?: string;
+  contasFerramentas?: string;
   tamanhoCamiseta?: string;
   gostosPessoais?: string;
   // Campos corrigidos à mão. A geração relê todas as fontes e reescreve o

@@ -178,6 +178,11 @@ export const ROLES_DO_TIME: UserRole[] = TODOS_OS_ROLES;
 /** Quem monta o trabalho: cria projeto, plano, pacote, pesquisa. */
 export const ROLES_QUE_PLANEJAM: UserRole[] = TODOS_OS_ROLES.filter(podePlanejar);
 
+/** Quem põe reunião e anotação no guia do cliente e pede para a IA refazer o
+ * guia. O agente de IA entra aqui porque é ele que documenta cada reunião;
+ * apagar fonte e editar campo do guia à mão continuam só de quem planeja. */
+export const ROLES_QUE_ALIMENTAM_O_GUIA: UserRole[] = [...ROLES_QUE_PLANEJAM, "agente"];
+
 /** Quem gerencia a operação: painel, contratos, equipe de cliente, aviso ao time. */
 export const ROLES_DE_GESTAO: UserRole[] = TODOS_OS_ROLES.filter(podeGerenciarEquipe);
 

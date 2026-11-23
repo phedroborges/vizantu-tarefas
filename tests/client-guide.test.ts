@@ -9,10 +9,11 @@ import {
 } from "../src/lib/client-guide";
 
 const storage = readFileSync(new URL("../src/lib/storage.ts", import.meta.url), "utf8");
-const migration = readFileSync(
-  new URL("../supabase/migrations/20260924100000_guia_do_cliente.sql", import.meta.url),
-  "utf8",
-);
+// As colunas do guia nascem em mais de uma migration (o bloco "Regras e
+// números" veio depois), então a conferência lê todas elas.
+const migration = ["20260924100000_guia_do_cliente.sql", "20261123130000_guia_regras_e_numeros.sql"]
+  .map((arquivo) => readFileSync(new URL(`../supabase/migrations/${arquivo}`, import.meta.url), "utf8"))
+  .join("\n");
 
 // camelCase -> snake_case, a mesma convenção que PROFILE_FIELDS usa.
 const paraColuna = (chave: string) => chave.replace(/[A-Z]/g, (letra) => `_${letra.toLowerCase()}`);

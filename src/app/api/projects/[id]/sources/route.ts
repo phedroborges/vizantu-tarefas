@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiFailure } from "@/lib/api-error";
 import { isResponse, podeAbrirProjeto, requireUser, semAcesso } from "@/lib/authz";
-import { ROLES_QUE_PLANEJAM } from "@/lib/permissions";
+import { ROLES_QUE_ALIMENTAM_O_GUIA, ROLES_QUE_PLANEJAM } from "@/lib/permissions";
 import { createProjectSource, deleteProjectSource, listProjectSources } from "@/lib/storage";
 import { PROJECT_SOURCE_KINDS } from "@/lib/types";
 
@@ -18,7 +18,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 }
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireUser(ROLES_QUE_PLANEJAM);
+  const auth = await requireUser(ROLES_QUE_ALIMENTAM_O_GUIA);
   if (isResponse(auth)) return auth;
   const { id } = await params;
   if (!podeAbrirProjeto(auth, id)) return semAcesso();

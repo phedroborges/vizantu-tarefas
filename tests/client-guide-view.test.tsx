@@ -35,14 +35,14 @@ describe("guia do cliente em modo leitura", () => {
   it("mostra só o que foi respondido e diz quanto falta", () => {
     render({ desejo: "Lotar a agenda do consultório", quemEh: "Pediatra há vinte anos" });
     expect(perguntas()).toEqual(["Quem é o cliente?", "Qual é o desejo dele?"]);
-    expect(botao("Completar guia")?.textContent).toContain("faltam 16 respostas");
+    expect(botao("Completar guia")?.textContent).toContain("faltam 22 respostas");
     expect(botao("Atualizar com a IA")).toBeTruthy();
   });
 
   it("Completar guia abre todas as perguntas e as reuniões, e volta para a leitura", () => {
     render({ desejo: "Lotar a agenda do consultório" });
     act(() => botao("Completar guia")!.click());
-    expect(perguntas()).toHaveLength(18);
+    expect(perguntas()).toHaveLength(24);
     expect(container.textContent).toContain("Reuniões e anotações");
     act(() => botao("Voltar para a leitura")!.click());
     expect(perguntas()).toEqual(["Qual é o desejo dele?"]);

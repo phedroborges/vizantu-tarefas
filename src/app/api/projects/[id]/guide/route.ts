@@ -3,7 +3,7 @@ import { apiFailure } from "@/lib/api-error";
 import { isResponse, requireUser } from "@/lib/authz";
 import { generateClientGuide } from "@/lib/guide-generation";
 import { systemSourcesForGuide, temMaterialDoSistema } from "@/lib/guide-system-sources";
-import { podeGerenciarEquipe, podeVer, ROLES_QUE_PLANEJAM } from "@/lib/permissions";
+import { podeGerenciarEquipe, podeVer, ROLES_QUE_ALIMENTAM_O_GUIA } from "@/lib/permissions";
 import { getProject, getProjectProfile, listContracts, listMembers, listPlans, listProjectSources, listProjectTeam, listSurveys, listTags, listTasks, saveGeneratedGuide } from "@/lib/storage";
 
 // Remonta o guia a partir de TODAS as fontes do projeto: as reuniões e
@@ -13,7 +13,7 @@ import { getProject, getProjectProfile, listContracts, listMembers, listPlans, l
 // reescrito com o acumulado. Campo corrigido à mão fica intacto (o filtro
 // está em saveGeneratedGuide).
 export async function POST(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireUser(ROLES_QUE_PLANEJAM);
+  const auth = await requireUser(ROLES_QUE_ALIMENTAM_O_GUIA);
   if (isResponse(auth)) return auth;
   if (!auth.aiEnabled) {
     return NextResponse.json({ error: "O assistente de IA não está disponível para o seu usuário." }, { status: 403 });

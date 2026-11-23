@@ -2242,6 +2242,8 @@ const PROFILE_FIELDS = [
   ["problemasAnteriores", "problemas_anteriores"],
   ["estrategia", "estrategia"], ["comoExecutar", "como_executar"], ["temasSugeridos", "temas_sugeridos"],
   ["formatosSugeridos", "formatos_sugeridos"], ["referencias", "referencias"],
+  ["metas", "metas"], ["verbaAnuncio", "verba_anuncio"], ["regiaoPublico", "regiao_publico"],
+  ["chamadaParaAcao", "chamada_para_acao"], ["naoPodeFalar", "nao_pode_falar"], ["contasFerramentas", "contas_ferramentas"],
   ["tamanhoCamiseta", "tamanho_camiseta"], ["gostosPessoais", "gostos_pessoais"],
 ] as const;
 

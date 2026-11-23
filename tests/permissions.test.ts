@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  ROLES_DE_GESTAO, ROLES_DO_TIME, ROLES_QUE_PLANEJAM,
+  ROLES_DE_GESTAO, ROLES_DO_TIME, ROLES_QUE_ALIMENTAM_O_GUIA, ROLES_QUE_PLANEJAM,
   abasDoProjeto, podeApagarTarefa, podePlanejar, podeVer, podeVerCredenciais, podeGerenciarCredenciais, podeGerenciarMembros,
   projetosDoMembro, rolesQueVeem, telaInicial, veTodosOsProjetos,
   type AppArea,
@@ -84,6 +84,11 @@ describe("o que cada cargo enxerga", () => {
     expect(veTodosOsProjetos("agente")).toBe(true);
     expect(abasDoProjeto("agente")).not.toContain("acessos");
     expect(abasDoProjeto("agente")).not.toContain("documentos");
+  });
+
+  // O agente documenta cada reunião no guia do cliente; o diretor criativo não.
+  it("quem planeja e o agente de IA alimentam o guia do cliente", () => {
+    expect(ROLES_QUE_ALIMENTAM_O_GUIA).toEqual(["dono", "gestor", "social_media", "agente"]);
   });
 
   // O agente corrige o que abriu errado, mas não desmonta o trabalho do time.
