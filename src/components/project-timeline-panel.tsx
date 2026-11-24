@@ -13,7 +13,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Card, EmptyState, Field, Input, Select, Tag, Textarea, type Tone } from "@/components/vz";
 import { VzLoading } from "@/components/vz/loading";
 import { responseError } from "@/lib/request-error";
-import { caminhoPorAno, periodoEmTexto, rotuloDaSituacao, rotuloDoTipo, TIMELINE_KINDS, type TimelineItem, type TimelineKind } from "@/lib/timeline/model";
+import { caminhoPorAno, dataNoCaminho, periodoEmTexto, rotuloDaSituacao, rotuloDoTipo, TIMELINE_KINDS, type TimelineItem, type TimelineKind } from "@/lib/timeline/model";
 
 type Dados = { hoje: string; itens: TimelineItem[] };
 
@@ -24,6 +24,19 @@ type Edicao = { modo: "novo" } | { modo: "editar"; item: TimelineItem } | { modo
 
 const mes = (data?: string) => (data ? data.slice(0, 7) : "");
 const ultimoDia = (anoMes: string) => `${anoMes}-${String(new Date(Number(anoMes.slice(0, 4)), Number(anoMes.slice(5, 7)), 0).getDate()).padStart(2, "0")}`;
+const NOMES_DOS_MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+
+/** Une no mesmo card tudo o que começa no mesmo mês. Só a tela agrupa: cada item continua separado no banco. */
+function porMes(itens: TimelineItem[]): { chave: string; itens: TimelineItem[] }[] {
+  const meses: { chave: string; itens: TimelineItem[] }[] = [];
+  for (const item of itens) {
+    const chave = dataNoCaminho(item).slice(0, 7);
+    const ultimo = meses[meses.length - 1];
+    if (ultimo?.chave === chave) ultimo.itens.push(item); else meses.push({ chave, itens: [item] });
+  }
+  return meses;
+}
+
 const dataBr = (data?: string) => (data ? `${data.slice(8, 10)}/${data.slice(5, 7)}/${data.slice(0, 4)}` : "");
 
 function formularioDe(edicao: Edicao, hoje: string): Formulario {
@@ -154,6 +167,13 @@ export function ProjectTimelinePanel({ projectId, projectName, canEdit, canDelet
     );
   };
 
+  const mesDoAno = (mes: { chave: string; itens: TimelineItem[] }) => (
+    <div className="timeline-month" key={mes.chave}>
+      <h4 className="timeline-month__label">{NOMES_DOS_MESES[Number(mes.chave.slice(5, 7)) - 1]}</h4>
+      {mes.itens.map(cartao)}
+    </div>
+  );
+
   return (
     <div className="timeline">
       <Card className="timeline-head">
@@ -216,9 +236,9 @@ export function ProjectTimelinePanel({ projectId, projectName, canEdit, canDelet
             <section className={ano.temHoje ? "timeline-year is-current timeline-reveal" : ano.ano > Number(dados.hoje.slice(0, 4)) ? "timeline-year is-future timeline-reveal" : "timeline-year timeline-reveal"} key={ano.ano} aria-label={String(ano.ano)}>
               <h3 className="timeline-year__label">{ano.ano}</h3>
               <div className="timeline-year__items">
-                {ano.antesDeHoje.map(cartao)}
+                {porMes(ano.antesDeHoje).map(mesDoAno)}
                 {ano.temHoje ? <div className="timeline-today" role="separator" aria-label="Hoje"><span>Hoje · {dataBr(dados.hoje)}</span></div> : null}
-                {ano.depoisDeHoje.map(cartao)}
+                {porMes(ano.depoisDeHoje).map(mesDoAno)}
                 {!ano.antesDeHoje.length && !ano.depoisDeHoje.length && !ano.temHoje ? <p className="timeline-year__empty">Nada registrado neste ano.</p> : null}
               </div>
             </section>
@@ -226,7 +246,7 @@ export function ProjectTimelinePanel({ projectId, projectName, canEdit, canDelet
           {destino.length ? (
             <section className="timeline-year is-destiny timeline-reveal" aria-label="Aonde quer chegar">
               <h3 className="timeline-year__label"><Flag size={16} aria-hidden /> Aonde quer chegar</h3>
-              <div className="timeline-year__items">{destino.map(cartao)}</div>
+              <div className="timeline-year__items"><div className="timeline-month">{destino.map(cartao)}</div></div>
             </section>
           ) : null}
         </div>

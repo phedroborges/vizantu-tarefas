@@ -2962,7 +2962,7 @@ audio.comment-attachment, .comment-attachment.is-audio audio { width: 100%; min-
 .timeline-road::before { content: ""; position: absolute; top: 8px; bottom: 8px; left: 11px; width: 2px; background: linear-gradient(var(--vz-line), var(--vz-brand-line) 70%, var(--vz-brand)); }
 .timeline-year { position: relative; display: grid; gap: var(--vz-s-3); padding-bottom: 40px; }
 .timeline-year::before { content: ""; position: absolute; top: 9px; left: -31px; width: 12px; height: 12px; border: 2px solid var(--vz-line-strong, var(--vz-line)); border-radius: 50%; background: var(--vz-panel); }
-.timeline-year__label { position: sticky; top: 64px; z-index: 1; display: flex; align-items: center; gap: 8px; width: fit-content; margin: 0; padding: 2px 10px 2px 0; background: var(--vz-bg); color: var(--vz-text-faint); font-size: 26px; font-weight: 720; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.timeline-year__label { display: flex; align-items: center; gap: 8px; width: fit-content; margin: 0; padding: 2px 10px 2px 0; background: var(--vz-bg); color: var(--vz-text-faint); font-size: 26px; font-weight: 720; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .timeline-year__items { display: grid; gap: var(--vz-s-3); max-width: 760px; }
 .timeline-year__empty { margin: 0; color: var(--vz-text-faint); font-size: var(--vz-t-sm); }
 .timeline-year.is-current::before { border-color: var(--vz-brand); background: var(--vz-brand); box-shadow: 0 0 0 5px var(--vz-brand-soft); }
@@ -2971,7 +2971,12 @@ audio.comment-attachment, .comment-attachment.is-audio audio { width: 100%; min-
 .timeline-year.is-future .timeline-year__label { color: var(--vz-text); }
 .timeline-year.is-destiny::before { width: 18px; height: 18px; left: -34px; top: 6px; border-color: var(--vz-brand); background: var(--vz-brand-soft); }
 .timeline-year.is-destiny .timeline-year__label { color: var(--vz-brand-deep); font-size: 20px; }
-.timeline-year.is-destiny .timeline-item { border-color: var(--vz-brand-line); background: var(--vz-brand-soft); }
+.timeline-year.is-destiny .timeline-month { border-color: var(--vz-brand-line); background: var(--vz-brand-soft); }
+.timeline-month { display: grid; border: 1px solid var(--vz-line); border-radius: var(--vz-r-lg); background: var(--vz-panel); box-shadow: var(--vz-shadow-xs, none); }
+.timeline-month__label { margin: 0; padding: var(--vz-s-3) var(--vz-s-4) 0; color: var(--vz-text-muted); font-size: var(--vz-t-xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+.timeline-month .timeline-item { border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.timeline-month .timeline-item + .timeline-item { border-top: 1px solid var(--vz-line); }
+.timeline-month .timeline-item.is-past { opacity: 0.7; }
 .timeline-today { position: relative; display: flex; align-items: center; gap: var(--vz-s-2); margin: 4px 0; color: var(--vz-brand-deep); font-size: var(--vz-t-xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
 .timeline-today::before { content: ""; position: absolute; left: -31px; width: 12px; height: 2px; background: var(--vz-brand); }
 .timeline-today::after { content: ""; flex: 1; height: 2px; background: var(--vz-brand-line); }
