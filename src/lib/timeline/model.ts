@@ -104,6 +104,35 @@ export function organizar(itens: TimelineItem[], hoje: string): { horizonte: Hor
   }).filter((grupo) => grupo.itens.length);
 }
 
+/** Quando o item acontece no caminho: o início, ou o fim se só houver fim. Sem nenhum dos dois, não tem lugar no caminho. */
+export const dataNoCaminho = (item: Pick<TimelineItem, "startsOn" | "endsOn">) => item.startsOn || item.endsOn || "";
+
+export type AnoDoCaminho = { ano: number; antesDeHoje: TimelineItem[]; depoisDeHoje: TimelineItem[]; temHoje: boolean };
+
+/** A linha do tempo de verdade: do ano em que o cliente entrou até o futuro, ano a ano,
+ * com o "hoje" marcado no ano corrente. O que não tem data (o sonho) é o destino, no fim. */
+export function caminhoPorAno(itens: TimelineItem[], hoje: string): { anos: AnoDoCaminho[]; destino: TimelineItem[] } {
+  const comData = itens.filter((item) => dataNoCaminho(item));
+  const destino = itens.filter((item) => !dataNoCaminho(item)).sort((a, b) => ORDEM_DO_TIPO[a.kind] - ORDEM_DO_TIPO[b.kind] || a.createdAt.localeCompare(b.createdAt));
+  const anoHoje = Number(hoje.slice(0, 4));
+  if (!comData.length) return { anos: [], destino };
+  comData.sort((a, b) => dataNoCaminho(a).localeCompare(dataNoCaminho(b)) || ORDEM_DO_TIPO[a.kind] - ORDEM_DO_TIPO[b.kind]);
+  const anosComItem = comData.map((item) => Number(dataNoCaminho(item).slice(0, 4)));
+  const primeiro = Math.min(...anosComItem, anoHoje);
+  const ultimo = Math.max(...anosComItem, anoHoje);
+  const anos: AnoDoCaminho[] = [];
+  for (let ano = primeiro; ano <= ultimo; ano++) {
+    const doAno = comData.filter((item) => Number(dataNoCaminho(item).slice(0, 4)) === ano);
+    anos.push({
+      ano,
+      antesDeHoje: doAno.filter((item) => dataNoCaminho(item) <= hoje),
+      depoisDeHoje: doAno.filter((item) => dataNoCaminho(item) > hoje),
+      temHoje: ano === anoHoje,
+    });
+  }
+  return { anos, destino };
+}
+
 const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 const mesAno = (data: string) => `${MESES[Number(data.slice(5, 7)) - 1]}/${data.slice(0, 4)}`;
 function diaMes(data: string) { return `${data.slice(8, 10)}/${data.slice(5, 7)}/${data.slice(0, 4)}`; }

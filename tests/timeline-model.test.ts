@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { horizonteDe, linhaDoTempoEmTexto, organizar, parseTimelineInput, periodoEmTexto, TimelineInputError, type TimelineItem } from "../src/lib/timeline/model";
+import { caminhoPorAno, horizonteDe, linhaDoTempoEmTexto, organizar, parseTimelineInput, periodoEmTexto, TimelineInputError, type TimelineItem } from "../src/lib/timeline/model";
 
 const HOJE = "2026-11-23";
 let n = 0;
@@ -86,5 +86,24 @@ describe("o que entra", () => {
 
   it("na edição só mexe no que veio", () => {
     expect(parseTimelineInput({ status: "alcancado" }, true)).toEqual({ status: "alcancado" });
+  });
+});
+
+describe("caminho por ano", () => {
+  it("vai do primeiro ano até o futuro, marca o hoje e deixa o sonho como destino", () => {
+    const { anos, destino } = caminhoPorAno([
+      item({ kind: "marco", title: "Começo", startsOn: "2023-08-01" }),
+      item({ kind: "meta", title: "Meta", startsOn: "2026-11-01", endsOn: "2026-12-31" }),
+      item({ kind: "objetivo", title: "Rebranding", startsOn: "2027-01-01" }),
+      item({ kind: "meta", title: "Só prazo", endsOn: "2026-12-31" }),
+      item({ kind: "sonho", title: "Sonho" }),
+    ], HOJE);
+    expect(anos.map((a) => a.ano)).toEqual([2023, 2024, 2025, 2026, 2027]);
+    expect(anos[1].antesDeHoje).toEqual([]);
+    const de2026 = anos.find((a) => a.ano === 2026)!;
+    expect(de2026.temHoje).toBe(true);
+    expect(de2026.antesDeHoje.map((i) => i.title)).toEqual(["Meta"]);
+    expect(de2026.depoisDeHoje.map((i) => i.title)).toEqual(["Só prazo"]);
+    expect(destino.map((i) => i.title)).toEqual(["Sonho"]);
   });
 });

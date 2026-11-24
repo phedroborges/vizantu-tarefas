@@ -1,24 +1,23 @@
 "use client";
 
-// Linha do tempo do cliente: o sonho no topo, depois o que vale agora e o que
-// vem nos próximos meses, e embaixo o que já passou. As regras de horizonte e
-// de texto moram em lib/timeline/model.ts; aqui só desenha e edita.
+// Linha do tempo do cliente, na vertical e em ordem: do ano em que ele entrou,
+// passando pelo hoje, até o futuro, com o sonho no fim como destino. Cada ano
+// aparece com animação conforme a pessoa rola. A regra de ordem mora em
+// lib/timeline/model.ts (caminhoPorAno); aqui só desenha e edita.
 //
 // Mudança de rumo se registra com "Mudou", que cria o item novo e deixa o
 // antigo como substituído — a tela mostra os dois, e a mudança fica visível.
 
-import { Check, ChevronRight, Milestone, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { Check, Flag, Milestone, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Card, EmptyState, Field, Input, Select, Tag, Textarea, type Tone } from "@/components/vz";
 import { VzLoading } from "@/components/vz/loading";
 import { responseError } from "@/lib/request-error";
-import { HORIZONTES, periodoEmTexto, rotuloDaSituacao, rotuloDoTipo, TIMELINE_KINDS, type Horizonte, type TimelineItem, type TimelineKind } from "@/lib/timeline/model";
+import { caminhoPorAno, periodoEmTexto, rotuloDaSituacao, rotuloDoTipo, TIMELINE_KINDS, type TimelineItem, type TimelineKind } from "@/lib/timeline/model";
 
-type Grupo = { horizonte: Horizonte; titulo: string; resumo: string; itens: TimelineItem[] };
-type Dados = { hoje: string; itens: TimelineItem[]; grupos: Grupo[] };
+type Dados = { hoje: string; itens: TimelineItem[] };
 
 const TOM_DO_TIPO: Record<TimelineKind, Tone> = { sonho: "violet", objetivo: "blue", meta: "green", marco: "amber" };
-const REGUA: Horizonte[] = ["agora", "proximos_3_meses", "6_meses", "1_ano", "mais_adiante"];
 
 type Formulario = { kind: TimelineKind; title: string; detail: string; inicio: string; fim: string; saidOn: string; sourceLabel: string };
 type Edicao = { modo: "novo" } | { modo: "editar"; item: TimelineItem } | { modo: "mudou"; item: TimelineItem };
@@ -40,7 +39,7 @@ export function ProjectTimelinePanel({ projectId, projectName, canEdit, canDelet
   const [edicao, setEdicao] = useState<Edicao | null>(null);
   const [form, setForm] = useState<Formulario | null>(null);
   const [salvando, setSalvando] = useState(false);
-  const [verHistorico, setVerHistorico] = useState(false);
+  const caminhoRef = useRef<HTMLDivElement>(null);
 
   const buscar = useCallback(async (): Promise<Dados | string> => {
     try {
@@ -67,6 +66,19 @@ export function ProjectTimelinePanel({ projectId, projectName, canEdit, canDelet
     });
     return () => { vivo = false; };
   }, [buscar]);
+
+  // Cada ano entra na tela conforme a pessoa rola até ele.
+  useEffect(() => {
+    const raiz = caminhoRef.current;
+    if (!raiz) return;
+    const blocos = Array.from(raiz.querySelectorAll<HTMLElement>(".timeline-reveal"));
+    if (!("IntersectionObserver" in window)) { blocos.forEach((b) => b.classList.add("is-visible")); return; }
+    const observador = new IntersectionObserver((entradas) => {
+      for (const entrada of entradas) if (entrada.isIntersecting) { entrada.target.classList.add("is-visible"); observador.unobserve(entrada.target); }
+    }, { rootMargin: "0px 0px -10% 0px" });
+    blocos.forEach((b) => observador.observe(b));
+    return () => observador.disconnect();
+  }, [dados]);
 
   function abrir(nova: Edicao) {
     if (!dados) return;
@@ -111,10 +123,7 @@ export function ProjectTimelinePanel({ projectId, projectName, canEdit, canDelet
   if (!dados) return <Card>{mensagem ? <p className="form-message" role="status">{mensagem}</p> : <VzLoading label="Carregando a linha do tempo…" />}</Card>;
 
   const porId = new Map(dados.itens.map((item) => [item.id, item]));
-  const grupo = (h: Horizonte) => dados.grupos.find((g) => g.horizonte === h);
-  const norte = grupo("sem_prazo");
-  const historico = grupo("historico");
-  const caminho = dados.grupos.filter((g) => REGUA.includes(g.horizonte));
+  const { anos, destino } = caminhoPorAno(dados.itens, dados.hoje);
   const vigentes = dados.itens.filter((item) => item.status === "vigente").length;
 
   const cartao = (item: TimelineItem) => {
@@ -151,25 +160,11 @@ export function ProjectTimelinePanel({ projectId, projectName, canEdit, canDelet
         <div className="project-section-head">
           <div>
             <h2><Milestone size={14} /> Linha do tempo</h2>
-            <p>O que {projectName} busca, para quando, e como isso foi mudando. Serve para alinhar expectativa: o que vale agora e o que é para depois.</p>
+            <p>O caminho de {projectName} com a gente, do começo até onde quer chegar. Role para descer pelos anos.</p>
           </div>
           {canEdit ? <Button variant="primary" size="sm" onClick={() => abrir({ modo: "novo" })}><Plus size={14} /> Novo</Button> : null}
         </div>
 
-        {dados.itens.length ? (
-          <ol className="timeline-ruler" aria-label="Horizontes">
-            {REGUA.map((h) => {
-              const g = grupo(h);
-              const titulo = HORIZONTES.find((item) => item.value === h)!.titulo;
-              return (
-                <li className={g ? "has-items" : undefined} key={h}>
-                  {g ? <a href={`#timeline-${h}`}><span className="timeline-ruler__dot" aria-hidden /><strong>{titulo}</strong><small>{g.itens.length} {g.itens.length === 1 ? "item" : "itens"}</small></a>
-                    : <span><span className="timeline-ruler__dot" aria-hidden /><strong>{titulo}</strong><small>—</small></span>}
-                </li>
-              );
-            })}
-          </ol>
-        ) : null}
         {mensagem ? <p className="form-message" role="status">{mensagem}</p> : null}
       </Card>
 
@@ -215,41 +210,29 @@ export function ProjectTimelinePanel({ projectId, projectName, canEdit, canDelet
         <Card><EmptyState icon={<Milestone size={24} />} title="A linha do tempo ainda está vazia" description="Registre o sonho do cliente, o objetivo de agora e o que ele quer para os próximos meses. O Totó também preenche a partir das reuniões." /></Card>
       ) : null}
 
-      {norte ? (
-        <Card className="timeline-north" tint>
-          <span className="vz-eyebrow">O norte</span>
-          <p className="timeline-group__summary">Onde o cliente quer chegar, sem prazo.</p>
-          <div className="timeline-group__items">{norte.itens.map(cartao)}</div>
-        </Card>
-      ) : null}
-
-      {caminho.length ? (
-        <div className="timeline-path">
-          {caminho.map((g) => (
-            <section className={g.horizonte === "agora" ? "timeline-group is-now" : "timeline-group"} id={`timeline-${g.horizonte}`} key={g.horizonte}>
-              <div className="timeline-group__rail" aria-hidden><span /></div>
-              <div className="timeline-group__body">
-                <h3>{g.titulo}</h3>
-                <p className="timeline-group__summary">{g.resumo}</p>
-                <div className="timeline-group__items">{g.itens.map(cartao)}</div>
+      {anos.length || destino.length ? (
+        <div className="timeline-road" ref={caminhoRef}>
+          {anos.map((ano) => (
+            <section className={ano.temHoje ? "timeline-year is-current timeline-reveal" : ano.ano > Number(dados.hoje.slice(0, 4)) ? "timeline-year is-future timeline-reveal" : "timeline-year timeline-reveal"} key={ano.ano} aria-label={String(ano.ano)}>
+              <h3 className="timeline-year__label">{ano.ano}</h3>
+              <div className="timeline-year__items">
+                {ano.antesDeHoje.map(cartao)}
+                {ano.temHoje ? <div className="timeline-today" role="separator" aria-label="Hoje"><span>Hoje · {dataBr(dados.hoje)}</span></div> : null}
+                {ano.depoisDeHoje.map(cartao)}
+                {!ano.antesDeHoje.length && !ano.depoisDeHoje.length && !ano.temHoje ? <p className="timeline-year__empty">Nada registrado neste ano.</p> : null}
               </div>
             </section>
           ))}
+          {destino.length ? (
+            <section className="timeline-year is-destiny timeline-reveal" aria-label="Aonde quer chegar">
+              <h3 className="timeline-year__label"><Flag size={16} aria-hidden /> Aonde quer chegar</h3>
+              <div className="timeline-year__items">{destino.map(cartao)}</div>
+            </section>
+          ) : null}
         </div>
       ) : null}
 
-      {historico ? (
-        <Card className="timeline-history">
-          <button type="button" className="onboard-section__head" aria-expanded={verHistorico} onClick={() => setVerHistorico(!verHistorico)}>
-            <ChevronRight size={15} className={verHistorico ? "is-open" : undefined} aria-hidden />
-            <h3>O que já passou</h3>
-            <span className="onboard-count">{historico.itens.length}</span>
-          </button>
-          {verHistorico ? <div className="timeline-group__items timeline-history__items">{historico.itens.map(cartao)}</div> : null}
-        </Card>
-      ) : null}
-
-      {vigentes ? <p className="dash-footnote">{vigentes} {vigentes === 1 ? "item valendo" : "itens valendo"}. Os agentes leem esta mesma linha do tempo, com o horizonte calculado pela data de hoje.</p> : null}
+      {vigentes ? <p className="dash-footnote">{vigentes} {vigentes === 1 ? "item valendo" : "itens valendo"}. Os agentes leem esta mesma linha do tempo.</p> : null}
     </div>
   );
 }
