@@ -19,6 +19,7 @@ import { ProjectSurveyResults } from "@/components/project-survey-results";
 import { ProjectDocuments } from "@/components/project-documents";
 import { ClientGuideView } from "@/components/client-guide-view";
 import { ProjectSummary } from "@/components/project-summary";
+import { ProjectIdentityForm } from "@/components/project-identity-form";
 import { Button, Card, EmptyState, Field, Input, Progress, Tag } from "@/components/vz";
 
 const AUTOSAVE_MS = 700;
@@ -108,7 +109,7 @@ export function ProjectProfileView({
       setEquipeState("error");
     }
   }
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debounceRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const { confirm, ConfirmDialog } = useConfirm();
   const [tab, setTab] = useState<ProjectTab>("informacoes");
   const done = initialTasks.filter((task) => task.status === "finalizado").length;
@@ -139,8 +140,8 @@ export function ProjectProfileView({
   function setCampo(key: keyof ProjectProfile, value: string) {
     setProfile((atual) => ({ ...atual, [key]: value }));
     if (!canEditProfile) return;
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => persist({ [key]: value }), AUTOSAVE_MS);
+    clearTimeout(debounceRef.current.get(key));
+    debounceRef.current.set(key, setTimeout(() => persist({ [key]: value }), AUTOSAVE_MS));
   }
 
   async function removerCredencial(credential: ProjectCredential) {
@@ -178,6 +179,8 @@ export function ProjectProfileView({
           initialSources={initialSources}
           canEdit={canEditProfile}
           aiEnabled={aiEnabled}
+          onProfileChange={(patch) => setProfile((atual) => ({ ...atual, ...patch }))}
+          identificacao={canEditProfile ? <ProjectIdentityForm project={project} /> : null}
           resumo={(guia, completar) => <>
             <ProjectSummary guia={guia} tasks={initialTasks} plans={initialPlans} contracts={initialContracts} team={members.filter((member) => equipe.includes(member.id))} abas={abas} onAbrirAba={setTab} onCompletar={completar} />
         <div className="project-metrics">

@@ -6,8 +6,8 @@ import { Button, Check, IconButton, SearchInput, Segmented, Toolbar } from "@/co
 import { StatusColorPicker } from "@/components/status-color-picker";
 import { DATE_FORMATS, type DateFormatKey } from "@/lib/date-format";
 import { STATUS_GROUPS, TASK_COLUMNS, TASK_LIST_KINDS, TASK_STATUSES, type StatusColor, type TaskColumnKey } from "@/lib/types";
-import type { SavedTaskFilters } from "@/lib/preferences";
-import type { Member, Project } from "@/lib/types";
+import { NO_FORMAT_FILTER, type SavedTaskFilters } from "@/lib/preferences";
+import type { Member, Project, Tag } from "@/lib/types";
 
 // A barra tinha 4 selects soltos + busca + colunas + cores + 2 grupos de botões
 // numa linha só, tudo com o mesmo peso visual. Agora: busca (que é o que mais
@@ -64,7 +64,7 @@ function MultiFilterField({
 export function countActiveFilters(filters: TaskFilters): number {
   // A busca não conta: ela já está visível na barra, com o texto à mostra.
   // "Mostrar finalizadas e descartadas" conta, porque muda o que aparece e fica escondido.
-  return filters.projectIds.length + filters.assigneeIds.length + filters.statuses.length + filters.lists.length + (filters.showFinalized ? 1 : 0);
+  return filters.projectIds.length + filters.assigneeIds.length + filters.statuses.length + filters.lists.length + filters.formatIds.length + (filters.showFinalized ? 1 : 0);
 }
 
 export function TaskToolbar({
@@ -72,6 +72,7 @@ export function TaskToolbar({
   onFiltersChange,
   projects,
   members,
+  formatTags,
   view,
   onViewChange,
   visibleColumns,
@@ -86,6 +87,7 @@ export function TaskToolbar({
   onFiltersChange: (next: Partial<TaskFilters>) => void;
   projects: Project[];
   members: Member[];
+  formatTags: Tag[];
   view: "lista" | "calendario";
   onViewChange: (view: "lista" | "calendario") => void;
   visibleColumns: TaskColumnKey[];
@@ -131,6 +133,7 @@ export function TaskToolbar({
                 ]}
                 onChange={(statuses) => onFiltersChange({ statuses: statuses as SavedTaskFilters["statuses"] })}
               />
+              <MultiFilterField label="Formato" values={filters.formatIds} options={[...formatTags.map((tag) => ({ value: tag.id, label: tag.label })), { value: NO_FORMAT_FILTER, label: "Sem formato" }]} onChange={(formatIds) => onFiltersChange({ formatIds })} />
               <MultiFilterField label="Lista" values={filters.lists} options={TASK_LIST_KINDS.map((kind) => ({ value: kind.value, label: kind.label }))} onChange={(lists) => onFiltersChange({ lists: lists as SavedTaskFilters["lists"] })} />
               <Button type="button" variant={filters.showFinalized ? "soft" : "secondary"} onClick={() => onFiltersChange({ showFinalized: !filters.showFinalized })} aria-pressed={filters.showFinalized}>
                 {filters.showFinalized ? <EyeOff size={14} /> : <Eye size={14} />}
@@ -140,7 +143,7 @@ export function TaskToolbar({
                 <Button
                   type="button"
                   variant="ghost"
-                  onClick={() => onFiltersChange({ projectIds: [], assigneeIds: [], statuses: [], lists: [], showFinalized: false })}
+                  onClick={() => onFiltersChange({ projectIds: [], assigneeIds: [], statuses: [], lists: [], formatIds: [], showFinalized: false })}
                 >
                   Limpar filtros
                 </Button>

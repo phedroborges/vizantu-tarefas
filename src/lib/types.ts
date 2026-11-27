@@ -602,24 +602,6 @@ export type KnowledgeDoc = {
   updatedAt: string;
 };
 
-// ---------- Conversas do assistente (chat em tela cheia) ----------
-
-export type AssistantMessage = {
-  id: string;
-  role: "user" | "assistant";
-  text: string;
-  images?: string[];
-  pendingConfirmation?: { taskId: string; taskName: string } | null;
-};
-
-export type AssistantConversation = {
-  id: string;
-  title: string;
-  messages: AssistantMessage[];
-  createdAt: string;
-  updatedAt: string;
-};
-
 // ---------- Colunas configuráveis da lista de tarefas ----------
 
 export type TaskColumnKey = "formatTags" | "channelTags" | "assignee" | "dueDate" | "status" | "driveLink" | "lists";

@@ -7,7 +7,7 @@ import type { UserRole } from "./types";
 
 export type AppArea =
   | "dashboard" | "ranking" | "projetos" | "tarefas" | "notificacoes" | "planos"
-  | "financeiro" | "meu_financeiro" | "pesquisas" | "marcas" | "contratos" | "membros" | "conhecimento" | "assistente" | "comunicados";
+  | "financeiro" | "meu_financeiro" | "pesquisas" | "marcas" | "contratos" | "membros" | "conhecimento" | "comunicados";
 
 type RoleProfile = {
   areas: AppArea[];
@@ -30,7 +30,7 @@ type RoleProfile = {
 
 const TODAS_AS_AREAS: AppArea[] = [
   "dashboard", "ranking", "projetos", "tarefas", "notificacoes", "planos",
-  "pesquisas", "marcas", "contratos", "membros", "conhecimento", "assistente", "financeiro", "comunicados",
+  "pesquisas", "marcas", "contratos", "membros", "conhecimento", "financeiro", "comunicados",
 ];
 
 export const ROLE_PROFILES: Record<UserRole, RoleProfile> = {
@@ -43,12 +43,12 @@ export const ROLE_PROFILES: Record<UserRole, RoleProfile> = {
     // Vê o que o social media vê, mais o painel e os contratos. Membros e base
     // de conhecimento continuam fora: ele gerencia entrega, não o time nem a
     // documentação interna.
-    areas: ["dashboard", "ranking", "projetos", "tarefas", "notificacoes", "planos", "pesquisas", "contratos", "assistente", "comunicados"],
+    areas: ["dashboard", "ranking", "projetos", "tarefas", "notificacoes", "planos", "pesquisas", "contratos", "comunicados"],
     planeja: true, gerenciaEquipe: true, gerenciaMembros: false, veCredenciais: true,
     gerenciaCredenciais: false, veTodosOsProjetos: true, inicio: "/",
   },
   social_media: {
-    areas: ["ranking", "projetos", "tarefas", "notificacoes", "planos", "pesquisas", "assistente", "meu_financeiro"],
+    areas: ["ranking", "projetos", "tarefas", "notificacoes", "planos", "pesquisas", "meu_financeiro"],
     // Quem publica precisa da senha do Instagram do cliente, e é quem recebe
     // esses acessos dele: cadastra, altera e apaga, só nos clientes em que
     // trabalha.
@@ -56,7 +56,7 @@ export const ROLE_PROFILES: Record<UserRole, RoleProfile> = {
     gerenciaCredenciais: true, veTodosOsProjetos: false, inicio: "/planos",
   },
   diretor_criativo: {
-    areas: ["ranking", "projetos", "tarefas", "notificacoes", "planos", "marcas", "assistente", "meu_financeiro"],
+    areas: ["ranking", "projetos", "tarefas", "notificacoes", "planos", "marcas", "meu_financeiro"],
     planeja: false, gerenciaEquipe: false, gerenciaMembros: false, veCredenciais: false,
     gerenciaCredenciais: false, veTodosOsProjetos: false, inicio: "/tarefas",
   },

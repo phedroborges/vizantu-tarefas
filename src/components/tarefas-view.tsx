@@ -8,7 +8,6 @@ import {
   overdueDays,
 } from "@/lib/dates";
 import { responseError } from "@/lib/request-error";
-import { useSetPageDetail } from "@/lib/page-context";
 import { findTaskGaps } from "@/lib/task-readiness";
 import { CLOSED_TASK_STATUSES, STATUS_GROUPS, TASK_COLUMNS, TASK_LIST_KINDS, TASK_STATUSES } from "@/lib/types";
 import type { Member, Project, StatusColor, Tag, Task, TaskColumnKey, TaskListKind, TaskStatus } from "@/lib/types";
@@ -19,7 +18,7 @@ import { usePreferences } from "@/lib/use-preferences";
 import { useScreenRefresh } from "@/lib/use-live-refresh";
 import { mergeFreshTasks } from "@/lib/merge-fresh-tasks";
 import { migrateLocalPreferences } from "@/lib/migrate-local-preferences";
-import { toggleColumn as toggleColumnKey, type MemberPreferences } from "@/lib/preferences";
+import { NO_FORMAT_FILTER, toggleColumn as toggleColumnKey, type MemberPreferences } from "@/lib/preferences";
 import type { DateFormatKey } from "@/lib/date-format";
 import { StatusTag } from "@/components/status-tag";
 import { StartTaskButton } from "@/components/start-task-button";
@@ -39,17 +38,6 @@ const NO_ASSIGNEE = "none";
 // Base UI's <Select.Value> só resolve o rótulo se o Root receber esse mapa.
 const STATUS_LABELS: Record<string, string> = Object.fromEntries(TASK_STATUSES.map((status) => [status.value, status.label]));
 const LIST_LABELS: Record<TaskListKind, string> = Object.fromEntries(TASK_LIST_KINDS.map((kind) => [kind.value, kind.label])) as Record<TaskListKind, string>;
-function statusLabel(task: Task): string {
-  return TASK_STATUSES.find((status) => status.value === task.status)?.label || task.status;
-}
-
-// Prazo com o atraso anexado — o atraso é fato da DATA, e é assim que ele
-// chega ao assistente também.
-function dueLabel(task: Task): string {
-  if (!task.dueDate) return "sem prazo";
-  return isOverdue(task.dueDate, task.status) ? `${task.dueDate} (atrasada)` : task.dueDate;
-}
-
 function InlineStatusCell({ task, colorByStatus, onChange }: { task: Task; colorByStatus: Map<TaskStatus, string>; onChange: (status: TaskStatus, origin?: HTMLElement | null) => void }) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   return (
@@ -219,7 +207,7 @@ export function TarefasView({
     return () => { active = false; };
   }, [hasSavedPreferences, replacePreferences]);
   const { taskView: view, taskColumns: visibleColumns, taskColumnWidths, dateFormat, showFinalized, taskFilters, calendarCardFields } = preferences;
-  const { query, projectIds: projectFilters, assigneeIds: assigneeFilters, statuses: statusFilters, lists: listFilters } = taskFilters;
+  const { query, projectIds: projectFilters, assigneeIds: assigneeFilters, statuses: statusFilters, lists: listFilters, formatIds: formatFilters } = taskFilters;
   const needsCounts = view === "calendario" && calendarCardFields.includes("comentarios") && tasks.some((task) => task.preview && task.commentCount === undefined);
   useEffect(() => {
     if (!needsCounts) return;
@@ -276,6 +264,7 @@ export function TarefasView({
       if (assigneeFilters.length && (!task.assigneeId || !assigneeFilters.includes(task.assigneeId))) return false;
       if (statusFilters.length && !statusFilters.some((status) => status === "atrasada" ? isOverdue(task.dueDate, task.status) : task.status === status)) return false;
       if (listFilters.length && !task.lists.some((list) => listFilters.includes(list))) return false;
+      if (formatFilters.length && !formatFilters.some((id) => id === NO_FORMAT_FILTER ? !task.formatTagIds.length : task.formatTagIds.includes(id))) return false;
       if (normalized) {
         const assigneeName = task.assigneeId ? memberById.get(task.assigneeId)?.name || "" : "";
         const channelNames = task.channelTagIds.map((id) => channelTagById.get(id)?.label || "").join(" ");
@@ -283,7 +272,7 @@ export function TarefasView({
       }
       return true;
     });
-  }, [tasks, deferredQuery, projectFilters, assigneeFilters, statusFilters, listFilters, showFinalized, memberById, channelTagById]);
+  }, [tasks, deferredQuery, projectFilters, assigneeFilters, statusFilters, listFilters, formatFilters, showFinalized, memberById, channelTagById]);
 
   // A tarefa aberta no modal nunca some da lista por baixo dele. Trocar o
   // status ou o responsável dentro do modal faz a tarefa deixar de casar com
@@ -311,28 +300,10 @@ export function TarefasView({
   // Todos os resultados continuam filtráveis e no calendário. A tabela monta
   // apenas 50 linhas por página, não milhares de seletores de uma vez.
   const [tablePage, setTablePage] = useState({ key: "", page: 0 });
-  const pageKey = JSON.stringify([deferredQuery, projectFilters, assigneeFilters, statusFilters, listFilters, showFinalized]);
+  const pageKey = JSON.stringify([deferredQuery, projectFilters, assigneeFilters, statusFilters, listFilters, formatFilters, showFinalized]);
   const pageCount = Math.max(1, Math.ceil(visibleTasks.length / 50));
   const currentPage = tablePage.key === pageKey ? Math.min(tablePage.page, pageCount - 1) : 0;
   const tableTasks = visibleTasks.slice(currentPage * 50, (currentPage + 1) * 50);
-
-  const pageDetail = useMemo(() => {
-    if (selectedTask && selectedTask !== "new") {
-      const project = projectById.get(selectedTask.projectId);
-      const assignee = selectedTask.assigneeId ? memberById.get(selectedTask.assigneeId)?.name : null;
-      return `O usuário está com o modal de edição aberto na tarefa "${selectedTask.name}" (projeto ${project?.name || "sem projeto"}, responsável ${assignee || "sem responsável"}, status ${statusLabel(selectedTask)}, prazo ${dueLabel(selectedTask)}). Se a pergunta for curta ou usar "essa tarefa"/"ela"/"aqui", é sobre essa tarefa.`;
-    }
-    if (selectedTask === "new") {
-      return "O usuário está com o modal de criação de uma nova tarefa aberto, ainda sem nome definido.";
-    }
-    const filterParts: string[] = [];
-    if (projectFilters.length) filterParts.push(`projetos ${projectFilters.map((id) => projectById.get(id)?.name || id).join(" ou ")}`);
-    if (assigneeFilters.length) filterParts.push(`responsáveis ${assigneeFilters.map((id) => memberById.get(id)?.name || id).join(" ou ")}`);
-    if (statusFilters.length) filterParts.push(`status ${statusFilters.join(" ou ")}`);
-    const filterText = filterParts.length ? ` filtrada por ${filterParts.join(", ")}` : "";
-    return `O usuário está vendo a lista de tarefas${filterText}, na visão de ${view === "lista" ? "lista" : "calendário"}.`;
-  }, [selectedTask, projectFilters, assigneeFilters, statusFilters, view, projectById, memberById]);
-  useSetPageDetail(pageDetail);
 
   function showToast(message: string) {
     setToast(message);
@@ -550,7 +521,7 @@ export function TarefasView({
 
         <Card className="task-workspace">
           <TaskToolbar
-            filters={{ query, projectIds: projectFilters, assigneeIds: assigneeFilters, statuses: statusFilters, lists: listFilters, showFinalized }}
+            filters={{ query, projectIds: projectFilters, assigneeIds: assigneeFilters, statuses: statusFilters, lists: listFilters, formatIds: formatFilters, showFinalized }}
             onFiltersChange={(next) => {
               const filterPatch: Partial<MemberPreferences["taskFilters"]> = {};
               if (next.query !== undefined) filterPatch.query = next.query;
@@ -558,11 +529,13 @@ export function TarefasView({
               if (next.assigneeIds !== undefined) filterPatch.assigneeIds = next.assigneeIds;
               if (next.statuses !== undefined) filterPatch.statuses = next.statuses;
               if (next.lists !== undefined) filterPatch.lists = next.lists;
+              if (next.formatIds !== undefined) filterPatch.formatIds = next.formatIds;
               if (Object.keys(filterPatch).length) setTaskFilters(filterPatch);
               if (next.showFinalized !== undefined) setShowFinalized(next.showFinalized);
             }}
             projects={initialProjects}
             members={activeMembers}
+            formatTags={formatTags}
             view={view}
             onViewChange={setView}
             visibleColumns={visibleColumns}

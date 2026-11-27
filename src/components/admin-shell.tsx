@@ -1,10 +1,9 @@
 "use client";
 
-import { BarChart3, Bell, BookOpen, CheckSquare, ClipboardList, FileQuestion, FileText, Folders, LogOut, Megaphone, Menu, Palette, Sparkles, Trophy, Users, Wallet, X } from "lucide-react";
+import { BarChart3, Bell, BookOpen, CheckSquare, ClipboardList, FileQuestion, FileText, Folders, LogOut, Megaphone, Menu, Palette, Trophy, Users, Wallet, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { AiAssistantLauncher } from "@/components/ai-assistant-launcher";
 import { AnnouncementComposer } from "@/components/announcement-composer";
 import { AnnouncementGate } from "@/components/announcement-gate";
 import { LiveStatus } from "@/components/live-status";
@@ -14,12 +13,11 @@ import { ThemeSwitch } from "@/components/theme-switch";
 import { Avatar } from "@/components/avatar";
 import { Logo } from "@/components/vz/logo";
 import type { CurrentUser } from "@/lib/current-user";
-import { PageContextProvider } from "@/lib/page-context";
 import { createClient } from "@/lib/supabase/browser-client";
 import { podeGerenciarEquipe, podeVer, type AppArea } from "@/lib/permissions";
 import { USER_ROLES, type UserRole } from "@/lib/types";
 
-export type AdminShellActive = "financeiro" | "meu_financeiro" | "dashboard" | "ranking" | "projetos" | "tarefas" | "planos" | "pesquisas" | "marcas" | "contratos" | "membros" | "conhecimento" | "assistente" | "notificacoes" | "comunicados";
+export type AdminShellActive = "financeiro" | "meu_financeiro" | "dashboard" | "ranking" | "projetos" | "tarefas" | "planos" | "pesquisas" | "marcas" | "contratos" | "membros" | "conhecimento" | "notificacoes" | "comunicados";
 
 
 // A ordem aqui é a ordem do menu. A área de cada item é o que decide quem o
@@ -39,28 +37,9 @@ const ITENS_DO_MENU: { area: AppArea; href: string; label: string; Icone: typeof
   { area: "contratos", href: "/contratos", label: "Contratos", Icone: FileText },
   { area: "membros", href: "/membros", label: "Membros", Icone: Users },
   { area: "conhecimento", href: "/conhecimento", label: "Base de conhecimento", Icone: BookOpen },
-  { area: "assistente", href: "/assistente", label: "Assistente", Icone: Sparkles },
 ];
 
 const CARGO: Record<UserRole, string> = Object.fromEntries(USER_ROLES.map((papel) => [papel.value, papel.label])) as Record<UserRole, string>;
-
-const PAGE_LABELS: Record<AdminShellActive, string> = {
-  financeiro: "Página atual: Financeiro exclusivo do dono.",
-  meu_financeiro: "Página atual: Meu financeiro (ganhos, demandas computadas e pontos de atenção da própria pessoa).",
-  dashboard: "Página atual: Dashboard (visão geral de métricas, prazos e ranking do time).",
-  ranking: "Página atual: Ranking do time (pódio da criação e da estratégia, por rapidez e refação).",
-  projetos: "Página atual: Projetos.",
-  tarefas: "Página atual: Tarefas.",
-  planos: "Página atual: Planos (conteúdos e processos organizados por cliente).",
-  pesquisas: "Página atual: Pesquisas e formulários dos clientes.",
-  marcas: "Página atual: Marcas (fluxos de branding e seus entregáveis).",
-  contratos: "Página atual: Contratos (modelos da casa preenchidos com os dados do cliente).",
-  membros: "Página atual: Membros.",
-  conhecimento: "Página atual: Base de conhecimento.",
-  assistente: "Página atual: Assistente (chat completo).",
-  notificacoes: "Página atual: Caixa de entrada de notificações.",
-  comunicados: "Página atual: Comunicação (mensagens automáticas e comunicados enviados ao grupo de WhatsApp dos clientes).",
-};
 
 export function AdminShell({
   active,
@@ -81,7 +60,6 @@ export function AdminShell({
   }
 
   return (
-    <PageContextProvider page={PAGE_LABELS[active]}>
     <div className="admin-shell">
       <button
         className={`admin-menu-backdrop ${menuOpen ? "visible" : ""}`}
@@ -100,12 +78,10 @@ export function AdminShell({
         </div>
         <nav className="admin-nav">
           {ITENS_DO_MENU.filter((item) => podeVer(user.role, item.area)).map((item) => (
-            item.area === "assistente" && !user.aiEnabled ? null : (
-              <Link className={active === item.area ? "active" : ""} href={item.href} key={item.area} onClick={() => setMenuOpen(false)}>
-                <item.Icone size={18} />
-                <span>{item.label}</span>
-              </Link>
-            )
+            <Link className={active === item.area ? "active" : ""} href={item.href} key={item.area} onClick={() => setMenuOpen(false)}>
+              <item.Icone size={18} />
+              <span>{item.label}</span>
+            </Link>
           ))}
         </nav>
         <ThemeSwitch />
@@ -130,12 +106,8 @@ export function AdminShell({
         </header>
         {children}
       </div>
-      {/* Na página do chat completo o widget seria redundante — e o botão
-          flutuante cobre o "Enviar" do composer. */}
-      {user.aiEnabled && active !== "assistente" ? <AiAssistantLauncher /> : null}
       <AnnouncementGate />
       <ReadyNudge />
     </div>
-    </PageContextProvider>
   );
 }

@@ -16,8 +16,6 @@ import { BRAND_STAGES, DEFAULT_STATUS_COLORS, OVERDUE_STATUSES, TASK_STATUSES } 
 import type {
   Announcement,
   AnnouncementScope,
-  AssistantConversation,
-  AssistantMessage,
   ClientSatisfactionScore,
   Contract,
   ContractStatus,
@@ -1880,78 +1878,6 @@ export async function submitSurveyResponse(token: string, input: { respondentNam
   const score = input.answers.find((answer) => npsIds.has(answer.questionId) && typeof answer.value === "number")?.value as number | undefined;
   if (score !== undefined) await addSatisfactionScore({ projectId: current.projectId, score });
   return { survey, score };
-}
-
-// ---------- Conversas do assistente (chat em tela cheia) ----------
-
-const DEFAULT_CONVERSATION_TITLE = "Nova conversa";
-
-type ConversationRow = { id: string; title: string; messages: AssistantMessage[]; created_at: string; updated_at: string };
-
-function mapConversation(row: ConversationRow): AssistantConversation {
-  return { id: row.id, title: row.title, messages: row.messages ?? [], createdAt: row.created_at, updatedAt: row.updated_at };
-}
-
-// Conversa é de quem a abriu: toda leitura e escrita filtra pela pessoa.
-export async function listAssistantConversations(memberId: string): Promise<AssistantConversation[]> {
-  const rows = unwrap(await getSupabase().from("assistant_conversations").select("*").eq("member_id", memberId).order("updated_at", { ascending: false }));
-  return (rows as ConversationRow[]).map(mapConversation);
-}
-
-export async function getAssistantConversation(memberId: string, id: string): Promise<AssistantConversation | undefined> {
-  const row = unwrap(await getSupabase().from("assistant_conversations").select("*").eq("id", id).eq("member_id", memberId).maybeSingle());
-  return row ? mapConversation(row as ConversationRow) : undefined;
-}
-
-export async function createAssistantConversation(memberId: string): Promise<AssistantConversation> {
-  const now = nowIso();
-  const row = unwrap(
-    await getSupabase()
-      .from("assistant_conversations")
-      .insert({ id: newId(), member_id: memberId, title: DEFAULT_CONVERSATION_TITLE, messages: [], created_at: now, updated_at: now })
-      .select()
-      .single(),
-  );
-  return mapConversation(row as ConversationRow);
-}
-
-export async function renameAssistantConversation(memberId: string, id: string, title: string): Promise<AssistantConversation | undefined> {
-  const row = unwrap(
-    await getSupabase()
-      .from("assistant_conversations")
-      .update({ title: title.trim() || DEFAULT_CONVERSATION_TITLE, updated_at: nowIso() })
-      .eq("id", id)
-      .eq("member_id", memberId)
-      .select()
-      .maybeSingle(),
-  );
-  return row ? mapConversation(row as ConversationRow) : undefined;
-}
-
-export async function deleteAssistantConversation(memberId: string, id: string): Promise<boolean> {
-  const rows = unwrap(await getSupabase().from("assistant_conversations").delete().eq("id", id).eq("member_id", memberId).select("id"));
-  return (rows as unknown[]).length > 0;
-}
-
-// Título automático (estilo ChatGPT): a primeira mensagem do usuário vira o
-// nome da conversa, enquanto ela ainda estiver com o título padrão — assim o
-// usuário só precisa renomear manualmente se quiser algo diferente disso.
-export async function appendAssistantMessages(memberId: string, id: string, newMessages: AssistantMessage[]): Promise<AssistantConversation | undefined> {
-  const current = await getAssistantConversation(memberId, id);
-  if (!current) return undefined;
-
-  const messages = [...current.messages, ...newMessages];
-  const isFirstUserMessage = current.messages.length === 0 && newMessages[0]?.role === "user";
-  let title = current.title;
-  if (isFirstUserMessage && current.title === DEFAULT_CONVERSATION_TITLE) {
-    const firstText = newMessages[0].text.trim();
-    title = firstText.length > 48 ? `${firstText.slice(0, 48).trim()}…` : firstText;
-  }
-
-  const row = unwrap(
-    await getSupabase().from("assistant_conversations").update({ messages, title, updated_at: nowIso() }).eq("id", id).select().maybeSingle(),
-  );
-  return row ? mapConversation(row as ConversationRow) : undefined;
 }
 
 // ---------- Cores por etapa do status ----------

@@ -6,7 +6,7 @@ const db = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_
 
 // O jeito de ver é de cada pessoa; as cores são do time. Estes testes travam
 // as duas metades contra o servidor de verdade.
-const PADRAO = { taskView: "lista", taskColumns: null, dateFormat: "inteligente", showFinalized: false, taskFilters: { query: "", projectIds: [], assigneeIds: [], statuses: [], lists: [] } };
+const PADRAO = { taskView: "lista", taskColumns: null, dateFormat: "inteligente", showFinalized: false, taskFilters: { query: "", projectIds: [], assigneeIds: [], statuses: [], lists: [], formatIds: [] } };
 
 test.describe("preferências de exibição", () => {
   test("1. seguem a conta, não o navegador", async ({ page }) => {
@@ -145,7 +145,7 @@ test.describe("preferências de exibição", () => {
   test("9. filtros voltam depois de recarregar e são individuais", async ({ page }) => {
     await loginAsTestDono(page);
     const { projectId, memberId } = fixtures();
-    const filters = { query: "reels", projectIds: [projectId], assigneeIds: [memberId], statuses: ["atrasada", "em_criacao"], lists: ["criativa"] };
+    const filters = { query: "reels", projectIds: [projectId], assigneeIds: [memberId], statuses: ["atrasada", "em_criacao"], lists: ["criativa"], formatIds: [] };
     const saved = await page.request.patch("/api/preferences", { data: { taskFilters: filters } });
     expect(saved.ok()).toBeTruthy();
     expect((await saved.json()).preferences.taskFilters).toEqual(filters);

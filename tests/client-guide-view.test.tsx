@@ -32,26 +32,51 @@ describe("guia do cliente em modo leitura", () => {
     expect(botao("Montar guia com a IA")?.disabled).toBe(false);
   });
 
-  it("mostra só o que foi respondido e diz quanto falta", () => {
+  it("mostra só o que foi respondido e oferece a edição manual", () => {
     render({ desejo: "Lotar a agenda do consultório", quemEh: "Pediatra há vinte anos" });
     expect(perguntas()).toEqual(["Quem é o cliente?", "Qual é o desejo dele?"]);
-    expect(botao("Completar guia")?.textContent).toContain("faltam 22 respostas");
+    expect(botao("Editar informações")).toBeTruthy();
     expect(botao("Atualizar com a IA")).toBeTruthy();
   });
 
-  it("Completar guia abre todas as perguntas e as reuniões, e volta para a leitura", () => {
+  it("Editar informações abre todos os campos e as reuniões, e volta para a leitura", () => {
     render({ desejo: "Lotar a agenda do consultório" });
-    act(() => botao("Completar guia")!.click());
+    act(() => botao("Editar informações")!.click());
     expect(perguntas()).toHaveLength(24);
+    expect(container.querySelectorAll(".guia-campo input, .guia-campo textarea, .guia-campo select")).toHaveLength(24);
     expect(container.textContent).toContain("Reuniões e anotações");
-    act(() => botao("Voltar para a leitura")!.click());
+    act(() => botao("Concluir edição")!.click());
     expect(perguntas()).toEqual(["Qual é o desejo dele?"]);
   });
 
-  it("quem só lê não vê botão de IA nem de completar", () => {
+  it("quem só lê não vê botão de IA nem de editar", () => {
     render({ desejo: "Lotar a agenda" }, { canEdit: false });
     expect(botao("com a IA")).toBeUndefined();
-    expect(botao("Completar guia")).toBeUndefined();
+    expect(botao("Editar informações")).toBeUndefined();
+  });
+
+  it("sem IA continua dando para editar à mão", () => {
+    render({}, { aiEnabled: false });
+    act(() => botao("Editar informações")!.click());
+    expect(container.querySelectorAll(".guia-campo textarea").length).toBeGreaterThan(0);
+  });
+
+  it("preencher um campo logo depois do outro salva os dois", async () => {
+    vi.useFakeTimers();
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify({ profile: {} })));
+    render({});
+    act(() => botao("Editar informações")!.click());
+    const [primeiro, segundo] = [...container.querySelectorAll<HTMLTextAreaElement>(".guia-campo textarea")];
+    const digitar = (campo: HTMLTextAreaElement, valor: string) => act(() => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(campo, valor);
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    digitar(primeiro, "primeira resposta");
+    digitar(segundo, "segunda resposta");
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    const enviados = fetchMock.mock.calls.map(([, init]) => Object.values(JSON.parse(init.body))[0]);
+    expect(enviados).toEqual(["primeira resposta", "segunda resposta"]);
+    vi.useRealTimers();
   });
 
   it("o que a IA devolve aparece no guia e no resumo", async () => {

@@ -21,7 +21,10 @@ export type SavedTaskFilters = {
   assigneeIds: string[];
   statuses: TaskFilterStatus[];
   lists: TaskListKind[];
+  /** Etiquetas de formato escolhidas; NO_FORMAT_FILTER pega quem não tem nenhuma. */
+  formatIds: string[];
 };
+export const NO_FORMAT_FILTER = "sem_formato";
 export type CalendarCardField = "formato" | "etapa" | "responsavel" | "canal" | "link" | "comentarios";
 
 export type MemberPreferences = {
@@ -48,7 +51,7 @@ export function defaultPreferences(): MemberPreferences {
     taskColumnWidths: {},
     dateFormat: DEFAULT_DATE_FORMAT,
     showFinalized: false,
-    taskFilters: { query: "", projectIds: [], assigneeIds: [], statuses: [], lists: [] },
+    taskFilters: { query: "", projectIds: [], assigneeIds: [], statuses: [], lists: [], formatIds: [] },
     calendarCardFields: ["formato", "etapa", "responsavel", "link"],
   };
 }
@@ -78,7 +81,7 @@ function normalizeWidths(value: unknown): MemberPreferences["taskColumnWidths"] 
 }
 
 function normalizeFilters(value: unknown): SavedTaskFilters {
-  const empty: SavedTaskFilters = { query: "", projectIds: [], assigneeIds: [], statuses: [], lists: [] };
+  const empty: SavedTaskFilters = { query: "", projectIds: [], assigneeIds: [], statuses: [], lists: [], formatIds: [] };
   if (!value || typeof value !== "object" || Array.isArray(value)) return empty;
   const raw = value as Record<string, unknown>;
   const text = (key: string, max: number) => typeof raw[key] === "string" ? raw[key].slice(0, max) : "";
@@ -95,6 +98,7 @@ function normalizeFilters(value: unknown): SavedTaskFilters {
     assigneeIds: strings("assigneeIds", "assigneeId", 80),
     statuses: strings("statuses", "status", 80).filter((status): status is TaskFilterStatus => knownStatuses.has(status)),
     lists: strings("lists", "list", 40).filter((list): list is TaskListKind => knownLists.has(list)),
+    formatIds: strings("formatIds", "formatId", 80),
   };
 }
 

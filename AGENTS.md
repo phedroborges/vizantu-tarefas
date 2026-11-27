@@ -6,6 +6,13 @@ Informe o formato correto e um título descritivo. Use sempre o nome retornado p
 Vídeos/Reels = V, carrosséis = C, estáticos = E, Stories = S. Demais siglas e exceções estão no documento.
 O trigger do banco garante o padrão independentemente do criador, inclusive IA, UI, API e importação.
 
+## Projeto do cliente
+
+A demanda fica no projeto do cliente dono do material; o aviso de aprovação vai para o grupo de WhatsApp desse projeto.
+Antes de criar, importar ou mover, identifique o cliente pelo pedido e confira projeto, plano, título, referência e arquivo.
+Nunca escolha um projeto por padrão, por ordem da lista ou por nome parecido. Se houver dúvida ou conflito, pergunte antes de gravar.
+Depois de gravar, confira o projeto salvo e informe qual foi.
+
 ## Ajustes e aprovação de conteúdo
 
 Antes de interpretar feedback do cliente, revisar textos, reenviar peças ou alterar aprovações, leia `docs/validacao-ajustes-cliente.md`.

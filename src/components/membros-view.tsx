@@ -145,7 +145,7 @@ export function MembrosView({
               </div>
               <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--dark)" }}>
                 <input type="checkbox" checked={aiEnabled} onChange={(e) => setAiEnabled(e.target.checked)} />
-                Liberar assistente de IA para esse usuário
+                Liberar recursos de IA (guia do cliente e contratos) para esse usuário
               </label>
               <button className="primary-button" type="submit" disabled={isSaving}>{isSaving ? "Criando..." : "Criar usuário"}</button>
             </form>

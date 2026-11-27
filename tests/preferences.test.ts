@@ -70,7 +70,7 @@ describe("preferências de exibição por pessoa", () => {
   });
 
   it("salva os filtros usados pela pessoa", () => {
-    const filters = { query: "urgente", projectIds: ["projeto-1", "projeto-2"], assigneeIds: ["membro-2"], statuses: ["atrasada", "em_criacao"], lists: ["criativa"] } as const;
+    const filters = { query: "urgente", projectIds: ["projeto-1", "projeto-2"], assigneeIds: ["membro-2"], statuses: ["atrasada", "em_criacao"], lists: ["criativa"], formatIds: ["formato-1", "sem_formato"] } as const;
     const next = mergePreferences(defaultPreferences(), { taskFilters: filters });
     expect(next.taskFilters).toEqual(filters);
   });
@@ -82,12 +82,12 @@ describe("preferências de exibição por pessoa", () => {
 
   it("descarta status e listas inválidos sem apagar os outros filtros", () => {
     const next = normalizePreferences({ taskFilters: { query: "x", projectIds: ["p", "p"], assigneeIds: ["m"], statuses: ["em_criacao", "feito"], lists: ["criativa", "inventada"] } });
-    expect(next.taskFilters).toEqual({ query: "x", projectIds: ["p"], assigneeIds: ["m"], statuses: ["em_criacao"], lists: ["criativa"] });
+    expect(next.taskFilters).toEqual({ query: "x", projectIds: ["p"], assigneeIds: ["m"], statuses: ["em_criacao"], lists: ["criativa"], formatIds: [] });
   });
 
   it("migra filtros antigos de valor único para seleção múltipla", () => {
     const next = normalizePreferences({ taskFilters: { query: "reels", projectId: "p", assigneeId: "m", status: "atrasada", list: "estrategica" } });
-    expect(next.taskFilters).toEqual({ query: "reels", projectIds: ["p"], assigneeIds: ["m"], statuses: ["atrasada"], lists: ["estrategica"] });
+    expect(next.taskFilters).toEqual({ query: "reels", projectIds: ["p"], assigneeIds: ["m"], statuses: ["atrasada"], lists: ["estrategica"], formatIds: [] });
   });
 
   it("salva a configuração dos cartões do calendário", () => {

@@ -13,7 +13,7 @@ const CARGOS = USER_ROLES.map((papel) => papel.value);
 
 describe("o que cada cargo enxerga", () => {
   it("o dono não tem exceção", () => {
-    const areas: AppArea[] = ["dashboard", "projetos", "tarefas", "notificacoes", "planos", "pesquisas", "marcas", "contratos", "membros", "conhecimento", "assistente"];
+    const areas: AppArea[] = ["dashboard", "projetos", "tarefas", "notificacoes", "planos", "pesquisas", "marcas", "contratos", "membros", "conhecimento"];
     for (const area of areas) expect(podeVer("dono", area), area).toBe(true);
   });
 
@@ -75,7 +75,7 @@ describe("o que cada cargo enxerga", () => {
     for (const area of ["projetos", "tarefas", "planos", "notificacoes"] as AppArea[]) {
       expect(podeVer("agente", area), area).toBe(true);
     }
-    for (const area of ["dashboard", "contratos", "financeiro", "meu_financeiro", "membros", "conhecimento", "assistente", "pesquisas", "comunicados"] as AppArea[]) {
+    for (const area of ["dashboard", "contratos", "financeiro", "meu_financeiro", "membros", "conhecimento", "pesquisas", "comunicados"] as AppArea[]) {
       expect(podeVer("agente", area), area).toBe(false);
     }
     expect(podeVerCredenciais("agente")).toBe(false);

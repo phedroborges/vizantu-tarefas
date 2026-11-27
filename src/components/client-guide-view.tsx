@@ -16,6 +16,8 @@
 //    "Completar guia" abre as perguntas vazias e as reuniões.
 // 4. A IA não depende de reunião colada. Ela lê também o que o sistema já tem
 //    (contrato, planos, tarefas, pesquisas), então o botão funciona de cara.
+// 5. A IA é opcional. "Editar informações" abre tudo em campos de uma vez
+//    (dados do projeto, guia e cadastro) para preencher à mão.
 
 import { BookOpen, Check, ChevronDown, FileText, Loader2, Mic, PencilLine, Plus, Sparkles, Trash2, TriangleAlert } from "lucide-react";
 import { useRef, useState } from "react";
@@ -38,7 +40,9 @@ export function ClientGuideView({
   canEdit,
   aiEnabled,
   cadastro,
+  identificacao,
   resumo,
+  onProfileChange,
 }: {
   projectId: string;
   initialProfile: Partial<ProjectProfile>;
@@ -48,6 +52,11 @@ export function ClientGuideView({
   // O cadastro (CNPJ, endereço, quem decide) continua existindo, mas recolhido:
   // é consulta esporádica e estava competindo com o que a equipe lê todo dia.
   cadastro: React.ReactNode;
+  // Nome, cliente, cidade e afins. Só aparece na edição.
+  identificacao?: React.ReactNode;
+  // Quem guarda o perfil fora daqui precisa saber o que mudou, senão trocar de
+  // aba e voltar mostraria o texto antigo.
+  onProfileChange?: (patch: Partial<ProjectProfile>) => void;
   // O resumo do cliente, que abre a aba. Recebe o guia como está agora (uma
   // resposta recém-editada ou gerada já aparece nele) e como abrir as perguntas.
   resumo?: (guia: Partial<ProjectProfile>, completar?: () => void) => React.ReactNode;
@@ -60,12 +69,13 @@ export function ClientGuideView({
   const [aviso, setAviso] = useState("");
   const [abrindoFonte, setAbrindoFonte] = useState(false);
   const [completando, setCompletando] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Um relógio por campo: com um só, passar para o próximo campo antes de
+  // salvar descartava o que tinha sido digitado no anterior.
+  const debounceRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const { confirm, ConfirmDialog } = useConfirm();
 
   const progresso = guideCompletion(profile);
   const manuais = new Set(profile.guideManualFields ?? []);
-  const faltam = progresso.total - progresso.preenchidos;
   const podeMontar = canEdit && aiEnabled;
 
   // Só o campo alterado vai no PATCH. Mandar o objeto inteiro marcaria os
@@ -83,6 +93,8 @@ export function ClientGuideView({
         ...atual,
         guideManualFields: Array.from(new Set([...(atual.guideManualFields ?? []), key])),
       }));
+      const salvo = (await response.json()).profile as ProjectProfile | undefined;
+      if (salvo) onProfileChange?.({ guideManualFields: salvo.guideManualFields });
     } catch {
       setErro(networkError("salvar o guia"));
     }
@@ -91,8 +103,9 @@ export function ClientGuideView({
   function setCampo(key: string, value: string) {
     setProfile((atual) => ({ ...atual, [key]: value }));
     if (!canEdit) return;
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => persistir(key, value), AUTOSAVE_MS);
+    onProfileChange?.({ [key]: value });
+    clearTimeout(debounceRef.current.get(key));
+    debounceRef.current.set(key, setTimeout(() => persistir(key, value), AUTOSAVE_MS));
   }
 
   async function montarGuia() {
@@ -107,6 +120,7 @@ export function ClientGuideView({
       }
       const data = await response.json();
       setProfile(data.profile);
+      onProfileChange?.(data.profile);
       const n = data.camposPreenchidos?.length ?? 0;
       const falhou: string[] = data.blocosComErro ?? [];
       setAviso(
@@ -153,21 +167,19 @@ export function ClientGuideView({
           </p>
           {canEdit ? (
             <div className="guia-topo__acoes">
+              <Button variant="primary" onClick={() => setCompletando(!completando)}>
+                {completando ? <Check size={14} /> : <PencilLine size={14} />}
+                {completando ? "Concluir edição" : "Editar informações"}
+              </Button>
               <Button
-                variant="primary"
+                variant="ghost"
                 onClick={montarGuia}
                 disabled={gerando || !podeMontar}
-                title={!aiEnabled ? "IA não habilitada para o seu usuário" : "Lê contrato, planos, tarefas, pesquisas e as reuniões registradas"}
+                title={!aiEnabled ? "IA não habilitada para o seu usuário" : "Opcional. Lê contrato, planos, tarefas, pesquisas e as reuniões registradas"}
               >
                 {gerando ? <Loader2 size={14} className="vz-spin" /> : <Sparkles size={14} />}
                 {gerando ? "Montando..." : progresso.preenchidos ? "Atualizar com a IA" : "Montar guia com a IA"}
               </Button>
-              {faltam || completando ? (
-                <Button variant="ghost" onClick={() => setCompletando(!completando)}>
-                  {completando ? <Check size={14} /> : <PencilLine size={14} />}
-                  {completando ? "Voltar para a leitura" : `Completar guia (${faltam === 1 ? "falta 1 resposta" : `faltam ${faltam} respostas`})`}
-                </Button>
-              ) : null}
             </div>
           ) : null}
         </div>
@@ -185,18 +197,7 @@ export function ClientGuideView({
       {erro ? <Callout tone="danger" icon={<TriangleAlert size={16} />}>{erro}</Callout> : null}
       {aviso ? <Callout tone="brand" icon={<Sparkles size={16} />}>{aviso}</Callout> : null}
 
-      {completando ? (
-        <FontesDoGuia
-          projectId={projectId}
-          sources={sources}
-          setSources={setSources}
-          canEdit={canEdit}
-          onRemover={removerFonte}
-          aberto={abrindoFonte}
-          setAberto={setAbrindoFonte}
-          setErro={setErro}
-        />
-      ) : null}
+      {completando ? identificacao : null}
 
       {!completando && !progresso.preenchidos ? (
         <Card className="guia-bloco">
@@ -204,7 +205,7 @@ export function ClientGuideView({
             icon={<BookOpen size={22} />}
             title="O guia deste cliente ainda não foi escrito"
             description={canEdit
-              ? "A IA monta a primeira versão com o que já está no sistema: contrato, planos, tarefas e pesquisas. Depois é só corrigir o que precisar."
+              ? "Use Editar informações para preencher à mão. Se preferir um rascunho, a IA monta com o que já está no sistema."
               : "Quando alguém responder, é aqui que você lê quem é o cliente, o que ele quer e como lidar com ele."}
           />
         </Card>
@@ -237,7 +238,8 @@ export function ClientGuideView({
                   valor={(profile[campo.key] as string) || ""}
                   escritoPelaIa={Boolean(profile.guideGeneratedAt) && !manuais.has(campo.key) && Boolean(profile[campo.key])}
                   canEdit={canEdit}
-                  editando={editando === campo.key}
+                  editando={completando || editando === campo.key}
+                  focar={!completando}
                   onAbrir={() => setEditando(campo.key)}
                   onFechar={() => setEditando(null)}
                   onChange={(valor) => setCampo(campo.key, valor)}
@@ -248,7 +250,7 @@ export function ClientGuideView({
         );
       })}
 
-      <details className="guia-cadastro">
+      <details className="guia-cadastro" open={completando || undefined}>
         <summary>
           <ChevronDown size={16} />
           Dados cadastrais
@@ -256,18 +258,33 @@ export function ClientGuideView({
         </summary>
         <div className="guia-cadastro__corpo">{cadastro}</div>
       </details>
+
+      {completando ? (
+        <FontesDoGuia
+          projectId={projectId}
+          sources={sources}
+          setSources={setSources}
+          canEdit={canEdit}
+          onRemover={removerFonte}
+          aberto={abrindoFonte}
+          setAberto={setAbrindoFonte}
+          setErro={setErro}
+        />
+      ) : null}
     </div>
   );
 }
 
 function CampoDoGuia({
-  campo, valor, escritoPelaIa, canEdit, editando, onAbrir, onFechar, onChange,
+  campo, valor, escritoPelaIa, canEdit, editando, focar, onAbrir, onFechar, onChange,
 }: {
   campo: GuideField;
   valor: string;
   escritoPelaIa: boolean;
   canEdit: boolean;
   editando: boolean;
+  // Aberto por clique recebe o cursor; na edição de tudo, ninguém rouba o foco.
+  focar: boolean;
   onAbrir: () => void;
   onFechar: () => void;
   onChange: (valor: string) => void;
@@ -284,7 +301,7 @@ function CampoDoGuia({
       {editando && canEdit ? (
         campo.kind === "escolha" ? (
           <Select
-            autoFocus
+            autoFocus={focar}
             value={valor}
             onChange={(e) => { onChange(e.target.value); onFechar(); }}
             onBlur={onFechar}
@@ -293,9 +310,9 @@ function CampoDoGuia({
             {campo.opcoes?.map((opcao) => <option key={opcao} value={opcao}>{opcao}</option>)}
           </Select>
         ) : campo.kind === "curto" ? (
-          <Input autoFocus value={valor} onChange={(e) => onChange(e.target.value)} onBlur={onFechar} placeholder={campo.ajuda} />
+          <Input autoFocus={focar} value={valor} onChange={(e) => onChange(e.target.value)} onBlur={onFechar} placeholder={campo.ajuda} />
         ) : (
-          <Textarea autoFocus rows={5} value={valor} onChange={(e) => onChange(e.target.value)} onBlur={onFechar} placeholder={campo.ajuda} />
+          <Textarea autoFocus={focar} rows={5} value={valor} onChange={(e) => onChange(e.target.value)} onBlur={onFechar} placeholder={campo.ajuda} />
         )
       ) : (
         <button

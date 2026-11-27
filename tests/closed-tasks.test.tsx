@@ -57,10 +57,22 @@ describe("tarefas encerradas na lista", () => {
       assigneeIds: ["m1", "m2"],
       statuses: ["em_criacao", "revisao"],
       lists: ["criativa", "estrategica"],
+      formatIds: [],
     } }, undefined, mixed);
     expect(html).toContain("Combina A");
     expect(html).toContain("Combina B");
     expect(html).not.toContain("Fora do projeto");
     expect(html).not.toContain("Fora do responsável");
+  });
+  it("mostra só os formatos escolhidos, inclusive quem não tem formato", () => {
+    const mixed = [
+      task("em_criacao", "Peça em vídeo", { id: "v", formatTagIds: ["video"] }),
+      task("em_criacao", "Peça em carrossel", { id: "c", formatTagIds: ["carrossel"] }),
+      task("em_criacao", "Peça sem formato", { id: "s", formatTagIds: [] }),
+    ];
+    const html = render({ taskFilters: { query: "", projectIds: [], assigneeIds: [], statuses: [], lists: [], formatIds: ["video", "sem_formato"] } }, undefined, mixed);
+    expect(html).toContain("Peça em vídeo");
+    expect(html).toContain("Peça sem formato");
+    expect(html).not.toContain("Peça em carrossel");
   });
 });
